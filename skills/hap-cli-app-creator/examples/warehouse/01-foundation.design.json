@@ -1,0 +1,701 @@
+{
+  "app": {
+    "name": "仓库扫码出入库",
+    "icon": "sys_18_5_warehouse",
+    "icon_color": "#3054EB",
+    "sections": [
+      "基础数据",
+      "出入库单据",
+      "统计分析"
+    ]
+  },
+  "optionsets": [
+    {
+      "name": "优先级集",
+      "options": [
+        {
+          "value": "普通",
+          "color": "#C0E6FC"
+        },
+        {
+          "value": "加急",
+          "color": "#FF9300"
+        },
+        {
+          "value": "特急",
+          "color": "#F52222"
+        }
+      ],
+      "enable_color": true
+    }
+  ],
+  "worksheets": [
+    {
+      "name": "物料",
+      "section": "基础数据",
+      "icon": "sys_11_1_tool_storage_box",
+      "fields": [
+        {
+          "type": "Divider",
+          "name": "物料信息",
+          "row": 0,
+          "size": 12
+        },
+        {
+          "type": "AutoNumber",
+          "name": "物料编码",
+          "is_title": true,
+          "row": 1,
+          "size": 3,
+          "auto_number": {
+            "prefix": "WL-",
+            "date_format": "YYYYMMDD",
+            "digits": 4,
+            "reset": "daily"
+          }
+        },
+        {
+          "type": "Text",
+          "name": "物料名称",
+          "required": true,
+          "row": 1,
+          "size": 3
+        },
+        {
+          "type": "SingleSelect",
+          "name": "物料分类",
+          "options": [
+            "原材料",
+            "半成品",
+            "成品",
+            "辅料",
+            "包装物"
+          ],
+          "row": 1,
+          "size": 3
+        },
+        {
+          "type": "SingleSelect",
+          "name": "启用状态",
+          "options": [
+            {
+              "value": "启用",
+              "color": "#00C345",
+              "checked": true
+            },
+            {
+              "value": "停用",
+              "color": "#484848"
+            }
+          ],
+          "row": 1,
+          "size": 3
+        },
+        {
+          "type": "Dropdown",
+          "name": "计量单位",
+          "options": [
+            "个",
+            "箱",
+            "千克",
+            "米",
+            "卷",
+            "套"
+          ],
+          "row": 2,
+          "size": 3
+        },
+        {
+          "type": "Text",
+          "name": "规格型号",
+          "row": 2,
+          "size": 6
+        },
+        {
+          "type": "Barcode",
+          "name": "条码",
+          "source": "物料编码",
+          "row": 2,
+          "size": 3
+        },
+        {
+          "type": "Divider",
+          "name": "价格与库存控制",
+          "row": 3,
+          "size": 12
+        },
+        {
+          "type": "Number",
+          "name": "单价",
+          "decimals": 2,
+          "row": 4,
+          "size": 3
+        },
+        {
+          "type": "Number",
+          "name": "安全库存",
+          "row": 4,
+          "size": 3
+        },
+        {
+          "type": "Rollup",
+          "name": "库存总量",
+          "row": 4,
+          "size": 3,
+          "rollup": {
+            "via": "相关库存",
+            "field": "当前数量",
+            "aggregate": "sum"
+          }
+        },
+        {
+          "type": "Rollup",
+          "name": "大额库存点数",
+          "row": 4,
+          "size": 3,
+          "rollup": {
+            "via": "相关库存",
+            "field": "当前数量",
+            "aggregate": "count",
+            "filter": [
+              {
+                "field": "当前数量",
+                "op": "gt",
+                "value": 100
+              }
+            ]
+          }
+        },
+        {
+          "type": "Divider",
+          "name": "图片与备注",
+          "row": 5,
+          "size": 12
+        },
+        {
+          "type": "Attachment",
+          "name": "物料图片",
+          "row": 6,
+          "size": 12
+        },
+        {
+          "type": "Text",
+          "name": "备注",
+          "row": 7,
+          "size": 12
+        }
+      ]
+    },
+    {
+      "name": "仓库",
+      "section": "基础数据",
+      "icon": "sys_18_5_warehouse",
+      "fields": [
+        {
+          "type": "Divider",
+          "name": "仓库信息",
+          "row": 0,
+          "size": 12
+        },
+        {
+          "type": "AutoNumber",
+          "name": "仓库编码",
+          "is_title": true,
+          "row": 1,
+          "size": 3,
+          "auto_number": {
+            "prefix": "CK-",
+            "date_format": "YYYYMM",
+            "digits": 3,
+            "reset": "never"
+          }
+        },
+        {
+          "type": "Text",
+          "name": "仓库名称",
+          "required": true,
+          "row": 1,
+          "size": 3
+        },
+        {
+          "type": "SingleSelect",
+          "name": "仓库类型",
+          "options": [
+            "常温库",
+            "冷藏库",
+            "冷冻库",
+            "危化品库"
+          ],
+          "row": 1,
+          "size": 3
+        },
+        {
+          "type": "PhoneNumber",
+          "name": "联系电话",
+          "row": 1,
+          "size": 3
+        },
+        {
+          "type": "Collaborator",
+          "name": "负责人",
+          "row": 2,
+          "size": 6
+        },
+        {
+          "type": "Text",
+          "name": "备注",
+          "row": 2,
+          "size": 6
+        },
+        {
+          "type": "Divider",
+          "name": "位置与照片",
+          "row": 3,
+          "size": 12
+        },
+        {
+          "type": "Location",
+          "name": "仓库位置",
+          "row": 4,
+          "size": 12
+        },
+        {
+          "type": "Attachment",
+          "name": "仓库照片",
+          "size": 12,
+          "row": 5
+        }
+      ]
+    },
+    {
+      "name": "库存",
+      "section": "基础数据",
+      "icon": "sys_bullet-list_office",
+      "fields": [
+        {
+          "type": "Divider",
+          "name": "库存台账",
+          "row": 0,
+          "size": 12
+        },
+        {
+          "type": "AutoNumber",
+          "name": "库存编号",
+          "is_title": true,
+          "row": 1,
+          "size": 3,
+          "auto_number": {
+            "prefix": "KC-",
+            "date_format": "YYYYMMDD",
+            "digits": 4,
+            "reset": "daily"
+          }
+        },
+        {
+          "type": "Number",
+          "name": "当前数量",
+          "row": 1,
+          "size": 3
+        },
+        {
+          "type": "Lookup",
+          "name": "物料名称",
+          "row": 1,
+          "size": 3,
+          "lookup": {
+            "via": "物料",
+            "field": "物料名称"
+          }
+        },
+        {
+          "type": "Date",
+          "name": "盘点日期",
+          "row": 1,
+          "size": 3
+        },
+        {
+          "type": "Relation",
+          "name": "物料",
+          "row": 2,
+          "size": 6,
+          "relation": {
+            "worksheet": "物料",
+            "multi": false,
+            "display": "dropdown",
+            "two_way": {
+              "name": "相关库存",
+              "display": "tab_table"
+            }
+          }
+        },
+        {
+          "type": "Relation",
+          "name": "仓库",
+          "row": 2,
+          "size": 6,
+          "relation": {
+            "worksheet": "仓库",
+            "multi": false,
+            "display": "dropdown",
+            "two_way": {
+              "name": "库存明细",
+              "display": "tab_table"
+            }
+          }
+        },
+        {
+          "type": "Text",
+          "name": "备注",
+          "row": 3,
+          "size": 12
+        }
+      ]
+    },
+    {
+      "name": "入库单",
+      "section": "出入库单据",
+      "icon": "sys_form_symbol",
+      "fields": [
+        {
+          "type": "Divider",
+          "name": "单据信息",
+          "row": 0,
+          "size": 12
+        },
+        {
+          "type": "AutoNumber",
+          "name": "入库单号",
+          "is_title": true,
+          "row": 1,
+          "size": 3,
+          "auto_number": {
+            "prefix": "RK-",
+            "date_format": "YYYYMMDD",
+            "digits": 4,
+            "reset": "daily"
+          }
+        },
+        {
+          "type": "Date",
+          "name": "入库日期",
+          "row": 1,
+          "size": 3
+        },
+        {
+          "type": "SingleSelect",
+          "name": "入库类型",
+          "options": [
+            "采购入库",
+            "退货入库",
+            "调拨入库",
+            "盘盈入库"
+          ],
+          "row": 1,
+          "size": 3
+        },
+        {
+          "type": "Dropdown",
+          "name": "优先级",
+          "optionset": "优先级集",
+          "row": 1,
+          "size": 3
+        },
+        {
+          "type": "Relation",
+          "name": "入库仓库",
+          "relation": {
+            "worksheet": "仓库",
+            "multi": false,
+            "display": "dropdown"
+          },
+          "row": 2,
+          "size": 3
+        },
+        {
+          "type": "Collaborator",
+          "name": "经办人",
+          "row": 2,
+          "size": 3
+        },
+        {
+          "type": "Text",
+          "name": "供应商",
+          "row": 2,
+          "size": 3
+        },
+        {
+          "type": "SingleSelect",
+          "name": "单据状态",
+          "options": [
+            {
+              "value": "待审批",
+              "color": "#FF9300",
+              "checked": true
+            },
+            {
+              "value": "审批中",
+              "color": "#FAD714"
+            },
+            {
+              "value": "已入库",
+              "color": "#00C345"
+            },
+            {
+              "value": "审批未通过",
+              "color": "#F52222"
+            },
+            {
+              "value": "已取消",
+              "color": "#484848"
+            }
+          ],
+          "row": 2,
+          "size": 3
+        },
+        {
+          "type": "Divider",
+          "name": "明细信息",
+          "row": 3,
+          "size": 12
+        },
+        {
+          "type": "SubTable",
+          "name": "入库明细",
+          "row": 4,
+          "size": 12,
+          "child_fields": [
+            {
+              "type": "Relation",
+              "name": "物料",
+              "relation": {
+                "worksheet": "物料",
+                "multi": false,
+                "display": "dropdown"
+              }
+            },
+            {
+              "type": "Number",
+              "name": "入库数量"
+            },
+            {
+              "type": "Number",
+              "name": "单价",
+              "decimals": 2
+            }
+          ]
+        },
+        {
+          "type": "Divider",
+          "name": "汇总与凭证",
+          "row": 5,
+          "size": 12
+        },
+        {
+          "type": "Rollup",
+          "name": "入库总数量",
+          "row": 6,
+          "size": 6,
+          "rollup": {
+            "via": "入库明细",
+            "field": "入库数量",
+            "aggregate": "sum"
+          }
+        },
+        {
+          "type": "Text",
+          "name": "审批备注",
+          "hidden_on_create": true,
+          "row": 6,
+          "size": 6
+        },
+        {
+          "type": "Attachment",
+          "name": "凭证附件",
+          "row": 7,
+          "size": 12
+        }
+      ]
+    },
+    {
+      "name": "出库单",
+      "section": "出入库单据",
+      "icon": "sys_form_symbol",
+      "fields": [
+        {
+          "type": "Divider",
+          "name": "单据信息",
+          "row": 0,
+          "size": 12
+        },
+        {
+          "type": "AutoNumber",
+          "name": "出库单号",
+          "is_title": true,
+          "row": 1,
+          "size": 3,
+          "auto_number": {
+            "prefix": "CH-",
+            "date_format": "YYYYMMDD",
+            "digits": 4,
+            "reset": "daily"
+          }
+        },
+        {
+          "type": "Date",
+          "name": "出库日期",
+          "row": 1,
+          "size": 3
+        },
+        {
+          "type": "SingleSelect",
+          "name": "出库类型",
+          "options": [
+            "销售出库",
+            "领用出库",
+            "调拨出库",
+            "报废出库"
+          ],
+          "row": 1,
+          "size": 3
+        },
+        {
+          "type": "Dropdown",
+          "name": "优先级",
+          "optionset": "优先级集",
+          "row": 1,
+          "size": 3
+        },
+        {
+          "type": "Relation",
+          "name": "出库仓库",
+          "relation": {
+            "worksheet": "仓库",
+            "multi": false,
+            "display": "dropdown"
+          },
+          "row": 2,
+          "size": 3
+        },
+        {
+          "type": "Text",
+          "name": "领用人",
+          "row": 2,
+          "size": 3
+        },
+        {
+          "type": "SingleSelect",
+          "name": "单据状态",
+          "options": [
+            {
+              "value": "未提交",
+              "color": "#C0E6FC",
+              "checked": true
+            },
+            {
+              "value": "审批中",
+              "color": "#FAD714"
+            },
+            {
+              "value": "已审批",
+              "color": "#2D46C4"
+            },
+            {
+              "value": "审批未通过",
+              "color": "#F52222"
+            },
+            {
+              "value": "待出库",
+              "color": "#FF9300"
+            },
+            {
+              "value": "已出库",
+              "color": "#00C345"
+            },
+            {
+              "value": "已取消",
+              "color": "#484848"
+            }
+          ],
+          "row": 2,
+          "size": 3
+        },
+        {
+          "type": "Text",
+          "name": "备注",
+          "row": 2,
+          "size": 3
+        },
+        {
+          "type": "Divider",
+          "name": "明细信息",
+          "row": 3,
+          "size": 12
+        },
+        {
+          "type": "SubTable",
+          "name": "出库明细",
+          "row": 4,
+          "size": 12,
+          "child_fields": [
+            {
+              "type": "Relation",
+              "name": "物料",
+              "relation": {
+                "worksheet": "物料",
+                "multi": false,
+                "display": "dropdown"
+              }
+            },
+            {
+              "type": "Number",
+              "name": "出库数量"
+            },
+            {
+              "type": "Number",
+              "name": "单价",
+              "decimals": 2
+            },
+            {
+              "type": "Number",
+              "name": "检查库存"
+            }
+          ]
+        },
+        {
+          "type": "Divider",
+          "name": "汇总与地点",
+          "row": 5,
+          "size": 12
+        },
+        {
+          "type": "Rollup",
+          "name": "出库总数量",
+          "row": 6,
+          "size": 6,
+          "rollup": {
+            "via": "出库明细",
+            "field": "出库数量",
+            "aggregate": "sum"
+          }
+        },
+        {
+          "type": "Rollup",
+          "name": "检查库存合计",
+          "row": 6,
+          "size": 6,
+          "rollup": {
+            "via": "出库明细",
+            "field": "检查库存",
+            "aggregate": "sum"
+          }
+        },
+        {
+          "type": "Location",
+          "name": "领用地点",
+          "row": 7,
+          "size": 12
+        }
+      ]
+    }
+  ]
+}

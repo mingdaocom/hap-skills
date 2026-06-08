@@ -1,0 +1,565 @@
+{
+  "app": {
+    "name": "订单受理-{ts}",
+    "icon": "1_2_order",
+    "icon_color": "#3054EB",
+    "sections": [
+      "客户管理",
+      "订单管理",
+      "数据分析"
+    ]
+  },
+  "worksheets": [
+    {
+      "name": "客户",
+      "icon": "sys_15_3_user",
+      "section": "客户管理",
+      "fields": [
+        {
+          "type": "Text",
+          "name": "客户名称",
+          "required": true,
+          "is_title": true,
+          "row": 0,
+          "size": 6
+        },
+        {
+          "type": "AutoNumber",
+          "name": "客户编号",
+          "row": 0,
+          "size": 6,
+          "auto_number": {
+            "prefix": "KH-",
+            "date_format": "YYYYMM",
+            "digits": 4,
+            "reset": "never"
+          }
+        },
+        {
+          "type": "SingleSelect",
+          "name": "客户等级",
+          "options": [
+            { "value": "A", "color": "#00C345" },
+            { "value": "B", "color": "#FAD714" },
+            { "value": "C", "color": "#C0E6FC" }
+          ],
+          "row": 1,
+          "size": 6
+        },
+        {
+          "type": "SingleSelect",
+          "name": "客户来源",
+          "options": [
+            "线上咨询",
+            "电话来访",
+            "老客转介",
+            "市场活动"
+          ],
+          "row": 1,
+          "size": 6
+        },
+        {
+          "type": "Text",
+          "name": "联系人",
+          "row": 2,
+          "size": 6
+        },
+        {
+          "type": "PhoneNumber",
+          "name": "联系电话",
+          "row": 2,
+          "size": 6
+        },
+        {
+          "type": "Text",
+          "name": "客户地址",
+          "row": 3,
+          "size": 12
+        },
+        {
+          "type": "SingleSelect",
+          "name": "启用状态",
+          "options": [
+            { "value": "启用", "color": "#00C345", "checked": true },
+            { "value": "停用", "color": "#484848" }
+          ],
+          "row": 4,
+          "size": 6
+        },
+        {
+          "type": "Rollup",
+          "name": "累计订单数",
+          "size": 6,
+          "rollup": {
+            "via": "客户订单",
+            "field": "订单金额",
+            "aggregate": "count"
+          }
+        },
+        {
+          "type": "Rollup",
+          "name": "累计成交额",
+          "size": 6,
+          "rollup": {
+            "via": "客户订单",
+            "field": "订单金额",
+            "aggregate": "sum",
+            "filter": [
+              { "field": "订单状态", "op": "eq", "value": "已确认" }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "订单",
+      "icon": "1_2_order",
+      "section": "订单管理",
+      "fields": [
+        {
+          "type": "AutoNumber",
+          "name": "订单编号",
+          "is_title": true,
+          "row": 0,
+          "size": 6,
+          "auto_number": {
+            "prefix": "DD-",
+            "date_format": "YYYYMMDD",
+            "digits": 4,
+            "reset": "daily"
+          }
+        },
+        {
+          "type": "Date",
+          "name": "下单日期",
+          "row": 0,
+          "size": 6
+        },
+        {
+          "type": "Relation",
+          "name": "所属客户",
+          "row": 1,
+          "size": 6,
+          "relation": {
+            "worksheet": "客户",
+            "multi": false,
+            "display": "dropdown",
+            "two_way": {
+              "name": "客户订单",
+              "display": "tab_table"
+            }
+          }
+        },
+        {
+          "type": "Lookup",
+          "name": "客户电话",
+          "row": 1,
+          "size": 6,
+          "lookup": {
+            "via": "所属客户",
+            "field": "联系电话"
+          }
+        },
+        {
+          "type": "Currency",
+          "name": "订单金额",
+          "decimals": 2,
+          "row": 2,
+          "size": 6
+        },
+        {
+          "type": "SingleSelect",
+          "name": "订单状态",
+          "optionset": "订单状态",
+          "row": 2,
+          "size": 6
+        },
+        {
+          "type": "Text",
+          "name": "交付要求",
+          "row": 3,
+          "size": 12
+        },
+        {
+          "type": "Text",
+          "name": "备注",
+          "row": 4,
+          "size": 12
+        }
+      ]
+    }
+  ],
+  "optionsets": [
+    {
+      "name": "订单状态",
+      "options": [
+        { "value": "待提交", "color": "#FAD714", "index": 0 },
+        { "value": "审批中", "color": "#2D46C4", "index": 1 },
+        { "value": "已确认", "color": "#00C345", "index": 2 },
+        { "value": "已取消", "color": "#484848", "index": 3 }
+      ],
+      "enable_color": true
+    }
+  ],
+  "views": [
+    {
+      "worksheet": "订单",
+      "name": "待审批订单",
+      "view_type": "table",
+      "filter": [
+        { "field": "订单状态", "op": "eq", "value": "审批中" }
+      ]
+    },
+    {
+      "worksheet": "订单",
+      "name": "订单看板",
+      "view_type": "kanban",
+      "group_by": "订单状态",
+      "card": {
+        "title": "订单编号",
+        "display_fields": [
+          "所属客户",
+          "订单金额"
+        ]
+      }
+    }
+  ],
+  "custom_pages": [
+    {
+      "name": "销售概览",
+      "section": "数据分析",
+      "icon": "sys_2_3_statistics",
+      "components": [
+        {
+          "type": "rich_text",
+          "name": "标题",
+          "rich_text": "<h3>销售概览</h3>",
+          "layout": { "x": 0, "y": 0, "w": 48, "h": 2 }
+        },
+        {
+          "type": "chart",
+          "name": "订单总数",
+          "chart": {
+            "worksheet": "订单",
+            "report_type": "number",
+            "metrics": [
+              { "field": "count", "aggregate": "count" }
+            ]
+          },
+          "layout": { "x": 0, "y": 2, "w": 16, "h": 5 }
+        },
+        {
+          "type": "chart",
+          "name": "成交金额",
+          "chart": {
+            "worksheet": "订单",
+            "report_type": "number",
+            "metrics": [
+              { "field": "订单金额", "aggregate": "sum" }
+            ],
+            "filter": [
+              { "field": "订单状态", "op": "eq", "value": "已确认" }
+            ]
+          },
+          "layout": { "x": 16, "y": 2, "w": 16, "h": 5 }
+        },
+        {
+          "type": "chart",
+          "name": "客户总数",
+          "chart": {
+            "worksheet": "客户",
+            "report_type": "number",
+            "metrics": [
+              { "field": "count", "aggregate": "count" }
+            ]
+          },
+          "layout": { "x": 32, "y": 2, "w": 16, "h": 5 }
+        },
+        {
+          "type": "chart",
+          "name": "订单状态分布",
+          "chart": {
+            "worksheet": "订单",
+            "report_type": "pie",
+            "dimensions": [
+              { "field": "订单状态" }
+            ],
+            "metrics": [
+              { "field": "count", "aggregate": "count" }
+            ]
+          },
+          "layout": { "x": 0, "y": 7, "w": 24, "h": 10 }
+        },
+        {
+          "type": "chart",
+          "name": "各等级客户成交额",
+          "chart": {
+            "worksheet": "订单",
+            "report_type": "bar",
+            "dimensions": [
+              { "field": "所属客户" }
+            ],
+            "metrics": [
+              { "field": "订单金额", "aggregate": "sum" }
+            ]
+          },
+          "layout": { "x": 24, "y": 7, "w": 24, "h": 10 }
+        },
+        {
+          "type": "button",
+          "name": "快捷操作",
+          "button": {
+            "shape": "graphic",
+            "count": 2,
+            "direction": "vertical",
+            "buttons": [
+              {
+                "label": "新建订单",
+                "color": "#3054EB",
+                "icon": "1_2_order",
+                "action": "create_record",
+                "worksheet": "订单"
+              },
+              {
+                "label": "待审批订单",
+                "color": "#FF9300",
+                "icon": "sys_bullet-list_office",
+                "action": "open_view",
+                "worksheet": "订单",
+                "view": "待审批订单",
+                "open_mode": "new_page"
+              }
+            ]
+          },
+          "layout": { "x": 0, "y": 17, "w": 48, "h": 8 }
+        }
+      ]
+    }
+  ],
+  "chatbots": [
+    {
+      "name": "订单助手",
+      "section": "数据分析",
+      "prompt": "你是订单受理助手。基于应用内的客户与订单数据，回答订单进度、客户成交、待审批订单等问题，用简洁中文作答。",
+      "description": "回答订单进度、客户成交与待审批相关问题",
+      "greeting": "你好，我是订单助手，可以问我订单进度、客户成交额、待审批订单等。",
+      "preset_questions": [
+        "现在有哪些审批中的订单？",
+        "本月成交额是多少？",
+        "哪些客户成交额最高？"
+      ]
+    }
+  ],
+  "custom_actions": [
+    {
+      "worksheet": "订单",
+      "name": "提交审批",
+      "type": "trigger_workflow",
+      "confirm": true,
+      "confirm_msg": "确认提交该订单进入审批？",
+      "enable_when": [
+        { "field": "订单状态", "op": "eq", "value": "待提交" }
+      ],
+      "workflow": "提交审批"
+    }
+  ],
+  "workflows": [
+    {
+      "name": "新订单提醒",
+      "trigger": {
+        "type": "record_create",
+        "worksheet": "订单"
+      },
+      "nodes": [
+        {
+          "nodeAlias": "notify",
+          "nodeType": "notice",
+          "name": "通知销售主管",
+          "config": {
+            "content": "有新订单「$trigger-订单/订单编号$」已录入，客户为 $trigger-订单/所属客户$，请关注后续提交审批。",
+            "accounts": [
+              { "kind": "role", "role": "销售主管" }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "提交审批",
+      "trigger": {
+        "type": "button"
+      },
+      "nodes": [
+        {
+          "nodeAlias": "改审批中",
+          "nodeType": "update_record",
+          "name": "标记审批中",
+          "config": {
+            "target": {
+              "kind": "record",
+              "node": { "nodeAlias": "trigger" }
+            },
+            "fields": [
+              { "fieldId": "订单/订单状态", "value": "审批中" }
+            ]
+          }
+        },
+        {
+          "nodeAlias": "订单审批",
+          "nodeType": "approval_block",
+          "name": "订单审批",
+          "prevNode": "改审批中",
+          "config": {
+            "process": {
+              "name": "订单审批流程",
+              "explain": "订单提交后由销售主管审批确认。",
+              "nodes": [
+                {
+                  "nodeAlias": "主管审批",
+                  "nodeType": "approve",
+                  "name": "销售主管审批",
+                  "config": {
+                    "accounts": [
+                      { "kind": "role", "role": "销售主管" }
+                    ],
+                    "reject_opinion_required": true
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "nodeAlias": "结果分支",
+          "nodeType": "branch",
+          "name": "审批结果",
+          "prevNode": "订单审批",
+          "config": {
+            "mode": "exclusive",
+            "paths": [
+              {
+                "name": "通过",
+                "condition": {
+                  "items": [
+                    {
+                      "left": {
+                        "kind": "field",
+                        "node": { "nodeAlias": "订单审批" },
+                        "fieldId": "result"
+                      },
+                      "op": "eq",
+                      "right": { "kind": "literal", "value": "PASS" }
+                    }
+                  ]
+                },
+                "nodes": [
+                  {
+                    "nodeAlias": "改已确认",
+                    "nodeType": "update_record",
+                    "name": "标记已确认",
+                    "config": {
+                      "target": {
+                        "kind": "record",
+                        "node": { "nodeAlias": "trigger" }
+                      },
+                      "fields": [
+                        { "fieldId": "订单/订单状态", "value": "已确认" }
+                      ]
+                    }
+                  },
+                  {
+                    "nodeAlias": "通知录入人",
+                    "nodeType": "notice",
+                    "name": "通知录入人",
+                    "prevNode": "改已确认",
+                    "config": {
+                      "content": "订单「$trigger-订单/订单编号$」已审批确认。",
+                      "accounts": [
+                        { "kind": "owner", "node": { "nodeAlias": "trigger" } }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "name": "未通过",
+                "nodes": [
+                  {
+                    "nodeAlias": "改已取消",
+                    "nodeType": "update_record",
+                    "name": "标记已取消",
+                    "config": {
+                      "target": {
+                        "kind": "record",
+                        "node": { "nodeAlias": "trigger" }
+                      },
+                      "fields": [
+                        { "fieldId": "订单/订单状态", "value": "已取消" }
+                      ]
+                    }
+                  },
+                  {
+                    "nodeAlias": "通知未通过",
+                    "nodeType": "notice",
+                    "name": "通知未通过",
+                    "prevNode": "改已取消",
+                    "config": {
+                      "content": "订单「$trigger-订单/订单编号$」审批未通过，已取消。",
+                      "accounts": [
+                        { "kind": "owner", "node": { "nodeAlias": "trigger" } }
+                      ]
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "roles": [
+    {
+      "name": "业务员",
+      "description": "负责客户与订单录入，维护自己经手的订单并发起审批",
+      "permission_scope": "0",
+      "worksheet_permissions": [
+        {
+          "worksheet": "客户",
+          "data_scope": { "read": 100, "edit": 20, "delete": 0 },
+          "record_actions": { "add": true, "discuss": true, "attachmentDownload": true }
+        },
+        {
+          "worksheet": "订单",
+          "data_scope": { "read": 20, "edit": 20, "delete": 20 },
+          "record_actions": { "add": true, "discuss": true, "systemPrint": true, "attachmentDownload": true }
+        }
+      ],
+      "page_permissions": [
+        { "page": "销售概览", "enable": true }
+      ]
+    },
+    {
+      "name": "销售主管",
+      "description": "审批订单、监督全部客户与订单数据，查看经营概览",
+      "permission_scope": "0",
+      "worksheet_permissions": [
+        {
+          "worksheet": "客户",
+          "data_scope": { "read": 100, "edit": 100, "delete": 20 },
+          "actions": { "export": true, "discuss": true, "batchOperation": true },
+          "record_actions": { "add": true, "discuss": true, "attachmentDownload": true, "log": true }
+        },
+        {
+          "worksheet": "订单",
+          "data_scope": { "read": 100, "edit": 100, "delete": 20 },
+          "actions": { "export": true, "discuss": true, "batchOperation": true },
+          "record_actions": { "add": true, "discuss": true, "systemPrint": true, "attachmentDownload": true, "log": true }
+        }
+      ],
+      "page_permissions": [
+        { "page": "销售概览", "enable": true }
+      ]
+    }
+  ]
+}

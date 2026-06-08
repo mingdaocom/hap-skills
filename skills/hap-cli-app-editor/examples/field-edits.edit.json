@@ -1,0 +1,10 @@
+{
+  "app": "<your-app-id-or-name>",
+  "ops": [
+    { "type": "field.add", "worksheet": "订单", "field": { "name": "金额", "type": "Currency", "required": true } },
+    { "type": "field.add", "worksheet": "订单", "field": { "name": "状态", "type": "SingleSelect", "options": ["待付款", "已发货", "完成"] } },
+    { "type": "field.update", "worksheet": "订单", "field": "金额", "set": { "unique": true } },
+    { "type": "field.reorder", "worksheet": "订单", "order": ["状态", "金额"] },
+    { "type": "field.delete", "worksheet": "订单", "field": "状态", "confirm": true }
+  ]
+}

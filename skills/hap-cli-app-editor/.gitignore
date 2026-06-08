@@ -1,0 +1,5 @@
+# Python bytecode caches from the editor scripts.
+# The editor is stateless — its source of truth is the live HAP app, with no
+# cached store — so bytecode is the only runtime artifact to keep out of VCS.
+__pycache__/
+*.pyc

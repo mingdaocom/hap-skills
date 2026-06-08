@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "worksheet ops",
+  "description": "Deep schema for op.type starting with 'worksheet.'. Each op object is validated as a whole (including type/confirm) against the matching branch.",
+  "oneOf": [
+    { "$ref": "#/$defs/create" },
+    { "$ref": "#/$defs/update" },
+    { "$ref": "#/$defs/delete" }
+  ],
+  "$defs": {
+    "create": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "name"],
+      "properties": {
+        "type": { "const": "worksheet.create" },
+        "label": { "type": "string" },
+        "name": { "type": "string", "minLength": 1, "description": "New worksheet name." },
+        "section": { "type": "string", "description": "Section/group name or id to place it under." },
+        "icon": { "type": "string" },
+        "alias": { "type": "string", "description": "Developer-facing alias used in formulas/API." }
+      }
+    },
+    "update": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "worksheet"],
+      "properties": {
+        "type": { "const": "worksheet.update" },
+        "label": { "type": "string" },
+        "worksheet": { "type": "string", "minLength": 1, "description": "Target worksheet: name or id." },
+        "name": { "type": "string", "description": "New sidebar display name." },
+        "alias": { "type": "string" },
+        "desc": { "type": "string" },
+        "icon": { "type": "string" }
+      }
+    },
+    "delete": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "worksheet", "confirm"],
+      "properties": {
+        "type": { "const": "worksheet.delete" },
+        "label": { "type": "string" },
+        "worksheet": { "type": "string", "minLength": 1, "description": "Target worksheet: name or id." },
+        "permanent": { "type": "boolean", "description": "Delete permanently instead of recycle bin." },
+        "confirm": { "type": "boolean", "const": true, "description": "Destructive: must be true." }
+      }
+    }
+  }
+}

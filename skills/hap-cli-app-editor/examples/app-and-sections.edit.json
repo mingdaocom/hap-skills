@@ -1,0 +1,9 @@
+{
+  "app": "<your-app-id-or-name>",
+  "ops": [
+    { "type": "app.update", "name": "客户管理", "nav_color": "#2296F3" },
+    { "type": "section.add", "name": "运营" },
+    { "type": "section.update", "section": "运营", "name": "运营中心" },
+    { "type": "section.delete", "section": "运营中心", "confirm": true }
+  ]
+}

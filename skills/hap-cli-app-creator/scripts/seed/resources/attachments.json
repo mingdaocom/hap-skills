@@ -1,0 +1,28 @@
+{
+  "_comment": "Preset attachment resources + virtual-user roster for seeding. Documents are LOCAL files bundled in this resources/ dir; their path is a bare filename and the seed executor resolves it against resources/ before upload (hap upload reads the local file). Images live in sample_images.json (pick by category/keyword). Virtual users are placeholder tokens — the seed executor maps them to the current login user unless a confirmed org mapping exists.",
+  "documents": [
+    { "name": "Sample Document.pdf", "path": "sample.pdf" },
+    { "name": "Sample Document.docx", "path": "sample.docx" }
+  ],
+  "virtualUsers": {
+    "cn": [
+      { "token": "virtualuser-cn-1", "name": "赵子轩" },
+      { "token": "virtualuser-cn-2", "name": "刘思涵" },
+      { "token": "virtualuser-cn-3", "name": "周睿哲" },
+      { "token": "virtualuser-cn-4", "name": "林雨欣" },
+      { "token": "virtualuser-cn-5", "name": "孙泽宇" },
+      { "token": "virtualuser-cn-6", "name": "陈嘉怡" },
+      { "token": "virtualuser-cn-7", "name": "王强" },
+      { "token": "virtualuser-cn-8", "name": "张丽莉" },
+      { "token": "virtualuser-cn-9", "name": "李浩宇" },
+      { "token": "virtualuser-cn-10", "name": "吴勇" }
+    ],
+    "en": [
+      { "token": "virtualuser-en-1", "name": "Michael Brown" },
+      { "token": "virtualuser-en-2", "name": "Emma White" },
+      { "token": "virtualuser-en-3", "name": "Robert Lee" },
+      { "token": "virtualuser-en-4", "name": "Emily Davis" },
+      { "token": "virtualuser-en-5", "name": "John Smith" }
+    ]
+  }
+}

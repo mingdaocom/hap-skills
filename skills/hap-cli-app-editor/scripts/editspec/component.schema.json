@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "component ops",
+  "description": "Deep schema for op.type starting with 'component.'. Components belong to a custom page; edits are a read-modify-write of the page's full component list (getPage -> mutate -> savePage). Value widgets (richText/embedUrl/image) lower from a clean def; data-bound widgets pass a 'raw' wire object.",
+  "oneOf": [
+    { "$ref": "#/$defs/add" },
+    { "$ref": "#/$defs/update" },
+    { "$ref": "#/$defs/delete" }
+  ],
+  "$defs": {
+    "component": {
+      "type": "object",
+      "required": ["name", "type"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "type": { "type": "string", "description": "richText|embedUrl|image|chart|view|filter|button|... (or the integer)." },
+        "value": { "description": "Widget value (e.g. HTML for richText, URL for embedUrl)." },
+        "layout": {
+          "type": "object",
+          "description": "48-col grid placement {x,y,w,h}.",
+          "properties": {
+            "x": { "type": "integer" }, "y": { "type": "integer" },
+            "w": { "type": "integer" }, "h": { "type": "integer" }
+          }
+        },
+        "raw": { "type": "object", "description": "Raw wire keys merged onto the widget (for data-bound widgets)." }
+      }
+    },
+    "add": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "page", "component"],
+      "properties": {
+        "type": { "const": "component.add" },
+        "label": { "type": "string" },
+        "page": { "type": "string", "minLength": 1, "description": "Custom page name or id." },
+        "component": { "$ref": "#/$defs/component" }
+      }
+    },
+    "update": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "page", "component", "set"],
+      "properties": {
+        "type": { "const": "component.update" },
+        "label": { "type": "string" },
+        "page": { "type": "string", "minLength": 1 },
+        "component": { "type": "string", "minLength": 1, "description": "Target component name." },
+        "set": { "type": "object", "description": "Wire keys merged onto the component (read-modify-write)." }
+      }
+    },
+    "delete": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "page", "component", "confirm"],
+      "properties": {
+        "type": { "const": "component.delete" },
+        "label": { "type": "string" },
+        "page": { "type": "string", "minLength": 1 },
+        "component": { "type": "string", "minLength": 1 },
+        "confirm": { "type": "boolean", "const": true }
+      }
+    }
+  }
+}

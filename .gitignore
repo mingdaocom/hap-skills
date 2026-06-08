@@ -1,0 +1,20 @@
+# Standalone HAP skills repo — keep generated / runtime artifacts out of VCS.
+# Synced from the hap-cli project by scripts/sync_skills.py.
+
+# OS / editor cruft
+.DS_Store
+*.bak
+
+# Python bytecode from skill scripts
+__pycache__/
+*.py[cod]
+
+# hap-app-creator runtime output: building an app from a design doc writes its
+# store, seed data, run logs and reports under apps/. Generated per app, never
+# source — at the repo root and anywhere a skill is run from.
+/apps/
+**/apps/
+.hap-app-creator/
+
+# skill-creator eval workspaces (eval artifacts, not source)
+*-workspace/

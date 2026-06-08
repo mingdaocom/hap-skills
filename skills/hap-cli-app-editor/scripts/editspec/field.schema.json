@@ -1,0 +1,84 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "field ops",
+  "description": "Deep schema for op.type starting with 'field.'. Field strategy (decision #10): add uses the incremental add-fields path (preserves auto reverse controls); update/delete/reorder use read-full-controls -> mutate -> write-back-full (update-fields).",
+  "oneOf": [
+    { "$ref": "#/$defs/add" },
+    { "$ref": "#/$defs/update" },
+    { "$ref": "#/$defs/delete" },
+    { "$ref": "#/$defs/reorder" }
+  ],
+  "$defs": {
+    "field": {
+      "type": "object",
+      "description": "A field definition (clean, name-referenced). 'type' is the field type code (Text, Number, Relation, ...).",
+      "required": ["name", "type"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "type": { "type": "string", "minLength": 1 },
+        "required": { "type": "boolean" },
+        "unique": { "type": "boolean" },
+        "options": { "type": "array" },
+        "relation": { "type": "object" },
+        "lookup": { "type": "object" },
+        "rollup": { "type": "object" },
+        "formula": { "type": "string" }
+      }
+    },
+    "add": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "worksheet", "field"],
+      "properties": {
+        "type": { "const": "field.add" },
+        "label": { "type": "string" },
+        "worksheet": { "type": "string", "minLength": 1 },
+        "field": { "$ref": "#/$defs/field" }
+      }
+    },
+    "update": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "worksheet", "field", "set"],
+      "properties": {
+        "type": { "const": "field.update" },
+        "label": { "type": "string" },
+        "worksheet": { "type": "string", "minLength": 1 },
+        "field": { "type": "string", "minLength": 1, "description": "Target field: name, alias, or controlId." },
+        "rename": { "type": "string", "description": "New field name (sets controlName)." },
+        "set": {
+          "type": "object",
+          "description": "Raw control keys merged onto the existing control (read-modify-write). E.g. {\"required\": true}, {\"options\": [...]}. The full control set is written back, so other fields/reverse controls are preserved."
+        }
+      }
+    },
+    "delete": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "worksheet", "field", "confirm"],
+      "properties": {
+        "type": { "const": "field.delete" },
+        "label": { "type": "string" },
+        "worksheet": { "type": "string", "minLength": 1 },
+        "field": { "type": "string", "minLength": 1, "description": "Field name or controlId to remove." },
+        "confirm": { "type": "boolean", "const": true }
+      }
+    },
+    "reorder": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "worksheet", "order"],
+      "properties": {
+        "type": { "const": "field.reorder" },
+        "label": { "type": "string" },
+        "worksheet": { "type": "string", "minLength": 1 },
+        "order": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" },
+          "description": "Field names/controlIds in the desired order."
+        }
+      }
+    }
+  }
+}

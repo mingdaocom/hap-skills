@@ -1,0 +1,316 @@
+{
+  "roles": [
+    {
+      "name": "仓管员",
+      "description": "负责日常出入库录入与库存维护，物料/仓库为只读主数据，单据仅维护自己经手的",
+      "permission_scope": "0",
+      "worksheet_permissions": [
+        {
+          "worksheet": "物料",
+          "data_scope": {
+            "read": 100,
+            "edit": 0,
+            "delete": 0
+          }
+        },
+        {
+          "worksheet": "仓库",
+          "data_scope": {
+            "read": 100,
+            "edit": 0,
+            "delete": 0
+          }
+        },
+        {
+          "worksheet": "库存",
+          "data_scope": {
+            "read": 100,
+            "edit": 20,
+            "delete": 0
+          },
+          "record_actions": {
+            "discuss": true,
+            "attachmentDownload": true
+          }
+        },
+        {
+          "worksheet": "入库单",
+          "data_scope": {
+            "read": 100,
+            "edit": 20,
+            "delete": 20
+          },
+          "actions": {
+            "export": true,
+            "discuss": true
+          },
+          "record_actions": {
+            "add": true,
+            "discuss": true,
+            "systemPrint": true,
+            "attachmentDownload": true
+          }
+        },
+        {
+          "worksheet": "出库单",
+          "data_scope": {
+            "read": 100,
+            "edit": 20,
+            "delete": 20
+          },
+          "actions": {
+            "export": true,
+            "discuss": true
+          },
+          "record_actions": {
+            "add": true,
+            "discuss": true,
+            "systemPrint": true,
+            "attachmentDownload": true
+          }
+        }
+      ],
+      "page_permissions": [
+        {
+          "page": "出入库统计看板",
+          "enable": true
+        }
+      ]
+    },
+    {
+      "name": "库管组长",
+      "description": "普通单据的首级审批人，监督本班组出入库，库存与单据可编辑、不可删除",
+      "permission_scope": "0",
+      "worksheet_permissions": [
+        {
+          "worksheet": "物料",
+          "data_scope": {
+            "read": 100,
+            "edit": 0,
+            "delete": 0
+          }
+        },
+        {
+          "worksheet": "仓库",
+          "data_scope": {
+            "read": 100,
+            "edit": 0,
+            "delete": 0
+          }
+        },
+        {
+          "worksheet": "库存",
+          "data_scope": {
+            "read": 100,
+            "edit": 100,
+            "delete": 0
+          },
+          "record_actions": {
+            "discuss": true,
+            "attachmentDownload": true
+          }
+        },
+        {
+          "worksheet": "入库单",
+          "data_scope": {
+            "read": 100,
+            "edit": 100,
+            "delete": 0
+          },
+          "actions": {
+            "export": true,
+            "discuss": true
+          },
+          "record_actions": {
+            "discuss": true,
+            "systemPrint": true,
+            "attachmentDownload": true
+          }
+        },
+        {
+          "worksheet": "出库单",
+          "data_scope": {
+            "read": 100,
+            "edit": 100,
+            "delete": 0
+          },
+          "actions": {
+            "export": true,
+            "discuss": true
+          },
+          "record_actions": {
+            "discuss": true,
+            "systemPrint": true,
+            "attachmentDownload": true
+          }
+        }
+      ],
+      "page_permissions": [
+        {
+          "page": "出入库统计看板",
+          "enable": true
+        }
+      ]
+    },
+    {
+      "name": "仓库主管",
+      "description": "全面管理物料/仓库/库存与出入库单据，可导入导出与批量操作",
+      "permission_scope": "0",
+      "worksheet_permissions": [
+        {
+          "worksheet": "物料",
+          "data_scope": {
+            "read": 100,
+            "edit": 100,
+            "delete": 20
+          },
+          "actions": {
+            "import": true,
+            "export": true,
+            "discuss": true,
+            "batchOperation": true
+          },
+          "record_actions": {
+            "add": true,
+            "discuss": true,
+            "attachmentDownload": true,
+            "log": true
+          }
+        },
+        {
+          "worksheet": "仓库",
+          "data_scope": {
+            "read": 100,
+            "edit": 100,
+            "delete": 20
+          },
+          "actions": {
+            "import": true,
+            "export": true,
+            "batchOperation": true
+          },
+          "record_actions": {
+            "add": true,
+            "attachmentDownload": true,
+            "log": true
+          }
+        },
+        {
+          "worksheet": "库存",
+          "data_scope": {
+            "read": 100,
+            "edit": 100,
+            "delete": 20
+          },
+          "actions": {
+            "export": true,
+            "discuss": true,
+            "batchOperation": true
+          },
+          "record_actions": {
+            "add": true,
+            "discuss": true,
+            "attachmentDownload": true,
+            "log": true
+          }
+        },
+        {
+          "worksheet": "入库单",
+          "data_scope": {
+            "read": 100,
+            "edit": 100,
+            "delete": 20
+          },
+          "actions": {
+            "shareView": true,
+            "import": true,
+            "export": true,
+            "discuss": true,
+            "batchOperation": true
+          },
+          "record_actions": {
+            "add": true,
+            "discuss": true,
+            "systemPrint": true,
+            "attachmentDownload": true,
+            "log": true
+          }
+        },
+        {
+          "worksheet": "出库单",
+          "data_scope": {
+            "read": 100,
+            "edit": 100,
+            "delete": 20
+          },
+          "actions": {
+            "shareView": true,
+            "import": true,
+            "export": true,
+            "discuss": true,
+            "batchOperation": true
+          },
+          "record_actions": {
+            "add": true,
+            "discuss": true,
+            "systemPrint": true,
+            "attachmentDownload": true,
+            "log": true
+          }
+        }
+      ],
+      "page_permissions": [
+        {
+          "page": "出入库统计看板",
+          "enable": true
+        }
+      ]
+    },
+    {
+      "name": "外部审计",
+      "permission_scope": "0",
+      "description": "只读审计，仅看单据与看板",
+      "worksheet_permissions": [
+        {
+          "worksheet": "入库单",
+          "data_scope": {
+            "read": 100,
+            "edit": 0,
+            "delete": 0
+          },
+          "actions": {
+            "export": true
+          },
+          "fields": [
+            {
+              "field": "审批备注",
+              "read": false
+            }
+          ],
+          "views": [
+            {
+              "view": "待审批入库",
+              "read": true,
+              "edit": false,
+              "delete": false
+            }
+          ]
+        },
+        {
+          "worksheet": "出库单",
+          "data_scope": {
+            "read": 100,
+            "edit": 0,
+            "delete": 0
+          }
+        }
+      ],
+      "page_permissions": [
+        {
+          "page": "出入库统计看板",
+          "enable": true
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "app": "<your-app-id-or-name>",
+  "ops": [
+    { "type": "custom-page.create", "name": "数据看板", "icon": "chart" },
+    { "type": "component.add", "page": "数据看板",
+      "component": { "name": "公告", "type": "richText", "value": "<p>欢迎</p>", "layout": { "x": 0, "y": 0, "w": 48, "h": 5 } } },
+    { "type": "component.add", "page": "数据看板",
+      "component": { "name": "外部链接", "type": "embedUrl", "value": "https://example.com" } },
+    { "type": "component.update", "page": "数据看板", "component": "公告", "set": { "value": "<p>已更新</p>" } },
+    { "type": "component.delete", "page": "数据看板", "component": "外部链接", "confirm": true }
+  ]
+}

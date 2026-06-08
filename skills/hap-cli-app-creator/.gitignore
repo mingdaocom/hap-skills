@@ -1,0 +1,5 @@
+# Python bytecode caches
+__pycache__/
+*.pyc
+# Defensive: never commit a runtime store if WORKDIR is pointed here.
+.hap-app-creator/

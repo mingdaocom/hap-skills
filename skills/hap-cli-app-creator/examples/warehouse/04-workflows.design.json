@@ -1,0 +1,1206 @@
+{
+  "workflows": [
+    {
+      "name": "库存安全水位预警",
+      "trigger": {
+        "type": "record_update",
+        "worksheet": "库存",
+        "fields": [
+          "当前数量"
+        ]
+      },
+      "nodes": [
+        {
+          "nodeAlias": "mat",
+          "nodeType": "get_relation_records",
+          "name": "取关联物料",
+          "config": {
+            "relation_field": "库存/物料",
+            "target": {
+              "kind": "record",
+              "node": {
+                "nodeAlias": "trigger"
+              }
+            }
+          }
+        },
+        {
+          "nodeAlias": "chk",
+          "nodeType": "branch",
+          "name": "安全库存校验",
+          "config": {
+            "paths": [
+              {
+                "name": "低于安全库存",
+                "condition": {
+                  "items": [
+                    {
+                      "left": {
+                        "kind": "field",
+                        "node": {
+                          "nodeAlias": "trigger"
+                        },
+                        "fieldId": "库存/当前数量"
+                      },
+                      "op": "lt",
+                      "right": {
+                        "kind": "field",
+                        "node": {
+                          "nodeAlias": "mat"
+                        },
+                        "fieldId": "物料/安全库存"
+                      }
+                    }
+                  ]
+                },
+                "nodes": [
+                  {
+                    "nodeAlias": "warn",
+                    "nodeType": "notice",
+                    "name": "站内通知拥有者",
+                    "config": {
+                      "content": "库存「$trigger-库存/库存编号$」当前数量已低于该物料的安全库存，请及时补货。",
+                      "accounts": [
+                        {
+                          "kind": "owner",
+                          "node": {
+                            "nodeAlias": "trigger"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "nodeAlias": "mail",
+                    "nodeType": "send_email",
+                    "name": "邮件通知拥有者",
+                    "config": {
+                      "subject": "【库存预警】物料库存低于安全水位",
+                      "content": "您负责的库存记录当前数量已低于物料安全库存，请尽快安排补货处理。",
+                      "accounts": [
+                        {
+                          "kind": "owner",
+                          "node": {
+                            "nodeAlias": "trigger"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "name": "水位正常",
+                "nodes": []
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "月度盘点提醒",
+      "trigger": {
+        "type": "scheduled",
+        "schedule": {
+          "repeat": "month",
+          "interval": 1,
+          "start_time": "2026-07-01 08:00"
+        }
+      },
+      "nodes": [
+        {
+          "nodeAlias": "remind",
+          "nodeType": "notice",
+          "name": "通知组织盘点",
+          "config": {
+            "content": "新的月度库存盘点周期已开始，请组织仓管员对各仓库库存进行实地盘点，核对台账数量并更新盘点日期。",
+            "accounts": [
+              {
+                "kind": "role",
+                "role": "仓库主管"
+              },
+              {
+                "kind": "role",
+                "role": "库管组长"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "提交入库审批",
+      "trigger": {
+        "type": "button"
+      },
+      "nodes": [
+        {
+          "nodeType": "update_record",
+          "name": "置为审批中",
+          "config": {
+            "worksheet": "入库单",
+            "target": {
+              "kind": "record",
+              "node": {
+                "nodeAlias": "trigger"
+              }
+            },
+            "fields": [
+              {
+                "fieldId": "入库单/单据状态",
+                "type": 9,
+                "value": "审批中"
+              }
+            ]
+          },
+          "nodeAlias": "u1"
+        },
+        {
+          "nodeAlias": "appr",
+          "nodeType": "approval_block",
+          "name": "入库审批",
+          "config": {
+            "accounts": [
+              {
+                "kind": "triggerUser"
+              }
+            ],
+            "process": {
+              "name": "入库审批流程",
+              "explain": "入库单提交后的逐级审批：加急/特急直送仓库主管，其余先经直属上司再到仓库主管。",
+              "nodes": [
+                {
+                  "nodeAlias": "prio",
+                  "nodeType": "branch",
+                  "name": "优先级分流",
+                  "config": {
+                    "paths": [
+                      {
+                        "name": "加急特急",
+                        "condition": {
+                          "items": [
+                            {
+                              "left": {
+                                "kind": "field",
+                                "node": {
+                                  "nodeAlias": "approval_trigger"
+                                },
+                                "fieldId": "入库单/优先级"
+                              },
+                              "op": "in",
+                              "right": {
+                                "kind": "literal",
+                                "values": [
+                                  "加急",
+                                  "特急"
+                                ]
+                              }
+                            }
+                          ]
+                        },
+                        "nodes": [
+                          {
+                            "nodeAlias": "af",
+                            "nodeType": "approve",
+                            "name": "仓库主管审批",
+                            "config": {
+                              "accounts": [
+                                {
+                                  "kind": "role",
+                                  "role": "仓库主管"
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "name": "普通",
+                        "nodes": [
+                          {
+                            "nodeAlias": "as",
+                            "nodeType": "approve",
+                            "name": "班组长审批",
+                            "config": {
+                              "accounts": [
+                                {
+                                  "kind": "role",
+                                  "role": "库管组长"
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "nodeAlias": "am",
+                            "nodeType": "approve",
+                            "name": "仓库主管审批",
+                            "config": {
+                              "accounts": [
+                                {
+                                  "kind": "role",
+                                  "role": "仓库主管"
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "nodeAlias": "detail",
+          "nodeType": "get_relation_records",
+          "name": "取入库明细",
+          "prevNode": "appr",
+          "config": {
+            "relation_field": "入库单/入库明细",
+            "target": {
+              "kind": "record",
+              "node": {
+                "nodeAlias": "trigger"
+              }
+            }
+          }
+        },
+        {
+          "nodeAlias": "res",
+          "nodeType": "branch",
+          "name": "审批结果分流",
+          "config": {
+            "paths": [
+              {
+                "name": "通过入库",
+                "nodes": [
+                  {
+                    "nodeAlias": "addstock",
+                    "nodeType": "sub_process",
+                    "name": "增加库存",
+                    "config": {
+                      "process": {
+                        "name": "按入库明细增加库存",
+                        "explain": "审批通过后，按入库明细逐条累加对应物料的当前库存。",
+                        "data_source": {
+                          "kind": "record",
+                          "node": {
+                            "nodeAlias": "detail"
+                          }
+                        },
+                        "wait_complete": true,
+                        "nodes": [
+                          {
+                            "nodeAlias": "addkc",
+                            "nodeType": "query_update",
+                            "name": "累加库存",
+                            "config": {
+                              "worksheet": "库存",
+                              "execute_type": 2,
+                              "filter": {
+                                "items": [
+                                  {
+                                    "left": {
+                                      "kind": "field",
+                                      "node": {
+                                        "nodeAlias": "addkc"
+                                      },
+                                      "fieldId": "库存/物料"
+                                    },
+                                    "op": "eq",
+                                    "right": {
+                                      "kind": "field",
+                                      "node": {
+                                        "nodeAlias": "sub_trigger"
+                                      },
+                                      "fieldId": "入库单/入库明细/物料"
+                                    }
+                                  }
+                                ]
+                              },
+                              "fields": [
+                                {
+                                  "fieldId": "库存/当前数量",
+                                  "type": 6,
+                                  "addType": 1,
+                                  "valueRef": {
+                                    "node": {
+                                      "nodeAlias": "sub_trigger"
+                                    },
+                                    "fieldId": "入库单/入库明细/入库数量",
+                                    "nodeActionId": "401"
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "nodeType": "update_record",
+                    "name": "通过入库",
+                    "config": {
+                      "worksheet": "入库单",
+                      "target": {
+                        "kind": "record",
+                        "node": {
+                          "nodeAlias": "trigger"
+                        }
+                      },
+                      "fields": [
+                        {
+                          "fieldId": "入库单/单据状态",
+                          "type": 9,
+                          "value": "已入库"
+                        }
+                      ]
+                    },
+                    "nodeAlias": "rp"
+                  }
+                ],
+                "condition": {
+                  "items": [
+                    {
+                      "left": {
+                        "kind": "field",
+                        "node": {
+                          "nodeAlias": "appr"
+                        },
+                        "fieldId": "result"
+                      },
+                      "op": "eq",
+                      "right": {
+                        "kind": "literal",
+                        "value": "PASS"
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "驳回",
+                "nodes": [
+                  {
+                    "nodeType": "update_record",
+                    "name": "驳回",
+                    "config": {
+                      "worksheet": "入库单",
+                      "target": {
+                        "kind": "record",
+                        "node": {
+                          "nodeAlias": "trigger"
+                        }
+                      },
+                      "fields": [
+                        {
+                          "fieldId": "入库单/单据状态",
+                          "type": 9,
+                          "value": "审批未通过"
+                        }
+                      ]
+                    },
+                    "nodeAlias": "ro"
+                  }
+                ],
+                "condition": {
+                  "items": [
+                    {
+                      "left": {
+                        "kind": "field",
+                        "node": {
+                          "nodeAlias": "appr"
+                        },
+                        "fieldId": "result"
+                      },
+                      "op": "eq",
+                      "right": {
+                        "kind": "literal",
+                        "value": "OVERRULE"
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "退回待审批",
+                "nodes": [
+                  {
+                    "nodeType": "update_record",
+                    "name": "退回待审批",
+                    "config": {
+                      "worksheet": "入库单",
+                      "target": {
+                        "kind": "record",
+                        "node": {
+                          "nodeAlias": "trigger"
+                        }
+                      },
+                      "fields": [
+                        {
+                          "fieldId": "入库单/单据状态",
+                          "type": 9,
+                          "value": "待审批"
+                        }
+                      ]
+                    },
+                    "nodeAlias": "rr"
+                  }
+                ],
+                "condition": {
+                  "items": [
+                    {
+                      "left": {
+                        "kind": "field",
+                        "node": {
+                          "nodeAlias": "appr"
+                        },
+                        "fieldId": "result"
+                      },
+                      "op": "eq",
+                      "right": {
+                        "kind": "literal",
+                        "value": "REVOKE"
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "已取消",
+                "nodes": [
+                  {
+                    "nodeType": "update_record",
+                    "name": "已取消",
+                    "config": {
+                      "worksheet": "入库单",
+                      "target": {
+                        "kind": "record",
+                        "node": {
+                          "nodeAlias": "trigger"
+                        }
+                      },
+                      "fields": [
+                        {
+                          "fieldId": "入库单/单据状态",
+                          "type": 9,
+                          "value": "已取消"
+                        }
+                      ]
+                    },
+                    "nodeAlias": "rs"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "提交审批",
+      "trigger": {
+        "type": "button"
+      },
+      "nodes": [
+        {
+          "nodeAlias": "u1",
+          "nodeType": "update_record",
+          "name": "置为审批中",
+          "config": {
+            "worksheet": "出库单",
+            "target": {
+              "kind": "record",
+              "node": {
+                "nodeAlias": "trigger"
+              }
+            },
+            "fields": [
+              {
+                "fieldId": "出库单/单据状态",
+                "type": 9,
+                "value": "审批中"
+              }
+            ]
+          }
+        },
+        {
+          "nodeAlias": "appr",
+          "nodeType": "approval_block",
+          "name": "出库审批",
+          "config": {
+            "accounts": [
+              {
+                "kind": "triggerUser"
+              }
+            ],
+            "process": {
+              "nodes": [
+                {
+                  "nodeAlias": "prio",
+                  "nodeType": "branch",
+                  "name": "优先级分流",
+                  "config": {
+                    "paths": [
+                      {
+                        "name": "加急特急",
+                        "condition": {
+                          "items": [
+                            {
+                              "left": {
+                                "kind": "field",
+                                "node": {
+                                  "nodeAlias": "approval_trigger"
+                                },
+                                "fieldId": "出库单/优先级"
+                              },
+                              "op": "in",
+                              "right": {
+                                "kind": "literal",
+                                "values": [
+                                  "加急",
+                                  "特急"
+                                ]
+                              }
+                            }
+                          ]
+                        },
+                        "nodes": [
+                          {
+                            "nodeAlias": "af",
+                            "nodeType": "approve",
+                            "name": "仓库主管审批",
+                            "config": {
+                              "accounts": [
+                                {
+                                  "kind": "role",
+                                  "role": "仓库主管"
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "name": "普通",
+                        "nodes": [
+                          {
+                            "nodeAlias": "as",
+                            "nodeType": "approve",
+                            "name": "班组长审批",
+                            "config": {
+                              "accounts": [
+                                {
+                                  "kind": "role",
+                                  "role": "库管组长"
+                                }
+                              ]
+                            }
+                          },
+                          {
+                            "nodeAlias": "am",
+                            "nodeType": "approve",
+                            "name": "仓库主管审批",
+                            "config": {
+                              "accounts": [
+                                {
+                                  "kind": "role",
+                                  "role": "仓库主管"
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ],
+              "name": "出库审批流程",
+              "explain": "出库单提交后的逐级审批：加急/特急直送仓库主管，其余先经直属上司再到仓库主管。"
+            }
+          }
+        },
+        {
+          "nodeAlias": "res",
+          "nodeType": "branch",
+          "name": "审批结果分流",
+          "config": {
+            "paths": [
+              {
+                "name": "通过",
+                "condition": {
+                  "items": [
+                    {
+                      "left": {
+                        "kind": "field",
+                        "node": {
+                          "nodeAlias": "appr"
+                        },
+                        "fieldId": "result"
+                      },
+                      "op": "eq",
+                      "right": {
+                        "kind": "literal",
+                        "value": "PASS"
+                      }
+                    }
+                  ]
+                },
+                "nodes": [
+                  {
+                    "nodeAlias": "rp",
+                    "nodeType": "update_record",
+                    "name": "标记已审批",
+                    "config": {
+                      "worksheet": "出库单",
+                      "target": {
+                        "kind": "record",
+                        "node": {
+                          "nodeAlias": "trigger"
+                        }
+                      },
+                      "fields": [
+                        {
+                          "fieldId": "出库单/单据状态",
+                          "type": 9,
+                          "value": "已审批"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "name": "否决",
+                "condition": {
+                  "items": [
+                    {
+                      "left": {
+                        "kind": "field",
+                        "node": {
+                          "nodeAlias": "appr"
+                        },
+                        "fieldId": "result"
+                      },
+                      "op": "eq",
+                      "right": {
+                        "kind": "literal",
+                        "value": "OVERRULE"
+                      }
+                    }
+                  ]
+                },
+                "nodes": [
+                  {
+                    "nodeAlias": "ro",
+                    "nodeType": "update_record",
+                    "name": "标记审批未通过",
+                    "config": {
+                      "worksheet": "出库单",
+                      "target": {
+                        "kind": "record",
+                        "node": {
+                          "nodeAlias": "trigger"
+                        }
+                      },
+                      "fields": [
+                        {
+                          "fieldId": "出库单/单据状态",
+                          "type": 9,
+                          "value": "审批未通过"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "name": "撤回",
+                "condition": {
+                  "items": [
+                    {
+                      "left": {
+                        "kind": "field",
+                        "node": {
+                          "nodeAlias": "appr"
+                        },
+                        "fieldId": "result"
+                      },
+                      "op": "eq",
+                      "right": {
+                        "kind": "literal",
+                        "value": "REVOKE"
+                      }
+                    }
+                  ]
+                },
+                "nodes": [
+                  {
+                    "nodeAlias": "rr",
+                    "nodeType": "update_record",
+                    "name": "退回未提交",
+                    "config": {
+                      "worksheet": "出库单",
+                      "target": {
+                        "kind": "record",
+                        "node": {
+                          "nodeAlias": "trigger"
+                        }
+                      },
+                      "fields": [
+                        {
+                          "fieldId": "出库单/单据状态",
+                          "type": 9,
+                          "value": "未提交"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "name": "中止",
+                "nodes": [
+                  {
+                    "nodeAlias": "rs",
+                    "nodeType": "update_record",
+                    "name": "标记已取消",
+                    "config": {
+                      "worksheet": "出库单",
+                      "target": {
+                        "kind": "record",
+                        "node": {
+                          "nodeAlias": "trigger"
+                        }
+                      },
+                      "fields": [
+                        {
+                          "fieldId": "出库单/单据状态",
+                          "type": 9,
+                          "value": "已取消"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "执行出库",
+      "trigger": {
+        "type": "button"
+      },
+      "nodes": [
+        {
+          "nodeAlias": "detail",
+          "nodeType": "get_relation_records",
+          "name": "取出库明细",
+          "config": {
+            "relation_field": "出库单/出库明细",
+            "target": {
+              "kind": "record",
+              "node": {
+                "nodeAlias": "trigger"
+              }
+            }
+          }
+        },
+        {
+          "nodeAlias": "check",
+          "nodeType": "sub_process",
+          "name": "检查库存",
+          "config": {
+            "process": {
+              "data_source": {
+                "kind": "record",
+                "node": {
+                  "nodeAlias": "detail"
+                }
+              },
+              "wait_complete": true,
+              "parameters": [
+                {
+                  "name": "主单ID",
+                  "value": {
+                    "kind": "field",
+                    "node": {
+                      "nodeAlias": "trigger"
+                    },
+                    "fieldId": "出库单/rowid"
+                  }
+                }
+              ],
+              "nodes": [
+                {
+                  "nodeAlias": "main",
+                  "nodeType": "get_single",
+                  "name": "查主出库单",
+                  "config": {
+                    "worksheet": "出库单",
+                    "filter": {
+                      "items": [
+                        {
+                          "left": {
+                            "kind": "field",
+                            "node": {
+                              "nodeAlias": "main"
+                            },
+                            "fieldId": "出库单/rowid"
+                          },
+                          "op": "eq",
+                          "right": {
+                            "kind": "param",
+                            "name": "主单ID"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "nodeAlias": "stock",
+                  "nodeType": "get_single",
+                  "name": "查物料库存",
+                  "config": {
+                    "worksheet": "库存",
+                    "filter": {
+                      "items": [
+                        {
+                          "left": {
+                            "kind": "field",
+                            "node": {
+                              "nodeAlias": "stock"
+                            },
+                            "fieldId": "库存/物料"
+                          },
+                          "op": "eq",
+                          "right": {
+                            "kind": "field",
+                            "node": {
+                              "nodeAlias": "sub_trigger"
+                            },
+                            "fieldId": "出库单/出库明细/物料"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "nodeAlias": "enough",
+                  "nodeType": "branch",
+                  "name": "库存是否充足",
+                  "config": {
+                    "paths": [
+                      {
+                        "name": "充足",
+                        "filter": {
+                          "items": [
+                            {
+                              "left": {
+                                "kind": "field",
+                                "node": {
+                                  "nodeAlias": "stock"
+                                },
+                                "fieldId": "库存/当前数量"
+                              },
+                              "op": "gte",
+                              "right": {
+                                "kind": "field",
+                                "node": {
+                                  "nodeAlias": "sub_trigger"
+                                },
+                                "fieldId": "出库单/出库明细/出库数量"
+                              }
+                            }
+                          ]
+                        },
+                        "nodes": [
+                          {
+                            "nodeAlias": "wfull",
+                            "nodeType": "update_record",
+                            "name": "可全出",
+                            "config": {
+                              "worksheet": "出库单/出库明细",
+                              "target": {
+                                "kind": "record",
+                                "node": {
+                                  "nodeAlias": "sub_trigger"
+                                }
+                              },
+                              "fields": [
+                                {
+                                  "fieldId": "出库单/出库明细/检查库存",
+                                  "type": 6,
+                                  "valueRef": {
+                                    "node": {
+                                      "nodeAlias": "sub_trigger"
+                                    },
+                                    "fieldId": "出库单/出库明细/出库数量"
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "name": "不足",
+                        "nodes": [
+                          {
+                            "nodeAlias": "wpart",
+                            "nodeType": "update_record",
+                            "name": "按现有库存",
+                            "config": {
+                              "worksheet": "出库单/出库明细",
+                              "target": {
+                                "kind": "record",
+                                "node": {
+                                  "nodeAlias": "sub_trigger"
+                                }
+                              },
+                              "fields": [
+                                {
+                                  "fieldId": "出库单/出库明细/检查库存",
+                                  "type": 6,
+                                  "valueRef": {
+                                    "node": {
+                                      "nodeAlias": "stock"
+                                    },
+                                    "fieldId": "库存/当前数量"
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ],
+              "name": "出库检查库存是否充足",
+              "explain": "在出库之前先判断物料的库存是否充足，只有充足时才能出库。"
+            }
+          }
+        },
+        {
+          "nodeAlias": "judge",
+          "nodeType": "branch",
+          "name": "库存总量校验",
+          "config": {
+            "paths": [
+              {
+                "name": "全部充足",
+                "filter": {
+                  "items": [
+                    {
+                      "left": {
+                        "kind": "field",
+                        "node": {
+                          "nodeAlias": "trigger"
+                        },
+                        "fieldId": "出库单/出库总数量"
+                      },
+                      "op": "eq",
+                      "right": {
+                        "kind": "field",
+                        "node": {
+                          "nodeAlias": "trigger"
+                        },
+                        "fieldId": "出库单/检查库存合计"
+                      }
+                    }
+                  ]
+                },
+                "nodes": [
+                  {
+                    "nodeAlias": "deduct",
+                    "nodeType": "sub_process",
+                    "name": "扣减锁定库存",
+                    "config": {
+                      "process": {
+                        "data_source": {
+                          "kind": "record",
+                          "node": {
+                            "nodeAlias": "detail"
+                          }
+                        },
+                        "wait_complete": true,
+                        "parameters": [
+                          {
+                            "name": "主单ID2",
+                            "value": {
+                              "kind": "field",
+                              "node": {
+                                "nodeAlias": "trigger"
+                              },
+                              "fieldId": "出库单/rowid"
+                            }
+                          }
+                        ],
+                        "nodes": [
+                          {
+                            "nodeAlias": "kc",
+                            "nodeType": "query_update",
+                            "name": "扣减库存",
+                            "config": {
+                              "worksheet": "库存",
+                              "execute_type": 2,
+                              "filter": {
+                                "items": [
+                                  {
+                                    "left": {
+                                      "kind": "field",
+                                      "node": {
+                                        "nodeAlias": "kc"
+                                      },
+                                      "fieldId": "库存/物料"
+                                    },
+                                    "op": "eq",
+                                    "right": {
+                                      "kind": "field",
+                                      "node": {
+                                        "nodeAlias": "sub_trigger"
+                                      },
+                                      "fieldId": "出库单/出库明细/物料"
+                                    }
+                                  }
+                                ]
+                              },
+                              "fields": [
+                                {
+                                  "fieldId": "库存/当前数量",
+                                  "type": 6,
+                                  "addType": 2,
+                                  "valueRef": {
+                                    "node": {
+                                      "nodeAlias": "sub_trigger"
+                                    },
+                                    "fieldId": "出库单/出库明细/出库数量",
+                                    "nodeActionId": "401"
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        ],
+                        "name": "扣减并锁定库存",
+                        "explain": "库存校验通过后，按出库明细逐条扣减对应物料的当前库存。"
+                      }
+                    }
+                  },
+                  {
+                    "nodeAlias": "ok",
+                    "nodeType": "update_record",
+                    "name": "改待出库",
+                    "config": {
+                      "worksheet": "出库单",
+                      "target": {
+                        "kind": "record",
+                        "node": {
+                          "nodeAlias": "trigger"
+                        }
+                      },
+                      "fields": [
+                        {
+                          "fieldId": "出库单/单据状态",
+                          "type": 9,
+                          "value": "待出库"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "name": "库存不足",
+                "nodes": [
+                  {
+                    "nodeAlias": "notify",
+                    "nodeType": "cc",
+                    "name": "通知库存不足",
+                    "config": {
+                      "worksheet": "出库单",
+                      "content": "出库单库存不足，无法执行出库",
+                      "target": {
+                        "kind": "record",
+                        "node": {
+                          "nodeAlias": "trigger"
+                        }
+                      },
+                      "accounts": [
+                        {
+                          "kind": "owner",
+                          "node": {
+                            "nodeAlias": "trigger"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "custom_actions": [
+    {
+      "worksheet": "入库单",
+      "name": "提交入库审批",
+      "type": "trigger_workflow",
+      "confirm": true,
+      "confirm_msg": "确认提交该入库单审批？",
+      "enable_when": [
+        {
+          "field": "单据状态",
+          "op": "eq",
+          "value": "待审批"
+        }
+      ],
+      "workflow": "提交入库审批"
+    },
+    {
+      "worksheet": "出库单",
+      "name": "提交审批",
+      "type": "trigger_workflow",
+      "confirm": true,
+      "confirm_msg": "确认提交该出库单进入审批？",
+      "enable_when": [
+        {
+          "field": "单据状态",
+          "op": "eq",
+          "value": "未提交"
+        }
+      ],
+      "workflow": "提交审批"
+    },
+    {
+      "worksheet": "出库单",
+      "name": "执行出库",
+      "type": "trigger_workflow",
+      "confirm": true,
+      "confirm_msg": "确认执行该出库单的出库操作？",
+      "enable_when": [
+        {
+          "field": "单据状态",
+          "op": "eq",
+          "value": "已审批"
+        }
+      ],
+      "workflow": "执行出库"
+    }
+  ]
+}

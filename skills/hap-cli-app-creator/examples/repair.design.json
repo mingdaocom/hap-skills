@@ -1,0 +1,801 @@
+{
+  "app": {
+    "name": "设备报修",
+    "icon": "sys_5_3_box",
+    "icon_color": "#3054EB",
+    "sections": [
+      "报修管理",
+      "设备台账",
+      "数据分析"
+    ]
+  },
+  "worksheets": [
+    {
+      "name": "设备",
+      "section": "设备台账",
+      "icon": "sys_11_1_tool_storage_box",
+      "fields": [
+        {
+          "type": "Divider",
+          "name": "设备信息",
+          "row": 0,
+          "size": 12
+        },
+        {
+          "type": "Text",
+          "name": "设备名称",
+          "required": true,
+          "is_title": true,
+          "row": 1,
+          "size": 6
+        },
+        {
+          "type": "Text",
+          "name": "设备编号",
+          "unique": true,
+          "row": 1,
+          "size": 6
+        },
+        {
+          "type": "SingleSelect",
+          "name": "设备类型",
+          "options": [
+            "生产设备",
+            "办公设备",
+            "特种设备",
+            "其他"
+          ],
+          "row": 2,
+          "size": 6
+        },
+        {
+          "type": "Text",
+          "name": "规格型号",
+          "row": 2,
+          "size": 6
+        },
+        {
+          "type": "SingleSelect",
+          "name": "设备状态",
+          "options": [
+            { "value": "正常", "color": "#00C345", "checked": true },
+            { "value": "维修中", "color": "#FAD714" },
+            { "value": "报废", "color": "#484848" }
+          ],
+          "row": 3,
+          "size": 6
+        },
+        {
+          "type": "Text",
+          "name": "所在位置",
+          "row": 3,
+          "size": 6
+        },
+        {
+          "type": "Date",
+          "name": "购入日期",
+          "row": 4,
+          "size": 6
+        },
+        {
+          "type": "Collaborator",
+          "name": "设备责任人",
+          "row": 4,
+          "size": 6
+        },
+        {
+          "type": "Rollup",
+          "name": "累计报修次数",
+          "size": 6,
+          "rollup": {
+            "via": "报修记录",
+            "field": "报修单号",
+            "aggregate": "count"
+          }
+        },
+        {
+          "type": "Divider",
+          "name": "照片与备注",
+          "row": 5,
+          "size": 12
+        },
+        {
+          "type": "Attachment",
+          "name": "设备照片",
+          "row": 6,
+          "size": 12
+        },
+        {
+          "type": "Text",
+          "name": "备注",
+          "row": 7,
+          "size": 12
+        }
+      ]
+    },
+    {
+      "name": "报修单",
+      "section": "报修管理",
+      "icon": "sys_form_symbol",
+      "fields": [
+        {
+          "type": "Divider",
+          "name": "报修信息",
+          "row": 0,
+          "size": 12
+        },
+        {
+          "type": "AutoNumber",
+          "name": "报修单号",
+          "is_title": true,
+          "row": 1,
+          "size": 6,
+          "auto_number": {
+            "prefix": "BX-",
+            "date_format": "YYYYMMDD",
+            "digits": 4,
+            "reset": "daily"
+          }
+        },
+        {
+          "type": "Date",
+          "name": "报修日期",
+          "row": 1,
+          "size": 6
+        },
+        {
+          "type": "Relation",
+          "name": "设备",
+          "row": 2,
+          "size": 6,
+          "relation": {
+            "worksheet": "设备",
+            "multi": false,
+            "display": "dropdown",
+            "two_way": {
+              "name": "报修记录",
+              "display": "tab_table"
+            }
+          }
+        },
+        {
+          "type": "SingleSelect",
+          "name": "故障类型",
+          "options": [
+            "机械故障",
+            "电气故障",
+            "软件故障",
+            "外观损坏",
+            "其他"
+          ],
+          "row": 2,
+          "size": 6
+        },
+        {
+          "type": "SingleSelect",
+          "name": "紧急程度",
+          "options": [
+            { "value": "普通", "color": "#C0E6FC", "checked": true },
+            { "value": "加急", "color": "#FF9300" },
+            { "value": "特急", "color": "#F52222" }
+          ],
+          "row": 3,
+          "size": 6
+        },
+        {
+          "type": "SingleSelect",
+          "name": "处理状态",
+          "options": [
+            { "value": "未提交", "color": "#C0E6FC", "checked": true },
+            { "value": "审批中", "color": "#FAD714" },
+            { "value": "维修中", "color": "#2D46C4" },
+            { "value": "已完成", "color": "#00C345" },
+            { "value": "已取消", "color": "#484848" }
+          ],
+          "row": 3,
+          "size": 6
+        },
+        {
+          "type": "Text",
+          "name": "故障描述",
+          "row": 4,
+          "size": 12
+        },
+        {
+          "type": "Divider",
+          "name": "处理与凭证",
+          "row": 5,
+          "size": 12
+        },
+        {
+          "type": "Collaborator",
+          "name": "报修人",
+          "row": 6,
+          "size": 6
+        },
+        {
+          "type": "Collaborator",
+          "name": "维修负责人",
+          "row": 6,
+          "size": 6
+        },
+        {
+          "type": "Date",
+          "name": "期望完成日期",
+          "row": 7,
+          "size": 6
+        },
+        {
+          "type": "Date",
+          "name": "完成日期",
+          "row": 7,
+          "size": 6
+        },
+        {
+          "type": "Currency",
+          "name": "维修费用",
+          "decimals": 2,
+          "row": 8,
+          "size": 6
+        },
+        {
+          "type": "Text",
+          "name": "维修说明",
+          "row": 8,
+          "size": 6
+        },
+        {
+          "type": "Attachment",
+          "name": "现场照片",
+          "row": 9,
+          "size": 12
+        }
+      ]
+    }
+  ],
+  "views": [
+    {
+      "worksheet": "报修单",
+      "name": "全部报修",
+      "view_type": "table",
+      "group_by": "处理状态"
+    },
+    {
+      "worksheet": "报修单",
+      "name": "报修看板",
+      "view_type": "kanban",
+      "group_by": "处理状态",
+      "card": {
+        "title": "报修单号",
+        "display_fields": [
+          "设备",
+          "紧急程度",
+          "故障类型"
+        ]
+      }
+    },
+    {
+      "worksheet": "报修单",
+      "name": "待审批",
+      "view_type": "table",
+      "filter": [
+        { "field": "处理状态", "op": "eq", "value": "审批中" }
+      ]
+    },
+    {
+      "worksheet": "报修单",
+      "name": "维修中",
+      "view_type": "table",
+      "filter": [
+        { "field": "处理状态", "op": "eq", "value": "维修中" }
+      ]
+    }
+  ],
+  "custom_pages": [
+    {
+      "name": "报修分析",
+      "section": "数据分析",
+      "icon": "sys_2_3_statistics",
+      "components": [
+        {
+          "type": "rich_text",
+          "name": "标题",
+          "rich_text": "<h3>设备报修分析</h3>",
+          "layout": { "x": 0, "y": 0, "w": 48, "h": 2 }
+        },
+        {
+          "type": "chart",
+          "name": "本月报修数",
+          "chart": {
+            "worksheet": "报修单",
+            "report_type": "number",
+            "metrics": [
+              { "field": "count", "aggregate": "count" }
+            ],
+            "filter": [
+              { "field": "报修日期", "op": "date_is", "date_range": "this_month" }
+            ]
+          },
+          "layout": { "x": 0, "y": 2, "w": 16, "h": 5 }
+        },
+        {
+          "type": "chart",
+          "name": "维修中工单",
+          "chart": {
+            "worksheet": "报修单",
+            "report_type": "number",
+            "metrics": [
+              { "field": "count", "aggregate": "count" }
+            ],
+            "filter": [
+              { "field": "处理状态", "op": "eq", "value": "维修中" }
+            ]
+          },
+          "layout": { "x": 16, "y": 2, "w": 16, "h": 5 }
+        },
+        {
+          "type": "chart",
+          "name": "设备总数",
+          "chart": {
+            "worksheet": "设备",
+            "report_type": "number",
+            "metrics": [
+              { "field": "count", "aggregate": "count" }
+            ]
+          },
+          "layout": { "x": 32, "y": 2, "w": 16, "h": 5 }
+        },
+        {
+          "type": "chart",
+          "name": "处理状态分布",
+          "chart": {
+            "worksheet": "报修单",
+            "report_type": "pie",
+            "dimensions": [
+              { "field": "处理状态" }
+            ],
+            "metrics": [
+              { "field": "count", "aggregate": "count" }
+            ]
+          },
+          "layout": { "x": 0, "y": 7, "w": 24, "h": 10 }
+        },
+        {
+          "type": "chart",
+          "name": "故障类型分布",
+          "chart": {
+            "worksheet": "报修单",
+            "report_type": "bar",
+            "dimensions": [
+              { "field": "故障类型" }
+            ],
+            "metrics": [
+              { "field": "count", "aggregate": "count" }
+            ]
+          },
+          "layout": { "x": 24, "y": 7, "w": 24, "h": 10 }
+        },
+        {
+          "type": "chart",
+          "name": "设备报修排行",
+          "chart": {
+            "worksheet": "报修单",
+            "report_type": "ranking",
+            "dimensions": [
+              { "field": "设备" }
+            ],
+            "metrics": [
+              { "field": "count", "aggregate": "count" }
+            ]
+          },
+          "layout": { "x": 0, "y": 17, "w": 24, "h": 10 }
+        },
+        {
+          "type": "button",
+          "name": "快捷操作",
+          "button": {
+            "shape": "graphic",
+            "count": 2,
+            "direction": "vertical",
+            "buttons": [
+              {
+                "label": "新建报修单",
+                "color": "#3054EB",
+                "icon": "sys_form_symbol",
+                "action": "create_record",
+                "worksheet": "报修单"
+              },
+              {
+                "label": "待审批工单",
+                "color": "#FF9300",
+                "icon": "sys_bullet-list_office",
+                "action": "open_view",
+                "worksheet": "报修单",
+                "view": "待审批",
+                "open_mode": "new_page"
+              }
+            ]
+          },
+          "layout": { "x": 24, "y": 17, "w": 24, "h": 10 }
+        }
+      ]
+    }
+  ],
+  "roles": [
+    {
+      "name": "维修工",
+      "description": "受理设备报修、登记维修与完成，设备台账只读，报修单维护自己经手的",
+      "permission_scope": "0",
+      "worksheet_permissions": [
+        {
+          "worksheet": "设备",
+          "data_scope": { "read": 100, "edit": 0, "delete": 0 },
+          "record_actions": { "attachmentDownload": true }
+        },
+        {
+          "worksheet": "报修单",
+          "data_scope": { "read": 100, "edit": 20, "delete": 20 },
+          "actions": { "discuss": true },
+          "record_actions": { "add": true, "discuss": true, "attachmentDownload": true }
+        }
+      ],
+      "page_permissions": [
+        { "page": "报修分析", "enable": true }
+      ]
+    },
+    {
+      "name": "维修主管",
+      "description": "审批普通报修、派工与监督全部报修单，维护设备台账",
+      "permission_scope": "0",
+      "worksheet_permissions": [
+        {
+          "worksheet": "设备",
+          "data_scope": { "read": 100, "edit": 100, "delete": 20 },
+          "actions": { "import": true, "export": true, "batchOperation": true },
+          "record_actions": { "add": true, "attachmentDownload": true, "log": true }
+        },
+        {
+          "worksheet": "报修单",
+          "data_scope": { "read": 100, "edit": 100, "delete": 20 },
+          "actions": { "export": true, "discuss": true, "batchOperation": true },
+          "record_actions": { "add": true, "discuss": true, "systemPrint": true, "attachmentDownload": true, "log": true }
+        }
+      ],
+      "page_permissions": [
+        { "page": "报修分析", "enable": true }
+      ]
+    },
+    {
+      "name": "设施经理",
+      "description": "审批加急/特急报修，查看设备与报修全局数据及分析看板",
+      "permission_scope": "0",
+      "worksheet_permissions": [
+        {
+          "worksheet": "设备",
+          "data_scope": { "read": 100, "edit": 0, "delete": 0 },
+          "actions": { "export": true }
+        },
+        {
+          "worksheet": "报修单",
+          "data_scope": { "read": 100, "edit": 0, "delete": 0 },
+          "actions": { "export": true, "discuss": true }
+        }
+      ],
+      "page_permissions": [
+        { "page": "报修分析", "enable": true }
+      ]
+    }
+  ],
+  "chatbots": [
+    {
+      "name": "报修助手",
+      "section": "数据分析",
+      "prompt": "你是设备报修助手。回答报修进度、设备状态、待审批工单、维修中工单相关问题，引用应用内数据，用简洁中文作答。",
+      "description": "面向维修团队的报修问答助手",
+      "greeting": "你好，我是报修助手，可以问我待处理的报修单、设备状态、维修进度等。",
+      "preset_questions": [
+        "现在有哪些审批中的报修单？",
+        "哪些设备正在维修中？",
+        "本月新增了多少条报修？"
+      ]
+    }
+  ],
+  "custom_actions": [
+    {
+      "worksheet": "报修单",
+      "name": "提交审批",
+      "type": "trigger_workflow",
+      "confirm": true,
+      "confirm_msg": "确认提交该报修单审批？",
+      "enable_when": [
+        { "field": "处理状态", "op": "eq", "value": "未提交" }
+      ],
+      "workflow": "提交审批"
+    },
+    {
+      "worksheet": "报修单",
+      "name": "完成维修",
+      "type": "trigger_workflow",
+      "confirm": true,
+      "confirm_msg": "确认该报修单已维修完成？",
+      "enable_when": [
+        { "field": "处理状态", "op": "eq", "value": "维修中" }
+      ],
+      "workflow": "完成维修"
+    }
+  ],
+  "workflows": [
+    {
+      "name": "提交审批",
+      "trigger": {
+        "type": "button"
+      },
+      "nodes": [
+        {
+          "nodeAlias": "改审批中",
+          "nodeType": "update_record",
+          "name": "标记审批中",
+          "config": {
+            "target": {
+              "kind": "record",
+              "node": { "nodeAlias": "trigger" }
+            },
+            "fields": [
+              { "fieldId": "报修单/处理状态", "value": "审批中" }
+            ]
+          }
+        },
+        {
+          "nodeAlias": "报修审批",
+          "nodeType": "approval_block",
+          "name": "报修审批",
+          "prevNode": "改审批中",
+          "config": {
+            "process": {
+              "name": "报修审批流程",
+              "explain": "普通报修由维修主管审批；加急/特急升级至设施经理审批。",
+              "nodes": [
+                {
+                  "nodeAlias": "紧急分支",
+                  "nodeType": "branch",
+                  "name": "按紧急程度分流",
+                  "config": {
+                    "mode": "exclusive",
+                    "paths": [
+                      {
+                        "name": "加急特急",
+                        "condition": {
+                          "logic": "and",
+                          "items": [
+                            {
+                              "left": {
+                                "kind": "field",
+                                "node": { "nodeAlias": "approval_trigger" },
+                                "fieldId": "报修单/紧急程度"
+                              },
+                              "op": "in",
+                              "right": {
+                                "kind": "literal",
+                                "values": [ "加急", "特急" ]
+                              }
+                            }
+                          ]
+                        },
+                        "nodes": [
+                          {
+                            "nodeAlias": "经理审批",
+                            "nodeType": "approve",
+                            "name": "设施经理审批",
+                            "config": {
+                              "accounts": [
+                                { "kind": "role", "role": "设施经理" }
+                              ],
+                              "reject_opinion_required": true
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "name": "普通",
+                        "nodes": [
+                          {
+                            "nodeAlias": "主管审批",
+                            "nodeType": "approve",
+                            "name": "维修主管审批",
+                            "config": {
+                              "accounts": [
+                                { "kind": "role", "role": "维修主管" }
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "nodeAlias": "结果分支",
+          "nodeType": "branch",
+          "name": "审批结果",
+          "prevNode": "报修审批",
+          "config": {
+            "mode": "exclusive",
+            "paths": [
+              {
+                "name": "通过",
+                "condition": {
+                  "items": [
+                    {
+                      "left": {
+                        "kind": "field",
+                        "node": { "nodeAlias": "报修审批" },
+                        "fieldId": "result"
+                      },
+                      "op": "eq",
+                      "right": { "kind": "literal", "value": "PASS" }
+                    }
+                  ]
+                },
+                "nodes": [
+                  {
+                    "nodeAlias": "改维修中",
+                    "nodeType": "update_record",
+                    "name": "标记维修中",
+                    "config": {
+                      "target": {
+                        "kind": "record",
+                        "node": { "nodeAlias": "trigger" }
+                      },
+                      "fields": [
+                        { "fieldId": "报修单/处理状态", "value": "维修中" }
+                      ]
+                    }
+                  },
+                  {
+                    "nodeAlias": "取设备",
+                    "nodeType": "get_relation_records",
+                    "name": "取关联设备",
+                    "prevNode": "改维修中",
+                    "config": {
+                      "relation_field": "报修单/设备",
+                      "target": {
+                        "kind": "record",
+                        "node": { "nodeAlias": "trigger" }
+                      }
+                    }
+                  },
+                  {
+                    "nodeAlias": "设备转维修",
+                    "nodeType": "update_record",
+                    "name": "设备置为维修中",
+                    "prevNode": "取设备",
+                    "config": {
+                      "worksheet": "设备",
+                      "target": {
+                        "kind": "record",
+                        "node": { "nodeAlias": "取设备" }
+                      },
+                      "fields": [
+                        { "fieldId": "设备/设备状态", "value": "维修中" }
+                      ]
+                    }
+                  },
+                  {
+                    "nodeAlias": "通知受理",
+                    "nodeType": "notice",
+                    "name": "通知报修人已受理",
+                    "prevNode": "设备转维修",
+                    "config": {
+                      "content": "您的报修单「$trigger-报修单/报修单号$」已审批通过，维修即将开始。",
+                      "accounts": [
+                        { "kind": "triggerUser" }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "name": "未通过",
+                "nodes": [
+                  {
+                    "nodeAlias": "改已取消",
+                    "nodeType": "update_record",
+                    "name": "标记已取消",
+                    "config": {
+                      "target": {
+                        "kind": "record",
+                        "node": { "nodeAlias": "trigger" }
+                      },
+                      "fields": [
+                        { "fieldId": "报修单/处理状态", "value": "已取消" }
+                      ]
+                    }
+                  },
+                  {
+                    "nodeAlias": "通知驳回",
+                    "nodeType": "notice",
+                    "name": "通知报修人已驳回",
+                    "prevNode": "改已取消",
+                    "config": {
+                      "content": "您的报修单「$trigger-报修单/报修单号$」审批未通过，已取消，如有疑问请联系维修主管。",
+                      "accounts": [
+                        { "kind": "triggerUser" }
+                      ]
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "完成维修",
+      "trigger": {
+        "type": "button"
+      },
+      "nodes": [
+        {
+          "nodeAlias": "改已完成",
+          "nodeType": "update_record",
+          "name": "标记已完成",
+          "config": {
+            "target": {
+              "kind": "record",
+              "node": { "nodeAlias": "trigger" }
+            },
+            "fields": [
+              { "fieldId": "报修单/处理状态", "value": "已完成" }
+            ]
+          }
+        },
+        {
+          "nodeAlias": "取设备",
+          "nodeType": "get_relation_records",
+          "name": "取关联设备",
+          "prevNode": "改已完成",
+          "config": {
+            "relation_field": "报修单/设备",
+            "target": {
+              "kind": "record",
+              "node": { "nodeAlias": "trigger" }
+            }
+          }
+        },
+        {
+          "nodeAlias": "设备复正常",
+          "nodeType": "update_record",
+          "name": "设备恢复正常",
+          "prevNode": "取设备",
+          "config": {
+            "worksheet": "设备",
+            "target": {
+              "kind": "record",
+              "node": { "nodeAlias": "取设备" }
+            },
+            "fields": [
+              { "fieldId": "设备/设备状态", "value": "正常" }
+            ]
+          }
+        },
+        {
+          "nodeAlias": "通知完成",
+          "nodeType": "notice",
+          "name": "通知报修人已完成",
+          "prevNode": "设备复正常",
+          "config": {
+            "content": "您的报修单「$trigger-报修单/报修单号$」已维修完成，设备已恢复正常。",
+            "accounts": [
+              { "kind": "triggerUser" }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

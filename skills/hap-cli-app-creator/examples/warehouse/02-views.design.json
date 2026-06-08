@@ -1,0 +1,53 @@
+{
+  "views": [
+    {
+      "worksheet": "入库单",
+      "name": "待审批入库",
+      "view_type": "table",
+      "filter": [
+        {
+          "field": "单据状态",
+          "op": "eq",
+          "value": "待审批"
+        }
+      ]
+    },
+    {
+      "worksheet": "入库单",
+      "name": "入库看板",
+      "view_type": "kanban",
+      "group_by": "单据状态",
+      "card": {
+        "title": "入库单号",
+        "display_fields": [
+          "供应商",
+          "入库日期",
+          "优先级",
+          "入库总数量"
+        ]
+      }
+    },
+    {
+      "worksheet": "入库单",
+      "name": "入库日历",
+      "view_type": "calendar",
+      "dates": [
+        {
+          "start": "入库日期"
+        }
+      ]
+    },
+    {
+      "worksheet": "出库单",
+      "name": "待审批出库",
+      "view_type": "table",
+      "filter": [
+        {
+          "field": "单据状态",
+          "op": "eq",
+          "value": "待审批"
+        }
+      ]
+    }
+  ]
+}

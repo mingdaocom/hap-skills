@@ -1,0 +1,11 @@
+{
+  "app": "<your-app-id-or-name>",
+  "ops": [
+    { "type": "worksheet.create", "name": "订单", "section": "默认", "icon": "table" },
+    { "type": "view.create", "worksheet": "订单", "name": "按状态", "view_type": "board" },
+    { "type": "view.update", "worksheet": "订单", "view": "按状态", "name": "看板", "edit_attrs": ["name"] },
+    { "type": "worksheet.update", "worksheet": "订单", "desc": "客户订单主表" },
+    { "type": "view.delete", "worksheet": "订单", "view": "看板", "confirm": true },
+    { "type": "worksheet.delete", "worksheet": "订单", "confirm": true }
+  ]
+}

@@ -1,0 +1,86 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "hap-cli-app-editor edit-spec envelope",
+  "description": "Top-level edit-spec shape. Deep per-op validation is dispatched to the matching module schema by the op.type prefix (e.g. 'field.add' -> field.schema.json). Keep this file to the envelope + the shared op fields only; never inline element-specific op schemas here (decision #9 — schemas are split per module).",
+  "type": "object",
+  "required": ["app", "ops"],
+  "additionalProperties": false,
+  "properties": {
+    "app": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Target application: its real app id (preferred) or its name. The editor resolves it against the live org."
+    },
+    "org": {
+      "type": "string",
+      "description": "Organization (network) id. Optional — defaults to the session's current org."
+    },
+    "ops": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Operations applied in declaration order.",
+      "items": { "$ref": "#/$defs/op" }
+    }
+  },
+  "$defs": {
+    "op": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Operation kind: '<element>.<verb>'. The prefix selects the module schema used for deep validation.",
+          "enum": [
+            "worksheet.create",
+            "worksheet.update",
+            "worksheet.delete",
+            "field.add",
+            "field.update",
+            "field.delete",
+            "field.reorder",
+            "view.create",
+            "view.update",
+            "view.delete",
+            "role.create",
+            "role.update",
+            "role.delete",
+            "role.add_member",
+            "role.remove_member",
+            "custom-action.create",
+            "custom-action.update",
+            "custom-action.delete",
+            "chatbot.create",
+            "chatbot.update",
+            "chatbot.delete",
+            "custom-page.create",
+            "custom-page.update",
+            "custom-page.delete",
+            "workflow.create",
+            "workflow.update",
+            "workflow.delete",
+            "workflow.publish",
+            "component.add",
+            "component.update",
+            "component.delete",
+            "node.add",
+            "node.update",
+            "node.rename",
+            "node.delete",
+            "app.update",
+            "section.add",
+            "section.update",
+            "section.delete"
+          ]
+        },
+        "confirm": {
+          "type": "boolean",
+          "description": "Must be true for destructive ops (delete / overwrite); otherwise apply refuses to run them."
+        },
+        "label": {
+          "type": "string",
+          "description": "Optional human label shown in plan/apply output."
+        }
+      }
+    }
+  }
+}

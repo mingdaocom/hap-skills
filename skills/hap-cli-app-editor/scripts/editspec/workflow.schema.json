@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "workflow ops",
+  "description": "Deep schema for op.type starting with 'workflow.' — process create/update/delete/publish. Node graph edits (add/delete with reconnection) are complex; for non-trivial rewiring, supply a recorded raw payload (decision #11) — basic node ops live in node.schema.json.",
+  "oneOf": [
+    { "$ref": "#/$defs/create" },
+    { "$ref": "#/$defs/update" },
+    { "$ref": "#/$defs/delete" },
+    { "$ref": "#/$defs/publish" }
+  ],
+  "$defs": {
+    "create": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "name"],
+      "properties": {
+        "type": { "const": "workflow.create" },
+        "label": { "type": "string" },
+        "name": { "type": "string", "minLength": 1 },
+        "trigger_type": { "type": "integer", "description": "1=worksheet, 5=scheduled, 6=date." },
+        "desc": { "type": "string" }
+      }
+    },
+    "update": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "workflow"],
+      "properties": {
+        "type": { "const": "workflow.update" },
+        "label": { "type": "string" },
+        "workflow": { "type": "string", "minLength": 1, "description": "Process name or id." },
+        "name": { "type": "string" },
+        "desc": { "type": "string" },
+        "icon_color": { "type": "string" }
+      }
+    },
+    "delete": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "workflow", "confirm"],
+      "properties": {
+        "type": { "const": "workflow.delete" },
+        "label": { "type": "string" },
+        "workflow": { "type": "string", "minLength": 1 },
+        "confirm": { "type": "boolean", "const": true }
+      }
+    },
+    "publish": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "workflow"],
+      "properties": {
+        "type": { "const": "workflow.publish" },
+        "label": { "type": "string" },
+        "workflow": { "type": "string", "minLength": 1 },
+        "disable": { "type": "boolean", "description": "Disable instead of publish." }
+      }
+    }
+  }
+}
