@@ -8,10 +8,11 @@
 
 | Skill | 作用 |
 | --- | --- |
-| **hap-cli** | 总览与导航：介绍 `hap` 命令行能做什么、怎么登录，并在合适时把你引导到下面三个专门技能 |
+| **hap-cli** | 总览与导航：介绍 `hap` 命令行能做什么、怎么登录，并在合适时把你引导到下面几个专门技能 |
 | **hap-cli-app-creator** | 从一句业务需求一站式建出**真实可用、带示例数据**的明道云应用 |
 | **hap-cli-app-editor** | 对**已有应用**做精确的局部修改（字段/视图/工作表/角色权限/工作流/自定义动作/页面） |
 | **hap-cli-data-query** | 复杂查数：多条件 AND/OR 筛选、嵌套分组、透视聚合统计（求和/计数/平均/分组） |
+| **hap-cli-environments** | 多环境/多账号操作守则：授权了多个 HAP 环境或账号时，决定在哪个环境/账号上执行，破坏性操作前先确认 |
 
 ## 前置依赖
 
@@ -40,6 +41,7 @@ npx skills add mingdaocom/hap-skills --skill hap-cli
 npx skills add mingdaocom/hap-skills --skill hap-cli-app-creator
 npx skills add mingdaocom/hap-skills --skill hap-cli-app-editor
 npx skills add mingdaocom/hap-skills --skill hap-cli-data-query
+npx skills add mingdaocom/hap-skills --skill hap-cli-environments
 ```
 
 ### 方式二：在 AI Agent 对话里一句话安装
@@ -70,6 +72,10 @@ Agent 会自动克隆仓库并把技能装到对应位置。
 
 适合「把想要的数据查出来」：讲清筛选器的结构与运算符词表、透视的维度与聚合参数，给出可直接套用的模板，帮你写对复杂的 `--filter-json` / 透视查询。
 
+### hap-cli-environments — 多环境 / 多账号
+
+当你授权了多个 HAP 环境或账号（MingDAO SaaS、Nocoly、私有部署，或同一环境下多个账号）时，帮你决定「在哪个环境、用哪个账号执行」：把你的措辞匹配到具体环境/账号，破坏性操作（删除、发布、改权限）若环境不明确就先停下来确认，避免在不该动的环境上造成不可逆后果。
+
 ## 验证
 
 安装完成后，在对话中输入下面任意一句，看 Agent 是否进入对应技能：
@@ -78,6 +84,7 @@ Agent 会自动克隆仓库并把技能装到对应位置。
 帮我用 HAP 建一个图书借阅管理应用      # → hap-cli-app-creator
 在某张表里加一个字段                    # → hap-cli-app-editor
 查一下某张表上个月各产品的销售额前 5    # → hap-cli-data-query
+切到我测试用的那个环境再操作            # → hap-cli-environments
 hap 命令行怎么登录、有哪些命令          # → hap-cli
 ```
 
@@ -91,7 +98,8 @@ hap-skills/
     ├── hap-cli/
     ├── hap-cli-app-creator/
     ├── hap-cli-app-editor/
-    └── hap-cli-data-query/
+    ├── hap-cli-data-query/
+    └── hap-cli-environments/
 ```
 
 每个技能目录下的 `SKILL.md` 是入口，Agent 会自动读取。

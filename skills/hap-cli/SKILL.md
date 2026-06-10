@@ -1,6 +1,6 @@
 ---
 name: hap-cli
-description: 用 hap-cli 命令行工具操作明道云 HAP 企业平台。覆盖通讯录/部门查询、聊天收发消息、发动态、管日程、群组管理，以及应用与数据操作（工作表记录增删改查、工作流、审批待办、自定义页面、角色权限、文件上传等）。只要用户想在明道云/HAP 里查人、发消息、发动态、看/建日程、读写某张表的记录、跑工作流、处理审批，即使没明说工具名也应触发。需要从零搭一个完整应用时改用 hap-cli-app-creator；要改已有应用的某个元素时改用 hap-cli-app-editor；查工作表数据时筛选条件复杂、要多条件 AND/OR 或做透视聚合统计时改用 hap-cli-data-query——本 skill 会指明何时切换过去。不用于：明道云产品调研、写调用 hap 的 Python 代码、给 hap-cli 自身加新命令。
+description: 用 hap-cli 命令行工具操作明道云 HAP 企业平台。覆盖通讯录/部门查询、聊天收发消息、发动态、管日程、群组管理，以及应用与数据操作（工作表记录增删改查、工作流、审批待办、自定义页面、角色权限、文件上传等）。只要用户想在明道云/HAP 里查人、发消息、发动态、看/建日程、读写某张表的记录、跑工作流、处理审批，即使没明说工具名也应触发。需要从零搭一个完整应用时改用 hap-cli-app-creator；要改已有应用的某个元素时改用 hap-cli-app-editor；查工作表数据时筛选条件复杂、要多条件 AND/OR 或做透视聚合统计时改用 hap-cli-data-query；配了多个环境/账号、要在它们之间选或切（含让 AI 按场景自动切或反问）时改用 hap-cli-environments——本 skill 会指明何时切换过去。不用于：明道云产品调研、写调用 hap 的 Python 代码、给 hap-cli 自身加新命令。
 ---
 
 # hap-cli 使用导航
@@ -49,11 +49,33 @@ hap auth login https://your-server.com --token YOUR_TOKEN
 登录后自检与登出：
 
 ```bash
-hap auth whoami        # 当前用户 + 当前组织
-hap auth logout        # 清除已保存的 token
+hap auth whoami        # 当前用户 + 当前环境/账号 + 当前组织
+hap auth logout        # 登出当前账号
 ```
 
-> 在做实际操作前，习惯先跑一次 `hap auth whoami` 确认会话有效、组织正确。报错或未登录就先 `hap auth login`。
+> 在做实际操作前，习惯先跑一次 `hap auth whoami` 确认会话有效、环境与组织正确。报错或未登录就先 `hap auth login`。
+
+### 2.5 多环境 / 多账号
+
+hap-cli 支持**同时授权多个环境与账号**——MingDAO SaaS、Nocoly、私有部署，以及同一环境下的不同账号，都能各自登录保存、长期共存、随时切换，不必反复重新登录。
+
+```bash
+# 登录并起名保存（--profile 是你给这个环境/账号起的名字）
+hap auth login mingdao --profile work-prod
+hap auth login https://hap.example.com --profile onprem
+# 省略 --profile 时按登录地址自动起名；登录一个新环境不会覆盖已保存的
+
+hap auth accounts                   # 列出所有已保存的环境/账号，当前的带 *
+hap auth use work-prod              # 切换当前使用的环境/账号
+hap --profile onprem app list       # 只让这一条命令临时用某个环境/账号
+HAP_PROFILE=onprem hap app list     # 整个终端会话默认用某个环境/账号
+
+hap auth logout                     # 登出当前账号
+hap auth logout -p onprem           # 登出指定账号
+hap auth logout --all               # 登出全部账号
+```
+
+> 多个环境/账号并存时，**操作前先用 `hap auth accounts`（看 `*`）或 `hap auth whoami` 确认当前用的是哪个**，破坏性操作（删除、发布、改权限）尤其要核对环境与账号，别在不该动的环境上动手。需要 AI 帮你按场景自动选/切环境时，见 `hap-cli-environments` skill。
 
 ### 3. 选组织与默认应用
 
@@ -149,7 +171,7 @@ hap approval approve INSTANCE_ID --opinion "同意"
 
 | 命令 | 用途 |
 | --- | --- |
-| `hap auth` | 登录、登出、当前身份、组织列表与切换 |
+| `hap auth` | 登录、登出、当前身份、多环境/多账号切换（`accounts` / `use`）、组织列表与切换 |
 | `hap config` | 本地配置：`config show`、`config completion` 装 Tab 补全、`config language` 切语言、`config log on/off/view` 控制 API 日志 |
 | `hap repl` | 交互式命令行 |
 
