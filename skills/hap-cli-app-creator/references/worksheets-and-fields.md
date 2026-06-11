@@ -13,7 +13,7 @@
 工作表键：`name`(逻辑名唯一)、`section`(分组逻辑名，省略放默认分组)、`icon`、`alias`、`fields[]`。
 
 > [!CAUTTON]
-> `icon` 必须按照 [design_guide.md](design_guide.md) 中的指南，使用 `hap icon list` 查询可用的图标，从中选择一个。
+> `icon` 必须按照 [design_guide.md](design_guide.md) 中的指南，使用 `hap icon search` 加多个相关关键词（如 `hap icon search 会员 用户 成员 权益 皇冠 勋章`）搜索可用图标，从结果中选择一个。
 
 ## 字段通用键
 

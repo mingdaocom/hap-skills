@@ -38,7 +38,7 @@ Custom actions → Views → Custom pages → Chatbots → Roles → Workflows�
 ```jsonc
 "app": {
   "name": "智慧仓储", 
-  "icon": "sys_18_5_warehouse",             // 用 `hap icon list` 获取可用图标标识
+  "icon": "sys_18_5_warehouse",             // 用 `hap icon search 仓库 仓储 库存 货架` 这类多关键词搜索获取可用图标标识
   "icon_color": "#8E481B",
   "nav_color": "#8E481B",
   "nav_layout": "group",                    // PC 端导航方式，见下表（可省略，默认 group）

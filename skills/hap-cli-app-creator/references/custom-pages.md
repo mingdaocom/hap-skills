@@ -142,7 +142,7 @@ view × 1～3                 ← 列表视图区
 
 - 按钮 `action`∈create_record(需 worksheet) / open_view(需 worksheet+view) / open_link(需 url) / scan / call_process。**不支持跳转到其它自定义页面**（无 open_page）。
 - 按逻辑名引用工作表/视图。`shape`(button 文字 / graphic 磁贴)、`count`(每行个数)、`direction`、`style` 等见 schema。
-- 按钮 `color` 用应用主题色的 9 色（见 [design.md](design.md)）；`icon` 用 `hap icon list` 查到的 `fileName`。
+- 按钮 `color` 用应用主题色的 9 色（见 [design.md](design.md)）；`icon` 用 `hap icon search` 加多个相关关键词搜到的 `fileName`。
 
 ### filter（全局筛选条，`type:"filter"` + `filter`）
 

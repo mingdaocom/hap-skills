@@ -76,7 +76,7 @@
         },
         "icon": {
           "type": "string",
-          "description": "应用图标标识。只能从 `hap icon list` 获取，不可编造。"
+          "description": "应用图标标识。只能从 `hap icon search <多个相关关键词>` 的搜索结果获取，不可编造。"
         },
         "icon_color": {
           "type": "string",
@@ -783,7 +783,7 @@
         },
         "icon": {
           "type": "string",
-          "description": "工作表图标标识。只能从 `hap icon list` 获取，不可编造。"
+          "description": "工作表图标标识。只能从 `hap icon search <多个相关关键词>` 的搜索结果获取，不可编造。"
         },
         "alias": {
           "type": "string",
@@ -1159,7 +1159,7 @@
         },
         "icon": {
           "type": "string",
-          "description": "页面图标标识。只能从 `hap icon list` 获取，不可编造。"
+          "description": "页面图标标识。只能从 `hap icon search <多个相关关键词>` 的搜索结果获取，不可编造。"
         },
         "components": {
           "type": "array",
@@ -1531,7 +1531,7 @@
         },
         "icon": {
           "type": "string",
-          "description": "图标标识。只能从 `hap icon list` 获取，不可编造。"
+          "description": "图标标识。只能从 `hap icon search <多个相关关键词>` 的搜索结果获取，不可编造。"
         },
         "action": {
           "type": "string",
