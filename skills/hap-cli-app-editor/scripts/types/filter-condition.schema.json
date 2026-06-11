@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "FilterCondition — worksheet wire filter condition (shared type)",
+  "description": "One row-filter condition as the HAP server stores it. Carried as a FLAT ARRAY of these objects; AND/OR grouping lives on each item's spliceType (1=AND, 2=OR). Consumers: view filters (`hap worksheet view update --view-json` filters attr), quick filters' underlying conditions, business rules (`worksheet save-rule --filters`), custom-action enableWhen / button config filters (`worksheet save-button`), chart filter.items (`worksheet chart create/update --spec-json`), and custom-page filter components (filtersGroup.filters in `custom-page save`). Each consumer wraps this array in its own envelope (views inline it; charts and page filter components mint a stored filterId/filtersGroupId from it) — see the module reference docs for the envelopes.",
+  "type": "object",
+  "required": ["controlId", "spliceType", "filterType"],
+  "properties": {
+    "controlId": {
+      "type": "string",
+      "description": "Field (control) id the condition tests."
+    },
+    "dataType": {
+      "type": "integer",
+      "description": "The control's type integer (same enum as the field dictionary, e.g. 2=text, 6=number, 9/11=single-select, 15/16=date, 26=member, 29=relation). Required by the server to interpret values."
+    },
+    "spliceType": {
+      "type": "integer",
+      "enum": [1, 2],
+      "description": "Group logic of this condition relative to its siblings: 1=AND, 2=OR."
+    },
+    "filterType": {
+      "type": "integer",
+      "description": "Operator enum: 1=contains, 2=equals (also 'is any of' with multiple values), 3=starts with, 4=ends with, 5=not contains, 6=not equals (also 'is none of'), 7=is empty, 8=is not empty, 9=not starts with, 10=not ends with, 11=between, 12=not between, 13=>, 14=>=, 15=<, 16=<=, 17=date is, 18=date is not, 21=self, 22=self and subordinates, 23=subordinates, 24=relation equals, 25=relation not equals, 28=contains all, 51=option equals, 52=option not equals. For single-select controls (dataType 9/11) the UI writes 51/52; the server also accepts 2/6 with a values array ('is any of' / 'is none of') — both encodings are valid, prefer copying whatever an existing object you read back uses. Operators 7/8/21/22/23 carry no values."
+    },
+    "values": {
+      "type": "array",
+      "description": "Comparison values. Option fields: option keys. Member/relation fields: ids. Multi-value with filterType 2/51 means 'is any of'."
+    },
+    "value": {
+      "type": "string",
+      "description": "Convenience single-value string (kept alongside values for single-value conditions)."
+    },
+    "minValue": { "type": ["string", "number"], "description": "Lower bound for between/not-between." },
+    "maxValue": { "type": ["string", "number"], "description": "Upper bound for between/not-between." },
+    "dataRange": {
+      "type": "integer",
+      "description": "Date relativity bucket for date operators (0 when not a relative-date condition)."
+    },
+    "dateRange": {
+      "type": "integer",
+      "description": "Relative-date enum used with date operators (e.g. today/yesterday/this week/this month buckets)."
+    },
+    "dateRangeType": {
+      "type": "integer",
+      "description": "Granularity selector that accompanies dateRange (day/week/month style)."
+    },
+    "isDynamicsource": {
+      "type": "boolean",
+      "description": "True when the comparison value is dynamic (taken from another field or the page context) instead of a literal."
+    },
+    "dynamicSource": {
+      "type": "array",
+      "description": "Dynamic value references, used with isDynamicsource=true.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "cid": { "type": "string", "description": "Source control id ('rowid'/'current-rowid' for the record itself)." },
+          "rcid": { "type": "string", "description": "Context the source control belongs to ('url', 'fastFilter', 'navGroup', or a relation control id)." },
+          "staticValue": { "type": "string", "description": "Literal fallback value." }
+        }
+      }
+    }
+  },
+  "examples": [
+    [
+      { "controlId": "statusCtrlId", "dataType": 11, "spliceType": 1,
+        "filterType": 51, "values": ["optKeyInProgress"], "value": "",
+        "dataRange": 0, "isDynamicsource": false, "dynamicSource": [] },
+      { "controlId": "amountCtrlId", "dataType": 6, "spliceType": 1,
+        "filterType": 14, "values": ["1000"], "value": "1000",
+        "dataRange": 0, "isDynamicsource": false, "dynamicSource": [] }
+    ]
+  ]
+}

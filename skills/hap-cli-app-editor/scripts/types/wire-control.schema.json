@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "WireControl — raw worksheet field/control object (shared type)",
+  "description": "A worksheet field exactly as the server stores it. This is the currency of `hap worksheet fields <ws_id> --raw` (read), `hap worksheet add-fields --controls` (incremental write) and `hap worksheet update-fields --controls` (FULL-SET replace — dangerous, see fields reference doc), and it is what `hap workflow node controls` returns when discovering fields for node config. Safe editing rule: read the full control set with `fields --raw`, mutate only your target, write the COMPLETE set back (or use the edit-spec field ops which do this for you). The properties below are the common subset — a live control carries more keys; preserve unknown keys verbatim on write-back.",
+  "type": "object",
+  "required": ["controlName", "type"],
+  "properties": {
+    "controlId": {
+      "type": "string",
+      "description": "Server-assigned id. Omit when creating; required when updating."
+    },
+    "controlName": { "type": "string", "description": "Display name of the field." },
+    "type": {
+      "type": "integer",
+      "description": "Control type integer. Common values: 2=text, 6=number, 8=money, 9=flat single-select, 10=multi-select, 11=dropdown single-select, 14=attachment, 15=date, 16=datetime, 26=member, 27=department, 29=relation, 30=foreign-rollup display, 31=formula, 32=concat, 33=autonumber, 34=sub-list (subtable), 36=checkbox, 37=rollup, 38=date formula, 41=rich text, 46=time. Full table: fields reference doc."
+    },
+    "alias": { "type": "string", "description": "API alias of the field." },
+    "required": { "type": "boolean" },
+    "unique": { "type": "boolean" },
+    "hint": { "type": "string", "description": "Input placeholder/help shown in the form." },
+    "dot": { "type": "integer", "description": "Decimal places (number/money controls)." },
+    "enumDefault": { "type": "integer", "description": "Type-specific mode flag (e.g. relation: 1=single, 2=multiple)." },
+    "options": {
+      "type": "array",
+      "description": "Choices for option controls (type 9/10/11).",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": { "type": "string", "description": "Stable option key (server-assigned when omitted)." },
+          "value": { "type": "string", "description": "Display label." },
+          "index": { "type": "integer" },
+          "color": { "type": "string" },
+          "isDeleted": { "type": "boolean" }
+        }
+      }
+    },
+    "dataSource": { "type": "string", "description": "Bound source: related worksheet id (relation/sub-list), or the source control reference for formula-family controls." },
+    "sourceControlId": { "type": "string", "description": "Source control on the related sheet (rollup/foreign display)." },
+    "showControls": { "type": "array", "items": { "type": "string" }, "description": "Control ids displayed in a relation card / sub-list columns." },
+    "relationControls": { "type": "array", "description": "Embedded child controls (sub-list)." },
+    "advancedSetting": {
+      "type": "object",
+      "description": "Per-type extra settings, ALL VALUES ARE STRINGS (e.g. relation 'showtype', sub-list 'rowheight'/'max', option 'checktype'). Key dictionary per control type: fields reference doc."
+    },
+    "row": { "type": "integer", "description": "Form layout row (display order is driven by row, not array order)." },
+    "col": { "type": "integer", "description": "Form layout column." },
+    "size": { "type": "integer", "description": "Form layout width units." }
+  },
+  "examples": [
+    {
+      "controlName": "订单状态",
+      "type": 11,
+      "required": true,
+      "options": [
+        { "value": "进行中", "index": 0 },
+        { "value": "已完成", "index": 1 }
+      ],
+      "advancedSetting": { "checktype": "0" }
+    }
+  ]
+}

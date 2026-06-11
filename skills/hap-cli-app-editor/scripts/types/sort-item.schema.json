@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SortItem — sort entry (shared type)",
+  "description": "One sort criterion. Consumers: worksheet view multi-sort (`hap worksheet view update --view-json` moreSort attr) and workflow data-node sorts (`hap workflow node save-action / save-search / save-get-more --sorts`; workflow usage may add controlType). NOTE: chart sorts use a DIFFERENT keyed-object shape ([{\"<controlId>\": 1|2}]) — that one is documented with the chart module, do not use SortItem there.",
+  "type": "object",
+  "required": ["controlId", "isAsc"],
+  "properties": {
+    "controlId": {
+      "type": "string",
+      "description": "Field (control) id to sort by. System fields work too (e.g. 'ctime' created-time, 'utime' updated-time)."
+    },
+    "isAsc": {
+      "type": "boolean",
+      "description": "true = ascending, false = descending."
+    },
+    "controlType": {
+      "type": "integer",
+      "description": "The control's type integer. Optional; workflow node sorts usually carry it (e.g. 16 for a datetime field)."
+    }
+  },
+  "examples": [
+    [
+      { "controlId": "ctime", "controlType": 16, "isAsc": false }
+    ]
+  ]
+}

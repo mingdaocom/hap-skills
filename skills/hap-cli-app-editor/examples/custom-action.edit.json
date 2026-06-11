@@ -1,0 +1,11 @@
+{
+  "app": "<your-app-id-or-name>",
+  "ops": [
+    { "type": "custom-action.create", "worksheet": "订单",
+      "action_spec": { "type": "updateCurrentRecord", "name": "标记完成",
+                       "updateFields": ["<controlId>"] } },
+    { "type": "custom-action.update", "worksheet": "订单", "action": "标记完成",
+      "action_spec": { "type": "updateCurrentRecord", "name": "标记完成",
+                       "updateFields": ["<controlId>", "<controlId2>"] } }
+  ]
+}

@@ -1,6 +1,6 @@
 # edit-spec 总览
 
-一个 edit-spec 是一个 JSON 文件，描述对**一个已存在应用**的一组局部修改。
+一个 edit-spec 是一个 JSON 文件，描述对**一个已存在应用**的一组「读改写」式局部修改。它只覆盖三类编辑——**字段、页面组件、动作按钮**——因为这三类的安全写法是「读出整体 → 改一处 → 整体写回」，由 `hap app-editor` 替你完成。其它元素（工作表、视图、角色、工作流、节点、应用与分组）直接用对应的 `hap` 命令，见各模块文档。
 
 ## 信封
 
@@ -19,39 +19,31 @@
 
 | 字段 | 说明 |
 |---|---|
-| `type` | 必填，`<元素>.<动作>`，决定用哪份模块 schema 校验与哪个执行器。 |
-| `confirm` | 破坏性 op（删除/覆盖）必填且必须为 `true`，否则拒绝执行。 |
+| `type` | 必填，`<元素>.<动作>`，决定用哪份模块 schema 校验。 |
+| `confirm` | 破坏性 op（`field.delete` / `component.delete`）必填且必须为 `true`，否则拒绝执行。 |
 | `label` | 可选，plan/apply 输出里显示的人类标签。 |
 
 ## 引用元素的方式
 
-元素一律用**逻辑名**（工作表名、字段名、视图名…）或**真实 id** 引用——两者都行（editor 场景 ID 不敏感，可先建后改）。命令每步执行前从 HAP 实时读取结构来解析。
+元素一律用**逻辑名**（工作表名、字段名、组件名…）或**真实 id** 引用——两者都行。命令每步执行前从 HAP 实时读取结构来解析。
 
-## op 总表（按阶段交付）
+## op 总表
 
-| type | 作用 | 阶段 |
+| type | 作用 | 详见 |
 |---|---|---|
-| `worksheet.create` | 新建工作表 | ✅ |
-| `worksheet.update` | 改工作表名/别名/描述/图标 | ✅ |
-| `worksheet.delete` | 删除工作表（需 confirm） | ✅ |
-| `view.create` | 新建视图 | ✅ |
-| `view.update` | 局部更新视图属性（editAttrs） | ✅ |
-| `view.delete` | 删除视图（需 confirm） | ✅ |
-| `field.add` | 新增字段（增量，保留反向控件） | ✅ |
-| `field.update` | 改字段（读全量→改→整表写回） | ✅ |
-| `field.delete` | 删字段（读全量→去掉→整表写回，需 confirm） | ✅ |
-| `field.reorder` | 重排字段（整表写回） | ✅ |
-| `role.{create,update,delete,add_member,remove_member}` | 角色与成员，见 roles.md | ✅ |
-| `custom-action.{create,update,delete}` | 记录按钮，见 custom-actions.md | ✅ |
-| `chatbot.{create,update,delete}` | AI 助手，见 application.md | ✅ |
-| `custom-page.{create,update,delete}` | 自定义页面，见 custom-pages.md | ✅ |
-| `component.{add,update,delete}` | 页面组件，见 custom-pages.md | ✅ |
-| `workflow.{create,update,delete,publish}` | 工作流进程级，见 workflows.md | ✅ |
-| `node.{add,update,rename,delete}` | 工作流节点（追加/原位改配置/改名/删，后端自动重连），见 workflows.md | ✅ |
-| `app.update` / `section.{add,update,delete}` | 应用级元数据与分组，见 application.md | ✅ |
-| workflow 分支内中间插入/复杂拓扑 | — | 不在范围（creator/录 payload，见 workflows.md） |
+| `field.add` | 新增字段（增量，保留反向控件） | [worksheets-and-fields.md](worksheets-and-fields.md) |
+| `field.update` | 改字段（读全量 → 改目标 → 整表写回） | 同上 |
+| `field.delete` | 删字段（整表写回，需 confirm） | 同上 |
+| `field.reorder` | 重排字段（整表写回） | 同上 |
+| `component.add` | 页面加组件（页面布局读改写） | [custom-pages.md](custom-pages.md) |
+| `component.update` | 改页面组件 | 同上 |
+| `component.delete` | 删页面组件（需 confirm） | 同上 |
+| `custom-action.create` | 新建动作按钮（高层 action_spec 翻译） | [custom-actions.md](custom-actions.md) |
+| `custom-action.update` | 原地改动作按钮 | 同上 |
 
-> 详见各元素 reference 与 `scripts/editspec/<元素>.schema.json`。新增元素类型 = 新增一份独立 schema 文件 + envelope 的 `type` enum 加一项（schema 按模块拆分，禁止合并成单一大文件）。
+写了不在表里的 `type`（比如 `view.update`、`node.add`），`validate` 会直接报错并给出应该改用的 `hap` 命令。
+
+> op 的字段级 schema 在 `scripts/editspec/`（envelope + field + component + custom-action 各一份）。
 
 ## 命令
 
@@ -68,10 +60,13 @@ hap app-editor inspect  <appId|名称> [--org-id <org>]    # 打印实时 名→
 {
   "app": "myAppId",
   "ops": [
-    { "type": "worksheet.create", "name": "订单", "section": "默认" },
-    { "type": "view.create", "worksheet": "订单", "name": "按状态", "view_type": "board" },
-    { "type": "view.update", "worksheet": "订单", "view": "按状态", "name": "看板", "edit_attrs": ["name"] },
-    { "type": "view.delete", "worksheet": "订单", "view": "看板", "confirm": true }
+    { "type": "field.add", "worksheet": "订单",
+      "field": { "name": "优先级", "type": "SingleSelect", "options": ["高", "中", "低"] } },
+    { "type": "field.update", "worksheet": "订单", "field": "金额",
+      "set": { "required": true } },
+    { "type": "field.delete", "worksheet": "订单", "field": "废弃备注", "confirm": true },
+    { "type": "component.add", "page": "首页",
+      "component": { "name": "公告", "type": "richText", "value": "<p>本周盘点</p>" } }
   ]
 }
 ```

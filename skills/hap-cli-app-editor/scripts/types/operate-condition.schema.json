@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "OperateCondition — workflow node/branch condition groups (shared type, workflow module)",
+  "description": "Condition tree for workflow data nodes and branches: `hap workflow node save-action / save-search / save-get-more --condition`, branch nodes' operateCondition, trigger filters in `node batch-add`. Shape: a 2-D ARRAY — the OUTER array is OR groups, each INNER array is AND-ed items. This is NOT the worksheet FilterCondition type despite similar intent: the field key here is `filedId` (upstream spelling, sic — also filedTypeId/filedValue), the operator is the STRING enum conditionId, values are objects in conditionValues, and grouping is positional instead of spliceType. A workflow node config key named `filters` is ALSO this shape, not the worksheet one.",
+  "type": "array",
+  "items": {
+    "type": "array",
+    "description": "One AND group; groups are OR-ed together.",
+    "items": {
+      "type": "object",
+      "required": ["filedId", "conditionId"],
+      "properties": {
+        "filedId": {
+          "type": "string",
+          "description": "Field (control) id being tested. Spelling is 'filedId' on the wire — 'fieldId' is silently ignored."
+        },
+        "filedTypeId": {
+          "type": "integer",
+          "description": "The control's type integer."
+        },
+        "conditionId": {
+          "type": "string",
+          "description": "Operator as a STRING enum, e.g. \"1\"=contains, \"2\"=equals, \"7\"=is empty, \"8\"=is not empty, \"9\"=>, \"10\"=>=, \"11\"=<, \"12\"=<=, \"15\"=date is (date fields remap some operators — read an existing node with `hap workflow node get` to copy the exact id). Full table: workflow nodes reference doc."
+        },
+        "conditionValues": {
+          "type": "array",
+          "description": "Comparison values as objects: literal = {\"value\": \"x\"}; dynamic compare against another node's field = {\"value\": \"\", \"nodeId\": \"<nodeId>\", \"controlId\": \"<fieldId>\"}.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "value": { "type": "string" },
+              "nodeId": { "type": "string" },
+              "controlId": { "type": "string" }
+            }
+          }
+        },
+        "nodeId": {
+          "type": "string",
+          "description": "Which node's record the tested field comes from (the trigger node for trigger filters)."
+        },
+        "sourceType": {
+          "type": "integer",
+          "description": "Source kind of the tested field (1 = worksheet record)."
+        }
+      }
+    }
+  },
+  "examples": [
+    [
+      [
+        { "filedId": "statusCtrlId", "filedTypeId": 11, "conditionId": "2",
+          "conditionValues": [{ "value": "optKeyApproved" }],
+          "nodeId": "triggerNodeId", "sourceType": 1 }
+      ],
+      [
+        { "filedId": "amountCtrlId", "filedTypeId": 6, "conditionId": "9",
+          "conditionValues": [{ "value": "10000" }],
+          "nodeId": "triggerNodeId", "sourceType": 1 }
+      ]
+    ]
+  ]
+}

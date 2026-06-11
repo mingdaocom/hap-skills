@@ -1,61 +1,86 @@
 ---
 name: hap-cli-app-editor
-description: 修改一个已存在的明道云 HAP 应用里的某个具体元素时用本 skill。覆盖：字段（加/改/删、设下拉选项、改字段名）、视图（加/删/重命名表格/看板等）、工作表与分组（建表/删表、新建分组、把页面或仪表盘归类到分组下）、角色与权限（给角色加查看/编辑权限、修「登录后看不到内容」、增删成员）、工作流（启用/停用/暂停/改名，含定时任务与自动化，及增删工作流节点）、自定义动作按钮（新增或调整「点击后改记录」类按钮）、自定义页面与页面组件、仪表盘、应用本身（改名/导航色）。只要用户说「在某表加个字段」「把这个视图改名」「停用那条工作流」「给某角色加权限」「加个动作按钮」「新建分组并归类页面」「删掉这张表/视图」「修一下建到一半出错的应用」之类、针对已有应用做单点局部修改，就触发——即使用户没明说要用 hap-cli 或工具。不触发：增删改业务记录、导入/导出/查询数据、写调 hap 的代码、调研明道云产品；从零搭整个新应用请改用 hap-cli-app-creator。
+description: 修改一个已存在的明道云 HAP 应用里的某个具体元素时用本 skill。覆盖：字段（加/改/删、设下拉选项、改字段名）、视图（加/删/重命名表格/看板等）、工作表与分组（建表/删表、新建分组、把页面或仪表盘归类到分组下）、角色与权限（给角色加查看/编辑权限、修「登录后看不到内容」、增删成员）、工作流（启用/停用/暂停/改名、新建各类触发的流程，及增删改工作流节点与节点配置）、自定义动作按钮（新增或调整「点击后改记录」类按钮）、自定义页面与页面组件、仪表盘、应用本身（改名/导航色）。只要用户说「在某表加个字段」「把这个视图改名」「停用那条工作流」「给某角色加权限」「加个动作按钮」「新建分组并归类页面」「删掉这张表/视图」「修一下建到一半出错的应用」之类、针对已有应用做单点局部修改，就触发——即使用户没明说要用 hap-cli 或工具。不触发：增删改业务记录、导入/导出/查询数据、写调 hap 的代码、调研明道云产品；从零搭整个新应用请改用 hap-cli-app-creator。
 ---
 
 # HAP 应用编辑器（细粒度元素 CRUD）
 
-你对一个**已存在**的明道云 HAP 应用做精确的局部修改：增、删、改单个元素（工作表 / 字段 / 视图 / 角色权限 / 自定义动作 / 工作流 / 自定义页面与组件），而不重建整个应用。典型场景：修复 hap-cli-app-creator 建到一半出错的半成品、按用户要求调整某张表的字段或视图、删除多余元素。
+你对一个**已存在**的明道云 HAP 应用做精确的局部修改：增、删、改单个元素（工作表 / 字段 / 视图 / 角色权限 / 自定义动作 / 工作流与节点 / 自定义页面与组件 / 应用与分组）。
 
-执行逻辑在 hap-cli 内置的 **`hap app-editor`** 命令里（引擎随 hap-cli 一起安装，直接调用 HAP API，无需 subprocess）。你把修改表达成一个结构化的 **edit-spec**（JSON），命令负责校验、读取应用实时结构解析逻辑名、预演、执行。本 skill 提供 schema（`scripts/editspec/`）、写法文档（`references/`）与示例（`examples/`）。
+## 核心模型：两个入口，按危险度分流
 
-## 核心模型
+**默认入口是裸 `hap` 命令** —— 绝大多数元素编辑就是一条命令：
 
-- **真相来源 = 实时 HAP**：每次操作前从后端读取应用当前结构（工作表/字段/视图…）解析「逻辑名 → 真实 id」。所以能编辑任意已存在的应用，不依赖任何本地缓存。
-- **edit-spec**：`{ "app": "<appId 或应用名>", "ops": [ {op}, ... ] }`，按声明顺序执行。每个 op 形如 `{"type": "<元素>.<动作>", ...}`，如 `field.add`、`view.update`、`worksheet.delete`。
-- **破坏性操作必须显式确认**：删除/覆盖类 op 必须带 `"confirm": true`，否则拒绝执行。
-- **同一个 spec 内可链式依赖**：后面的 op 可以引用前面 op 刚创建的元素（apply 每步都会重新读取实时结构）。
+```bash
+hap worksheet view update <ws_id> <view_id> --name "进行中的订单"
+hap workflow publish <process_id>
+hap app role add-member <role_id> --user-ids <account_id> -a <app_id>
+```
+
+**只有三类编辑走 edit-spec（`hap app-editor`）**，因为它们的安全写法是「读出整体 → 改一处 → 整体写回」，徒手做容易静默丢数据：
+
+| 编辑对象 | edit-spec op | 为什么不能裸做 |
+|---|---|---|
+| **已有字段**的修改/删除/重排 | `field.update` / `field.delete` / `field.reorder` | 必须整表控件集写回，否则系统反向控件会被静默丢掉 |
+| **页面组件**增删改 | `component.add` / `component.update` / `component.delete` | 页面布局是一个整体 components 数组，必须读改写 |
+| **动作按钮**新建/修改 | `custom-action.create` / `custom-action.update` | 高层 action_spec 自动翻译成按钮配置并接好关联流程 |
+
+（新增字段 `field.add` 也在 edit-spec 里，与其它 field op 用同一份写法。）其余一切元素——工作表、视图、角色、工作流、节点、页面本身、应用与分组——**直接用命令**，各模块的命令与参数字典见下方索引。
 
 ## 前置条件
 
-1. **登录**：执行 `hap auth whoami` 确认 CLI 已登录且有当前组织。
-   - 返回用户信息 ➔ 继续。
-   - 未登录 ➔ 让用户先 `hap auth login`（并选好组织）。
+1. **登录**：`hap auth whoami` 确认已登录且选好组织；未登录让用户先 `hap auth login`。
+2. **管理员权限（硬性前提）**：编辑应用元素要求当前用户对该应用有管理权限。动手前用 `hap app list-managed` 确认目标 app 在列表里；不在则**不要硬试**，告知用户需要管理员授权或换账号登录。
+3. 上下文中没有 appId 时，让用户提供应用名或 appId。
 
-2. **管理员权限（硬性前提）**：编辑应用元素**要求当前用户对该应用有管理权限**，否则增删改会被后端拒绝。动手前用 `hap app list-managed` 列出当前用户有管理权限的应用
-   （返回 `[{appId, name, worksheetCount}]`），确认目标 app 在其中：
-   - 目标 app（按 appId 或名称）**在列表里** ➔ 有权限，继续。
-   - **不在列表里** ➔ 当前账号无管理权限，**不要硬试**；告知用户需要应用管理员权限（让管理员授权，或换用有权限的账号 `hap auth login`），再重试。
+## 通用工作流（4 步）
 
-3. 如果上下文中没有明确的 appId 信息，则用户必须提供应用名或 appId。
+1. **Inspect**：`hap app-editor inspect <appId或应用名>` 打印应用的「逻辑名 → id」全结构（工作表、视图、角色、工作流、页面、分组…）。后续命令要的各种 id 都从这里拿；更细的 id 用各模块的 list/info 命令。
+2. **Read**（改复杂值前必做）：**先用读命令导出现状，在真实结构上改，再写回**。
+   - 视图：`hap --json worksheet view info <ws_id> <view_id>`
+   - 节点：`hap --json workflow node get <process_id> <node_id>`
+   - 字段：`hap --json worksheet fields <ws_id> --raw`
+   - 页面：`hap --json custom-page info <app_id> <page_id>`
+   字典没覆盖的键，以读到的实际结构为准——照形改写永远是安全的。
+3. **Edit**：按模块文档的调用范式执行命令；或对三类 edit-spec 编辑：写 spec → `hap app-editor validate <spec.json>`（纯本地）→ `plan`（dry-run 预演）→ `apply`。
+4. **Verify**：用对应读命令确认改动生效。
 
-命令都是 `hap app-editor ...`（随 hap-cli 安装；`--json` 可加在 `hap` 后输出 JSON）。
+## 值形态约定（读字典表时）
 
-## 工作流（4 步）
+各模块字典表的「值形态」列分三档：
+- **标量/枚举**：可取值直接写在格内，如 `"1"=显示 "2"=隐藏`；
+- **简单结构**：一行描述，如 `controlId 的 JSON 数组`；
+- **复杂结构**：链接到 [scripts/types/](scripts/types/) 下的类型定义（schema + 可直接套用的示例），全 skill 每个结构只定义一次：
 
-1. **Inspect**：`hap app-editor inspect <appId 或应用名>` 打印应用的「逻辑名 → id」结构（工作表、视图、角色、工作流、页面、分组…）。先看清要改的元素叫什么、在哪。
+| 类型 | 用在哪 |
+|---|---|
+| [FilterCondition](scripts/types/filter-condition.schema.json) | 视图筛选、业务规则、按钮 enableWhen、图表筛选、页面筛选组件 |
+| [SortItem](scripts/types/sort-item.schema.json) | 视图多重排序、工作流节点 sorts |
+| [WireControl](scripts/types/wire-control.schema.json) | 字段的原始控件对象（读写通用货币） |
+| [OperateCondition](scripts/types/operate-condition.schema.json) | 工作流节点/分支条件（**不是** FilterCondition，字段名是 `filedId`） |
+| [WorkflowAccounts](scripts/types/workflow-accounts.schema.json) | 工作流收件人（type 语义反直觉，必读） |
+| [WorkflowFieldWrite](scripts/types/workflow-field-write.schema.json) | 数据节点字段写入（`$nodeId-fieldId$` 动态模板） |
 
-2. **Author**：写 edit-spec JSON。按需查阅 `references/`（**不要一次性全读**，只读你这次要操作的元素那一份）：
-   - `references/edit-spec.md` — 信封与通用语义、op 总表。
-   - `references/worksheets-and-fields.md`、`references/views.md`、`references/roles.md`、`references/custom-actions.md`、`references/workflows.md`、`references/custom-pages.md`、`references/application.md`。
-   schema 按模块拆分在 `scripts/editspec/`（envelope + 每类元素一份），可对照；`examples/` 有各 op 家族的样例。
+## 模块文档索引
 
-3. **Validate + Plan**：
-   - `hap app-editor validate <edit-spec.json>` — 纯本地校验，零网络；报错带 JSON 路径，先改对结构。
-   - `hap app-editor plan <edit-spec.json>` — 读取实时结构、预演将执行的改动（dry-run，不改任何东西）。链式依赖的 op 会显示「resolved at apply time」。
+按要操作的元素**只读对应那一份**（每份 = 调用范式 + 数据字典）：
 
-4. **Apply**：`hap app-editor apply <edit-spec.json>` — 逐 op 执行，每步前重新读取实时结构以支持链式依赖；出错默认停下（加 `--continue` 可继续），每步结果有记录。
+- [references/worksheets-and-fields.md](references/worksheets-and-fields.md) — 工作表、字段（含 field edit-spec 写法）
+- [references/views.md](references/views.md) — 视图（editAttrs / advancedSetting 全字典）
+- [references/roles.md](references/roles.md) — 角色、权限、成员
+- [references/workflows.md](references/workflows.md) — 自动化工作流与节点基础
+- [references/nodes.md](references/nodes.md) — 节点配置深度字典（8 类高频节点）
+- [references/custom-actions.md](references/custom-actions.md) — 动作按钮（action_spec / wire 两种写法）
+- [references/custom-pages.md](references/custom-pages.md) — 自定义页面与组件（含 component edit-spec 写法）
+- [references/application.md](references/application.md) — 应用本身与导航分组
+- [references/edit-spec.md](references/edit-spec.md) — edit-spec 信封与三类 op 的完整语义
 
-> 可用 `--app <appId>` 覆盖 spec 里的 `app`，`--org-id <org>` 指定组织：`hap app-editor apply <edit-spec.json> --app <appId>`。
+**多元素联动场景**（一个目标要串多条命令）见 [references/scenarios/](references/scenarios/)，每个场景一份文档，含命令顺序与 id 传递。三类 edit-spec 的可直接套用样例在 [examples/](examples/)（field / component / custom-action 各一份）。
 
-## 字段操作的硬规则（重要）
+## 边界与纪律
 
-- **新增字段**走增量路径（不会丢掉系统自动生成的反向控件）。
-- **修改 / 删除 / 重排已有字段**走「读取该表完整控件集 → 只改目标 → 整表写回」，与 HAP UI 一致、保留反向/系统控件。
-- 绝不用「只发部分字段的整表替换」来改单个字段——那会丢控件。命令已封装好，按 `field.*` op 写即可。
-
-## 边界
-
-- 只改用户明确要求的元素；破坏性操作没有 `confirm: true` 一律不执行。
-- 不猜 HAP 行为；元素语义与约束以 `references/` 与实时读取为准。
+- 只改用户明确要求的元素。
+- 破坏性操作：edit-spec 的删除类 op 必须带 `"confirm": true`；裸命令的删除类一律带 `--yes/-y` 二次确认，不传 `-y` 时会交互式询问（非交互环境下直接中止）。`-y` 只是跳过提示，不等于授权——任何删除动手前都先取得用户明确同意。
+- 不猜参数：字典 + 读命令导出的现状是唯一依据；两者冲突时以读到的为准。
+- 字典生成于 2026-06-10；服务端新增的键不会自动出现在字典里，照「先读后写」规则即可安全覆盖。
 - 整应用从零生成不属于本 skill —— 用 hap-cli-app-creator。

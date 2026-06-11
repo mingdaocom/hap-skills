@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "WorkflowFieldWrite — field value mapping for workflow data nodes (shared type)",
+  "description": "Array element describing 'write this value into that field', used by workflow data nodes: `hap workflow node save-action --fields` (create/update record), `save-search --fields` (and its findFields lookup keys), `save-get-more --fields`, and node entries in `node batch-add`. Dynamic values use $-template syntax inside fieldValue: \"$<nodeId>-<fieldId>$\" pulls a field of a record produced by an earlier node (the node id is the one shown by `hap workflow node list`).",
+  "type": "object",
+  "required": ["fieldId", "type"],
+  "properties": {
+    "fieldId": {
+      "type": "string",
+      "description": "Target field (control) id on the node's worksheet."
+    },
+    "type": {
+      "type": "integer",
+      "description": "The target control's type integer (same enum as WireControl.type)."
+    },
+    "fieldValue": {
+      "type": "string",
+      "description": "Literal value, or a $-template: \"$nodeId-fieldId$\" references a field from an earlier node's record. Option fields take option keys; member fields take account ids."
+    },
+    "fieldValueId": {
+      "type": "string",
+      "description": "Reference-by-id alternative to fieldValue for some field kinds (e.g. copying a whole field of the same shape)."
+    },
+    "nodeId": {
+      "type": "string",
+      "description": "Source node id when the value is copied from another node's record (used together with fieldValueId)."
+    }
+  },
+  "examples": [
+    [
+      { "fieldId": "statusCtrlId", "type": 11, "fieldValue": "optKeyDone" },
+      { "fieldId": "remarkCtrlId", "type": 2, "fieldValue": "审批通过：$startNodeId-titleCtrlId$" }
+    ]
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "WorkflowAccounts — workflow recipient reference (shared type, workflow module)",
+  "description": "One recipient of a workflow people-node: fill (3), approval (4), cc (5), email (11), notice (27) and approval-process settings — the `accounts` / `ccAccounts` arrays in `hap workflow node save --config`. THE TYPE FIELD IS COUNTER-INTUITIVE, getting it wrong makes the recipient show as deleted and publish fail: type 1 = a FIXED USER and the accountId goes in roleId (not entityId); type 2 = an APP ROLE with entityId = the APPLICATION id and roleId = the role id; type 6 = dynamic reference (trigger user: roleId='uaid'; supervisor: roleTypeId=11; member-field: the field's controlId in roleId plus its controlType); type 7 = raw email address in entityId. Do NOT use this shape for app-role membership (`hap app role add-member` takes flat id options instead).",
+  "type": "object",
+  "required": ["type"],
+  "properties": {
+    "type": {
+      "type": "integer",
+      "enum": [1, 2, 6, 7],
+      "description": "1=fixed user (accountId in roleId), 2=app role (entityId=appId, roleId=roleId), 6=dynamic ref (trigger user / supervisor / member field), 7=email literal (in entityId)."
+    },
+    "entityId": {
+      "type": "string",
+      "description": "type 2: the APPLICATION id. type 7: the email address. Other types: usually empty."
+    },
+    "roleId": {
+      "type": "string",
+      "description": "type 1: the user's accountId. type 2: the app role id. type 6: 'uaid' for trigger user, or a member-field controlId."
+    },
+    "roleTypeId": {
+      "type": "integer",
+      "description": "type 6 only: 11 = supervisor of the trigger user."
+    },
+    "controlType": {
+      "type": "integer",
+      "description": "type 6 member-field refs: the referenced control's type integer (26=member)."
+    },
+    "entityName": { "type": "string", "description": "Display name (cosmetic; server re-resolves)." },
+    "roleName": { "type": "string", "description": "Display name (cosmetic)." }
+  },
+  "examples": [
+    [
+      { "type": 1, "entityId": "", "roleId": "a1b2c3-accountId" },
+      { "type": 2, "entityId": "theAppId", "roleId": "theRoleId" },
+      { "type": 6, "entityId": "", "roleId": "uaid" }
+    ]
+  ]
+}
