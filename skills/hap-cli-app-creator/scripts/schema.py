@@ -175,6 +175,13 @@ def _check_relation(where: str, multi: bool, display: Any, show_fields: Any,
                       f"relation (allowed: {sorted(ok)})")
 
 
+# Node aliases the build executor binds itself (trigger record, sub-process
+# iterated record, approval block inner trigger). Mirrors
+# hap_cli.core.workflow_node_dsl._RESERVED_NODE_ALIASES.
+_RESERVED_NODE_ALIASES = frozenset(
+    {"trigger", "sub_trigger", "approval_trigger", "approval_start"})
+
+
 def _semantic_checks(doc: Any) -> list[str]:
     """Cross-field rules the JSON Schema can't express cleanly:
 
@@ -235,6 +242,55 @@ def _semantic_checks(doc: Any) -> list[str]:
     for n in button_wf - referenced:
         errors.append(f"workflows[{n!r}]: trigger.type='button' but no "
                       "trigger_workflow custom action points to it")
+
+    # Reserved node aliases. The executor binds "trigger" (and the inner-flow
+    # names) itself; a node claiming one shadows that binding and every
+    # $alias-...$ template / accounts ref / data_source pointing at it
+    # resolves to the wrong node — the workflow builds but publish fails
+    # (warningType 105/200). Walk nested branch paths and inner processes too.
+    def _scan_aliases(nodes: Any, where: str) -> None:
+        if not isinstance(nodes, list):
+            return
+        for node in nodes:
+            if not isinstance(node, dict):
+                continue
+            alias = node.get("nodeAlias")
+            if alias in _RESERVED_NODE_ALIASES:
+                errors.append(
+                    f"{where}: nodeAlias {alias!r} is reserved (it already "
+                    "refers to the trigger/inner-flow record) — drop or "
+                    "rename this node's alias")
+            cfg = node.get("config") or {}
+            if isinstance(cfg, dict):
+                process = cfg.get("process")
+                if isinstance(process, dict):
+                    _scan_aliases(process.get("nodes"),
+                                  f"{where}.process")
+                for i, path in enumerate(cfg.get("paths") or []):
+                    if isinstance(path, dict):
+                        _scan_aliases(path.get("nodes"),
+                                      f"{where}.paths[{i}]")
+    for w in workflows:
+        if isinstance(w, dict):
+            _scan_aliases(w.get("nodes"), f"workflows[{w.get('name')!r}]")
+
+    # At most ONE unfiltered table view per worksheet: the builder adopts the
+    # platform's auto-created "全部" view for it (rename + configure in
+    # place); a second one would recreate the duplicate-全部 problem.
+    seen_all_view: dict[str, str] = {}
+    for v in doc.get("views", []) or []:
+        if not isinstance(v, dict):
+            continue
+        if v.get("view_type") == "table" and not v.get("filter"):
+            wsn = v.get("worksheet")
+            first = seen_all_view.get(wsn)
+            if first:
+                errors.append(
+                    f"views[{v.get('name')!r}]: worksheet {wsn!r} already has "
+                    f"an unfiltered table view ({first!r}); only one is "
+                    "allowed — it becomes the worksheet's built-in 全部 view")
+            else:
+                seen_all_view[wsn] = v.get("name")
     return errors
 
 

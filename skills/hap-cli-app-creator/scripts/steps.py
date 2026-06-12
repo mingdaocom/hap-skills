@@ -717,6 +717,18 @@ def _build_view_spec(store: Store, wsid: str, view: dict[str, Any]) -> dict[str,
     return spec
 
 
+def _builtin_all_view_id(wsid: str) -> str:
+    """Return the platform auto-created "全部" table view's id (every
+    worksheet is born with one), or "" when it's gone/renamed already."""
+    data = hap.run(["worksheet", "view", "list", wsid]).data
+    views = data if isinstance(data, list) else (
+        (data or {}).get("views") or (data or {}).get("data") or [])
+    for v in views:
+        if v.get("name") in ("全部", "All") and v.get("viewType", 0) == 0:
+            return v.get("viewId") or v.get("id") or ""
+    return ""
+
+
 @handler("view")
 def _h_view(ctx: ExecCtx, step: Step) -> StepOutcome:
     store = _require_store(ctx)
@@ -725,14 +737,33 @@ def _h_view(ctx: ExecCtx, step: Step) -> StepOutcome:
     wsid = store.resolve("worksheet", host)
     spec = _build_view_spec(store, wsid, view)
 
-    argv = ["worksheet", "view", "create", wsid, view["name"],
-            "--view-spec", json.dumps(spec, ensure_ascii=False)]
-    data = hap.run(argv).data
-    view_id = _extract_id(data, ["viewId", "id"]) or ""
+    # An unfiltered table view IS the worksheet's "all records" view — and
+    # the platform already created one ("全部") with the worksheet. Adopt it
+    # in place (rename + configure) instead of creating a duplicate. The
+    # schema validator caps unfiltered table views at one per worksheet, and
+    # once adopted the built-in name is gone, so adoption happens at most
+    # once even on reruns.
+    adopted = ""
+    if view["view_type"] == "table" and not view.get("filter"):
+        adopted = _builtin_all_view_id(wsid)
+
+    if adopted:
+        argv = ["worksheet", "view", "update", wsid, adopted,
+                "--view-spec", json.dumps(spec, ensure_ascii=False)]
+        hap.run(argv)
+        view_id = adopted
+        data: Any = {"viewId": adopted, "adoptedBuiltinAllView": True}
+        summary = (f"view {host}.{view['name']} ({view['view_type']}, "
+                   f"adopted built-in 全部)")
+    else:
+        argv = ["worksheet", "view", "create", wsid, view["name"],
+                "--view-spec", json.dumps(spec, ensure_ascii=False)]
+        data = hap.run(argv).data
+        view_id = _extract_id(data, ["viewId", "id"]) or ""
+        summary = f"view {host}.{view['name']} ({view['view_type']})"
     store.put_view(wsid, view_id, view["name"], detail=data)
     return StepOutcome(
-        created_id=view_id,
-        summary=f"view {host}.{view['name']} ({view['view_type']})",
+        created_id=view_id, summary=summary,
         commands=[argv], capture_files=[f"worksheet_{wsid}.json"],
     )
 

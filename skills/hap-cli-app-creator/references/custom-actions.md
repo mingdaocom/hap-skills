@@ -1,6 +1,6 @@
 # Custom Actions — 自定义动作（顶层 `custom_actions[]`）
 
-按钮挂在某工作表上，点击执行一个动作。每个按钮在服务端派生一个影子工作流。
+按钮挂在某工作表上，点击执行一个动作。仅 `trigger_workflow` 按钮在服务端派生一个影子工作流（`update_record`/`create_related` 不产生任何工作流）。
 
 ```jsonc
 { "worksheet":"出库单", "name":"提交审批", "type":"trigger_workflow",

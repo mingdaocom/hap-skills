@@ -186,6 +186,10 @@
 每个节点：`nodeAlias`(流程内唯一别名)、`nodeType`、`name`、`prevNode`(前驱别名，省略=接上一个)、`config`(键由 nodeType 决定)。
 触发节点固定别名 **`trigger`**（执行器注册，条件/模板用 `{nodeAlias:"trigger"}` 引用）。
 
+> ⛔ **保留别名禁止用作 `nodeAlias`**：`trigger` / `sub_trigger` / `approval_trigger` / `approval_start`。
+> 它们由执行器绑定到触发记录/内层流程记录；节点占用会把绑定顶掉，导致 `$trigger-...$` 模板和收件人全部解析到错误节点（发布报 105/200）。校验和构建都会直接拒绝。
+> 触发记录本来就能用 `trigger` 引用——节点不需要、也不许叫这个名字。
+
 **nodeType → 它认的 config 键**（schema 的 allOf 强制必填项，**别给错类型的键**）：
 
 | nodeType | 作用 | 关键 config 键 |
@@ -209,6 +213,7 @@
 - `get_multiple`：`random:true` + `count:N` 随机抽 N 条；`sorts` 指定排序。
 - `delete_record`：`permanent:true` 彻底删除(不可恢复)，省略=删到回收站。
 - `sub_process`：`config.process.execute_type` —— 1 并行(默认) / 2 逐条串行(中止则不再触发后续) / 3 逐条串行(中止仍继续下一条)。
+- `sub_process` 的 `data_source`(逐条处理的记录来源，**必填**，指向上游多条节点)规范位置在 `config.process.data_source`；写在 `config.data_source`(rollup 同款位置)也接受。漏写则数据源为空，发布报 103。
 - `cc`(抄送)：`card_fields:["字段名",...]` 指定在抄送卡片上**高亮展示**的字段(其余字段仍在卡片但不高亮)；省略=不高亮。需配 `worksheet` 指明记录来源。
 - `fill_in`(填写)：用字段角色控制表单——`editable_fields`(可修改)、`readonly_fields`(只读可见)、`hidden_fields`(不展示)；`submit_btn_name` 改提交按钮文案。省略全部=可写字段默认可编辑。需配 `worksheet`。
 - `approve`(审批)的进阶能力(全部可选，省略=基础审批)：

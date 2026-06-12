@@ -87,9 +87,10 @@
       ... ] } } }
 ```
 要点：
-- **内部触发别名固定 `sub_trigger`**（当前迭代记录）。
+- **内部触发别名固定 `sub_trigger`**（当前迭代记录）。保留别名（`trigger`/`sub_trigger`/`approval_trigger`/`approval_start`）**不许**用作任何节点的 `nodeAlias`——占用会顶掉绑定、引用全错（发布 105/200），校验和构建都会拒绝。
 - 子表无反向关联→子流程拿不到主单，所以把主单 `rowid` 当 `parameters` 传进去，子流程内 `get_single.filter` 用 `{kind:"param", name:..}` 过滤。
-- `wait_complete:true` = 同步（串行）；`data_source` 可指定遍历的数据源记录集（如某 get_relation_records 节点）。
+- `wait_complete:true` = 同步（串行）；**`data_source` 必填**（指定遍历的记录集，如某 get_multiple / get_relation_records 节点），规范位置 `config.process.data_source`（写在 `config.data_source` 也接受）。漏写则发布报 103。
+- 内部流程的显示名：优先 `process.name`，缺省回退**节点的 `name`**——两个都不写才会留服务器默认的"未命名子流程"，所以子流程节点务必起业务化的 `name`。
 
 ## 6. 查询节点的 left.node 指向
 
