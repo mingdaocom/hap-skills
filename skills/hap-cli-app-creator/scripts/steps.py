@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field as dc_field
 from typing import Any, Callable, Optional
 
@@ -205,6 +206,34 @@ def _show_field_ids(
     return []
 
 
+# A real HAP controlId is a 24-hex MongoDB ObjectId (pd-openweb
+# WORKSHEET_OBJECT_ID_REG). Anything else is a client-side placeholder.
+_OBJECT_ID_RE = re.compile(r"^[a-f0-9]{24}$", re.IGNORECASE)
+
+
+def _strip_client_control_ids(controls: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drop client-generated controlIds before AddWorksheetControls.
+
+    pd-openweb's quick-add path sends ``_.omit(control, ['controlId'])``
+    and reads the real id back from the response — AddWorksheetControls
+    only mints a proper 24-hex ObjectId when the caller omits the id.
+    If we send our own ``uuid4().hex`` (32 chars, no dashes) the server
+    persists it verbatim, leaving an invalid controlId that the grid /
+    relation renderer can't resolve, so related-record cells stay blank
+    until a later SaveWorksheetControls re-mints the id (the symptom a
+    manual "save form layout twice" was working around).
+
+    A controlId that IS a valid ObjectId is kept untouched — that is a
+    server-reserved id (a two-way relation's reverse placeholder, which
+    HAP pairs the forward/reverse halves by). Mutates in place.
+    """
+    for c in controls:
+        cid = c.get("controlId")
+        if cid and not _OBJECT_ID_RE.match(cid):
+            c.pop("controlId", None)
+    return controls
+
+
 def _append_controls_pass(
     store: Store, worksheet_id: str, new_controls: list[dict[str, Any]]
 ) -> list[str]:
@@ -255,6 +284,7 @@ def _append_controls_pass(
         c["col"] = slot
         used += size
         slot += 1
+    _strip_client_control_ids(new_controls)
     argv = ["worksheet", "add-fields", worksheet_id,
             "--controls", json.dumps(new_controls, ensure_ascii=False)]
     hap.run(argv)
@@ -366,9 +396,10 @@ def _wire_subtable_child_relations(
     control would hit build_control's "RELATE_SHEET requires data_source".
 
     Resolves each child Relation's target by logical name. Targets are
-    sibling top-level worksheets created earlier in the Worksheets phase
-    (compiler orders parents after their relation targets), so they're in
-    the store by the time this worksheet builds. Mutates ``spec`` in place.
+    sibling top-level worksheets; ``compiler._ordered_worksheets`` sorts the
+    Worksheets phase so a child-relation target is created before its host,
+    so it's in the store by the time this worksheet builds. Mutates ``spec``
+    in place.
     """
     child_specs = spec.get("child_fields") or []
     child_designs = design_field.get("child_fields") or []

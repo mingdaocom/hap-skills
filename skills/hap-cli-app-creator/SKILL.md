@@ -50,7 +50,7 @@ description: 从业务需求一站式建出完整的明道云 HAP 应用。从�
 命令总览：
 
 ```bash
-python3 -m scripts validate <design.json>      # 仅本地校验 schema（不调 API、不需登录）
+python3 -m scripts validate <design.json>      # 本地校验 schema + 核验所有 icon 真实存在（不需登录；icon 走本地图标库）
 python3 -m scripts build    <design.json>      # 从零一次性整建整个应用，返回 appId；建完保留
 python3 -m scripts seed-template <appId>       # 读真实控件元数据，产出填值模板
 python3 -m scripts seed     <appId>            # 把你写的 _seed_data.json 推进应用

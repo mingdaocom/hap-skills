@@ -22,6 +22,8 @@
 
 字段权限映射 fieldPermission：`hidden`=隐藏、`readonly`=只读、`hidden_on_create`=新增时隐藏。
 
+> ⚠️ **字段名在本表内必须唯一(Divider 除外)。** Rollup/工作流都按名字解析字段,**两个真字段同名**(尤其常见的「两个 SubTable 都叫 `费用明细`」)会让 `via`/引用绑到错的那个,build 才炸。需要两份明细就起不同名(如 `费用明细`/`收款明细`)。**例外**:`Divider` 是布局分隔符、不是可寻址字段,允许它和紧随其后的 SubTable 同名(用作区块标题),这是合法写法。validate 现在会拦下「两个非 Divider 字段同名」。
+
 ## 字段设计规范（生成字段前先读）
 
 ### 一、建表前的业务思考
@@ -185,6 +187,8 @@
     "filter":[ {"field":"状态","op":"eq","value":"已发货"} ] } }
 ```
 `aggregate`∈sum(默认)/count/avg/max/min/distinct_count；`filter` 用通用筛选器（见下）。
+
+> ⚠️ **`via` 必须是「本表上」的 SubTable 或 Relation 字段。** 双向关联(two_way)的反向控件**长在目标表上、不在本表**:`销售订单.店铺` 的 `two_way:相关订单` 反向是建在「店铺」上的,所以「店铺」可以 `via:相关订单` 汇总订单;但**「商品SKU」不能** `via:相关订单`(SKU 上没有这个反向)。要在 A 表汇总,A 表上必须真有一个指向来源表的 Relation 或它的反向控件。`field` 必须是被桥接目标(关联表 / 子表)上真实存在的列。validate 现在会拦下 via 不在本表、或 field 不在目标上的情况。
 
 ### SubTable（内联子表，推荐建模「一单多明细」）
 `child_fields`(**必填**)：递归同 field 形状的子字段清单；子字段可含 Relation。

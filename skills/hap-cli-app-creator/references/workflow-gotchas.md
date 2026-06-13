@@ -111,6 +111,8 @@
 ```
 匹配哪条记录用 `match` 或 `filter`；排序默认按创建时间倒序取最新。
 
+> ⚠️ **`match` / `valueRef` 引用的字段必须真实存在于它所属的表上。** 高频错误:想从触发记录取一个「外键编号」去 match 目标表(如 `$trigger-消耗记录/耗材库存编号$`),但触发表上**根本没有**这个字段 → 发布失败(`control X not found`)。要按关联匹配,触发表必须**先有一个指向目标表的 Relation 字段**,再 match 该 Relation 带出的字段;不要凭空引用一个 `<目标表>编号` 外键。`$trigger-<表>/<字段>$` 里的 `<字段>` 必须是 `<表>` 上已声明的字段或系统字段(rowid/ctime/...)。validate 现在会拦下这类悬空引用。
+
 ## 9. compute / rollup 是模式化的（actionId 由 mode 决定，别写死旧码）
 
 - `compute`：`config.mode`∈`number`(数值公式) / `date`(日期公式) / `date_diff`(日期差) / `function`(函数)。

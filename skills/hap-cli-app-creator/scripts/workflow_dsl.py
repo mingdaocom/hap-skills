@@ -590,6 +590,107 @@ def _enrich_node(node: dict[str, Any], store) -> None:
         _enrich_node(child, store)
 
 
+# Recipient kinds that address a *record* (not the workflow's trigger user):
+# their default source node must follow the enclosing process's record. Inside
+# a sub_process that record is ``sub_trigger`` (the iterated row), not
+# ``trigger``. ``triggerUser``/``supervisor`` are user-scoped (the user who
+# triggered the whole flow) and correctly stay on ``trigger`` everywhere.
+_RECORD_SCOPED_ACCOUNT_KINDS = frozenset({"owner", "field"})
+
+
+def _apply_node_context_defaults(nodes: Any, record_alias: str = "trigger") -> None:
+    """Pre-translation pass that fills in node defaults the design may omit,
+    carrying the enclosing process's record alias (``trigger`` at top level,
+    ``sub_trigger`` inside a ``sub_process``). Mutates in place — callers pass
+    a copy. Two fixes, both of which otherwise publish-fail with warningType
+    103 ("指定的对象已删除"):
+
+    1. ``create_record`` has no ``target`` record; its destination worksheet is
+       implied by the ``表名/字段`` prefix on its ``fields``. Without a
+       resolvable worksheet the node ships ``appId=""`` and the server drops
+       every field. We set ``config.worksheet`` from the (single) field prefix.
+
+    2. Record-scoped recipients (``{kind:"owner"}`` / ``{kind:"field"}``) on
+       cc/notice/email/approve nodes default their source node to the current
+       record. Inside a sub_process that is ``sub_trigger`` — but the wire layer
+       defaults every recipient to ``trigger``, so a ``{kind:"owner"}`` in a
+       per-record loop resolves to the (nonexistent) ``trigger`` record and the
+       recipient is flagged 已删除. We inject ``node:{nodeAlias: <record_alias>}``
+       so it follows the iterated record."""
+    for n in nodes or []:
+        if not isinstance(n, dict):
+            continue
+        cfg = n.get("config")
+        if not isinstance(cfg, dict):
+            cfg = {}
+
+        # query_update's documented ``match`` shortcut (findFields: locate the
+        # record(s) to update by field=value) has no wire handler on its own —
+        # the server needs a proper find *condition*. Desugar ``match`` into the
+        # ``filter`` form the server accepts: each match item becomes a
+        # condition whose ``left`` reads a field of the query_update node ITSELF
+        # (gotcha #6: a query node's own filter is left.node = that node), eq the
+        # item's value/valueRef. Without this the node ships an unrecognised
+        # ``match`` key, has no find condition, and publish fails (warningType
+        # 200). ``execute_type`` defaults to 2 (continue when unmatched).
+        if n.get("nodeType") == "query_update" and cfg.get("match") and not cfg.get("filter"):
+            self_alias = n.get("nodeAlias")
+            items = []
+            for m in cfg.get("match") or []:
+                if not isinstance(m, dict) or not m.get("fieldId"):
+                    continue
+                left = {"kind": "field", "fieldId": m["fieldId"]}
+                if self_alias:
+                    left["node"] = {"nodeAlias": self_alias}
+                cond = {"left": left, "op": m.get("op", "eq")}
+                if isinstance(m.get("valueRef"), dict):
+                    vr = m["valueRef"]
+                    right = {"kind": "field"}
+                    if vr.get("node"):
+                        right["node"] = vr["node"]
+                    if vr.get("fieldId"):
+                        right["fieldId"] = vr["fieldId"]
+                    cond["right"] = right
+                else:
+                    cond["right"] = {"kind": "literal", "value": m.get("value")}
+                items.append(cond)
+            if items:
+                cfg["filter"] = {"items": items}
+                cfg.pop("match", None)
+                cfg.setdefault("execute_type", 2)
+                n["config"] = cfg
+
+        if n.get("nodeType") == "create_record" and not cfg.get("worksheet"):
+            prefixes = {
+                (fd.get("fieldId") or "").split("/", 1)[0]
+                for fd in (cfg.get("fields") or [])
+                if isinstance(fd, dict) and "/" in (fd.get("fieldId") or "")
+            }
+            if len(prefixes) == 1:
+                cfg["worksheet"] = next(iter(prefixes))
+                n["config"] = cfg
+
+        # Record-scoped recipients follow the enclosing record (only matters
+        # once we're inside a sub_process; at top level the default is already
+        # trigger, so this is a no-op there).
+        if record_alias != "trigger":
+            for key in ("accounts", "ccAccounts"):
+                for acct in cfg.get(key) or []:
+                    if (isinstance(acct, dict)
+                            and acct.get("kind") in _RECORD_SCOPED_ACCOUNT_KINDS
+                            and not acct.get("node")):
+                        acct["node"] = {"nodeAlias": record_alias}
+
+        proc = cfg.get("process")
+        if isinstance(proc, dict):
+            # A sub_process iterates records as ``sub_trigger``.
+            _apply_node_context_defaults(proc.get("nodes"), "sub_trigger")
+        for p in cfg.get("paths") or []:
+            if isinstance(p, dict):
+                # A branch path stays in the same process — keep record_alias.
+                _apply_node_context_defaults(p.get("nodes"), record_alias)
+
+
 def translate_nodes(store, nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Translate a logical-name node DSL list to the id-based DSL.
 
@@ -597,6 +698,12 @@ def translate_nodes(store, nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
     its ``config`` (and branch ``paths`` / nested ``process.nodes``) are
     walked recursively, then enriched (cc formProperties). Returns a new
     list (input is not mutated)."""
+    import copy
+    nodes = copy.deepcopy(nodes)
+    # Fill in node defaults the design may omit (create_record target worksheet;
+    # record-scoped recipients following sub_trigger inside a sub_process) before
+    # translation, so the wire ships real ids instead of empties (else 103).
+    _apply_node_context_defaults(nodes)
     r = _Resolver(store)
     r.formula_actions = _collect_formula_actions(nodes)
     out = [_walk(n, r) for n in nodes]

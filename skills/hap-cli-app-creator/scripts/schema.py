@@ -311,6 +311,9 @@ def _reference_checks(doc: Any) -> list[str]:
     if not isinstance(doc, dict):
         return errors
     app = doc.get("app") or {}
+    # System/built-in field slugs that may appear in a "<ws>/<field>" reference
+    # without being declared as a field (mirrors workflow_dsl._SYSTEM_FIELDS).
+    _SYSTEM_FIELD_NAMES = {"rowid", "ownerid", "caid", "ctime", "utime", "uaid"}
     sections = set(app.get("sections") or [])
     worksheets = doc.get("worksheets") or []
     ws_names = {w.get("name") for w in worksheets if isinstance(w, dict)}
@@ -342,9 +345,44 @@ def _reference_checks(doc: Any) -> list[str]:
         if not isinstance(w, dict):
             continue
         fi = field_index.setdefault(w.get("name"), {})
+        # Duplicate field names on one worksheet are illegal: build resolves
+        # fields/derived-bridges by name, so a second field with the same name
+        # shadows the first and a Rollup/workflow that meant the other one
+        # silently resolves wrong, then fails mid-build (e.g. two SubTables
+        # both named '费用明细' -> a rollup `via:费用明细` hits the wrong one).
+        # SubTable children share the same flat name space within their child
+        # list, so check those too.
+        seen: set = set()
         for f in w.get("fields") or []:
-            if isinstance(f, dict) and f.get("name"):
-                fi[f["name"]] = f
+            if not isinstance(f, dict) or not f.get("name"):
+                continue
+            # Dividers are layout-only section headers, not addressable data
+            # fields — a divider is routinely given the same label as the
+            # SubTable it introduces (a '订单明细' divider above the '订单明细'
+            # SubTable), which is valid and builds fine. Keep them out of both
+            # the uniqueness check and the field index.
+            if f.get("type") == "Divider":
+                continue
+            nm = f["name"]
+            if nm in seen:
+                errors.append(
+                    f"worksheets[{w.get('name')!r}]: duplicate field name "
+                    f"{nm!r} — field names must be unique within a worksheet")
+            seen.add(nm)
+            if f.get("type") == "SubTable":
+                child_seen: set = set()
+                for cf in f.get("child_fields") or []:
+                    if (not isinstance(cf, dict) or not cf.get("name")
+                            or cf.get("type") == "Divider"):
+                        continue
+                    cnm = cf["name"]
+                    if cnm in child_seen:
+                        errors.append(
+                            f"worksheets[{w.get('name')!r}].{nm}: duplicate "
+                            f"child field name {cnm!r} — child field names "
+                            f"must be unique within a SubTable")
+                    child_seen.add(cnm)
+            fi[nm] = f
     for w in worksheets:
         if not isinstance(w, dict):
             continue
@@ -434,6 +472,42 @@ def _reference_checks(doc: Any) -> list[str]:
                     if src in field_index and field_index[src] and sf not in field_index[src]:
                         errors.append(f"{where}: cascade.show_fields {sf!r} not "
                                       f"found on worksheet {src!r}")
+            # Rollup/Lookup bridge integrity: ``via`` must name a Relation
+            # (forward, or a synthesized two_way reverse) or a SubTable ON THIS
+            # worksheet, and ``field`` must exist on the bridged target. A via
+            # that names a reverse living on ANOTHER worksheet (a common
+            # mistake — e.g. 销量总数 via 相关订单 where 相关订单 is 店铺's
+            # reverse, not 商品SKU's) resolves to nothing and fails mid-build.
+            if f.get("type") in ("Rollup", "Lookup") and wn in field_index and field_index[wn]:
+                cfg = f.get("rollup") or f.get("lookup") or {}
+                via = cfg.get("via")
+                tgt_field = cfg.get("field")
+                bridge = field_index[wn].get(via) if via else None
+                if via and bridge is None:
+                    errors.append(
+                        f"{where}: rollup/lookup via {via!r} is not a Relation "
+                        f"or SubTable on worksheet {wn!r} — a two_way reverse "
+                        f"lives on the TARGET worksheet, not the source")
+                elif bridge is not None and tgt_field:
+                    if bridge.get("type") == "SubTable":
+                        cols = {c.get("name") for c in bridge.get("child_fields") or []
+                                if isinstance(c, dict)}
+                        if cols and tgt_field not in cols:
+                            errors.append(
+                                f"{where}: rollup/lookup field {tgt_field!r} not "
+                                f"found in SubTable {via!r} (has {sorted(cols)})")
+                    elif bridge.get("type") == "Relation":
+                        tws = (bridge.get("relation") or {}).get("worksheet")
+                        if (tws in field_index and field_index[tws]
+                                and tgt_field not in field_index[tws]
+                                and tgt_field not in _SYSTEM_FIELD_NAMES):
+                            errors.append(
+                                f"{where}: rollup/lookup field {tgt_field!r} not "
+                                f"found on bridged worksheet {tws!r}")
+                    else:
+                        errors.append(
+                            f"{where}: rollup/lookup via {via!r} must be a "
+                            f"Relation or SubTable (is {bridge.get('type')!r})")
 
     for v in doc.get("views") or []:
         if not isinstance(v, dict):
@@ -573,6 +647,45 @@ def _reference_checks(doc: Any) -> list[str]:
         for wf in doc.get("workflows") or []:
             if isinstance(wf, dict):
                 _scan_roles(wf, f"workflows[{wf.get('name')!r}]")
+
+    # Workflow field-reference integrity. A node references record fields by
+    # "<worksheet>/<field>" — either as a ``fieldId`` or inside a
+    # ``$trigger-<worksheet>/<field>$`` value literal (the match/value form).
+    # If <worksheet> is a real worksheet but <field> doesn't exist on it (and
+    # isn't a system field), the build resolves the control to nothing and the
+    # workflow fails to publish — e.g. matching on $trigger-消耗记录/耗材库存
+    # 编号$ when 消耗记录 has no 耗材库存编号 field (no relation was modelled).
+    # Conservative: only flagged when <worksheet> is known AND carries a field
+    # index, so a workflow-only fragment or a control-id ref never false-flags.
+    _REF_RE = re.compile(r'\$(?:trigger-)?([^$]+?/[^$]+?)\$')
+
+    def _chk_wf_ref(ref: Any, where: str) -> None:
+        if not isinstance(ref, str) or "/" not in ref:
+            return
+        wsn, _, fld = ref.partition("/")
+        if (wsn in field_index and field_index[wsn] and fld
+                and fld not in field_index[wsn]
+                and fld not in _SYSTEM_FIELD_NAMES):
+            errors.append(f"{where}: field reference {ref!r} — field {fld!r} "
+                          f"not found on worksheet {wsn!r}")
+
+    def _scan_wf_refs(obj: Any, where: str) -> None:
+        if isinstance(obj, dict):
+            if isinstance(obj.get("fieldId"), str):
+                _chk_wf_ref(obj["fieldId"], where)
+            for v in obj.values():
+                if isinstance(v, str):
+                    for m in _REF_RE.findall(v):
+                        _chk_wf_ref(m, where)
+                else:
+                    _scan_wf_refs(v, where)
+        elif isinstance(obj, list):
+            for v in obj:
+                _scan_wf_refs(v, where)
+
+    for wf in doc.get("workflows") or []:
+        if isinstance(wf, dict):
+            _scan_wf_refs(wf, f"workflows[{wf.get('name')!r}]")
 
     return errors
 

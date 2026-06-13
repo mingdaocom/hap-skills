@@ -76,7 +76,7 @@
         },
         "icon": {
           "type": "string",
-          "description": "应用图标标识。只能从 `hap icon search <多个相关关键词>` 的搜索结果获取，不可编造。"
+          "description": "应用图标标识。必须从 `hap icon search <多个相关关键词>` 的搜索结果中挑选一个，不可编造。"
         },
         "icon_color": {
           "type": "string",
@@ -783,7 +783,7 @@
         },
         "icon": {
           "type": "string",
-          "description": "工作表图标标识。只能从 `hap icon search <多个相关关键词>` 的搜索结果获取，不可编造。"
+          "description": "工作表图标标识。必须从 `hap icon search <多个相关关键词>` 的搜索结果中挑选一个，不可编造。"
         },
         "alias": {
           "type": "string",
@@ -1159,7 +1159,7 @@
         },
         "icon": {
           "type": "string",
-          "description": "页面图标标识。只能从 `hap icon search <多个相关关键词>` 的搜索结果获取，不可编造。"
+          "description": "页面图标标识。必须从 `hap icon search <多个相关关键词>` 的搜索结果中挑选一个，不可编造。"
         },
         "components": {
           "type": "array",
@@ -1531,7 +1531,7 @@
         },
         "icon": {
           "type": "string",
-          "description": "图标标识。只能从 `hap icon search <多个相关关键词>` 的搜索结果获取，不可编造。"
+          "description": "图标标识。必须从 `hap icon search <多个相关关键词>` 的搜索结果中挑选一个，不可编造。"
         },
         "action": {
           "type": "string",
@@ -2156,6 +2156,9 @@
             }
           },
           "then": {
+            "required": [
+              "config"
+            ],
             "properties": {
               "config": {
                 "required": [
@@ -2163,10 +2166,7 @@
                   "fields"
                 ]
               }
-            },
-            "required": [
-              "config"
-            ]
+            }
           }
         },
         {
@@ -2180,16 +2180,16 @@
             }
           },
           "then": {
+            "required": [
+              "config"
+            ],
             "properties": {
               "config": {
                 "required": [
                   "fields"
                 ]
               }
-            },
-            "required": [
-              "config"
-            ]
+            }
           }
         },
         {
@@ -2203,16 +2203,16 @@
             }
           },
           "then": {
+            "required": [
+              "config"
+            ],
             "properties": {
               "config": {
                 "required": [
                   "target"
                 ]
               }
-            },
-            "required": [
-              "config"
-            ]
+            }
           }
         },
         {
@@ -2226,6 +2226,9 @@
             }
           },
           "then": {
+            "required": [
+              "config"
+            ],
             "properties": {
               "config": {
                 "required": [
@@ -2233,10 +2236,7 @@
                   "filter"
                 ]
               }
-            },
-            "required": [
-              "config"
-            ]
+            }
           }
         },
         {
@@ -2250,16 +2250,16 @@
             }
           },
           "then": {
+            "required": [
+              "config"
+            ],
             "properties": {
               "config": {
                 "required": [
                   "worksheet"
                 ]
               }
-            },
-            "required": [
-              "config"
-            ]
+            }
           }
         },
         {
@@ -2273,16 +2273,16 @@
             }
           },
           "then": {
+            "required": [
+              "config"
+            ],
             "properties": {
               "config": {
                 "required": [
                   "relation_field"
                 ]
               }
-            },
-            "required": [
-              "config"
-            ]
+            }
           }
         },
         {
@@ -2296,6 +2296,9 @@
             }
           },
           "then": {
+            "required": [
+              "config"
+            ],
             "properties": {
               "config": {
                 "required": [
@@ -2303,10 +2306,7 @@
                   "fields"
                 ]
               }
-            },
-            "required": [
-              "config"
-            ]
+            }
           }
         },
         {
@@ -2320,16 +2320,16 @@
             }
           },
           "then": {
+            "required": [
+              "config"
+            ],
             "properties": {
               "config": {
                 "required": [
                   "paths"
                 ]
               }
-            },
-            "required": [
-              "config"
-            ]
+            }
           }
         },
         {
@@ -2337,13 +2337,38 @@
             "properties": {
               "nodeType": {
                 "enum": [
-                  "sub_process",
                   "approval_block"
                 ]
               }
             }
           },
           "then": {
+            "required": [
+              "config"
+            ],
+            "properties": {
+              "config": {
+                "required": [
+                  "process"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "nodeType": {
+                "enum": [
+                  "sub_process"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "config"
+            ],
             "properties": {
               "config": {
                 "required": [
@@ -2351,8 +2376,29 @@
                 ]
               }
             },
-            "required": [
-              "config"
+            "anyOf": [
+              {
+                "properties": {
+                  "config": {
+                    "required": [
+                      "data_source"
+                    ]
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "config": {
+                    "properties": {
+                      "process": {
+                        "required": [
+                          "data_source"
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
             ]
           }
         },
@@ -2367,16 +2413,16 @@
             }
           },
           "then": {
+            "required": [
+              "config"
+            ],
             "properties": {
               "config": {
                 "required": [
                   "accounts"
                 ]
               }
-            },
-            "required": [
-              "config"
-            ]
+            }
           }
         },
         {
@@ -2385,23 +2431,46 @@
               "nodeType": {
                 "enum": [
                   "cc",
-                  "notice",
+                  "notice"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "config"
+            ],
+            "properties": {
+              "config": {
+                "required": [
+                  "accounts",
+                  "content"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "nodeType": {
+                "enum": [
                   "send_email"
                 ]
               }
             }
           },
           "then": {
+            "required": [
+              "config"
+            ],
             "properties": {
               "config": {
                 "required": [
                   "accounts"
                 ]
               }
-            },
-            "required": [
-              "config"
-            ]
+            }
           }
         },
         {
@@ -2415,15 +2484,76 @@
             }
           },
           "then": {
+            "required": [
+              "config"
+            ],
             "properties": {
               "config": {
                 "required": [
                   "worksheet"
                 ]
               }
-            },
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "nodeType": {
+                "enum": [
+                  "compute"
+                ]
+              }
+            }
+          },
+          "then": {
             "required": [
               "config"
+            ],
+            "properties": {
+              "config": {
+                "required": [
+                  "mode"
+                ]
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "config": {
+                      "required": [
+                        "mode"
+                      ],
+                      "properties": {
+                        "mode": {
+                          "const": "date_diff"
+                        }
+                      }
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "config": {
+                      "required": [
+                        "start",
+                        "end",
+                        "out_unit"
+                      ]
+                    }
+                  }
+                },
+                "else": {
+                  "properties": {
+                    "config": {
+                      "required": [
+                        "formula"
+                      ]
+                    }
+                  }
+                }
+              }
             ]
           }
         },
@@ -2432,7 +2562,6 @@
             "properties": {
               "nodeType": {
                 "enum": [
-                  "compute",
                   "rollup"
                 ]
               }
@@ -2441,7 +2570,14 @@
           "then": {
             "required": [
               "config"
-            ]
+            ],
+            "properties": {
+              "config": {
+                "required": [
+                  "mode"
+                ]
+              }
+            }
           }
         }
       ]

@@ -1,7 +1,7 @@
 {
   "app": {
     "name": "设备报修",
-    "icon": "sys_5_3_box",
+    "icon": "sys_11_2_maintenance",
     "icon_color": "#3054EB",
     "sections": [
       "报修管理",

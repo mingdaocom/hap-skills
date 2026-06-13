@@ -195,7 +195,7 @@
 | nodeType | 作用 | 关键 config 键 |
 | :-- | :-- | :-- |
 | `update_record` | 更新记录 | `target`(写入目标记录) + `fields`(写入项 wfFieldPatch[]) |
-| `create_record` | 新建记录 | `fields` |
+| `create_record` | 新建记录 | `fields`（目标表由 `fields` 的 `表名/字段` 前缀自动推出；字段跨多张表时须显式写 `worksheet` 指明建在哪张表） |
 | `delete_record` | 删除记录 | `target` |
 | `get_single` | 查询单条 | `worksheet` + `filter` |
 | `get_multiple` | 获取多条(按工作表) | `worksheet`(+ `filter`) |

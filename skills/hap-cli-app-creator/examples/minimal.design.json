@@ -1,7 +1,7 @@
 {
   "app": {
     "name": "订单受理-{ts}",
-    "icon": "1_2_order",
+    "icon": "sys_1_2_order",
     "icon_color": "#3054EB",
     "sections": [
       "客户管理",
@@ -12,7 +12,7 @@
   "worksheets": [
     {
       "name": "客户",
-      "icon": "sys_15_3_user",
+      "icon": "sys_1_10_people",
       "section": "客户管理",
       "fields": [
         {
@@ -113,7 +113,7 @@
     },
     {
       "name": "订单",
-      "icon": "1_2_order",
+      "icon": "sys_1_2_order",
       "section": "订单管理",
       "fields": [
         {
@@ -316,7 +316,7 @@
               {
                 "label": "新建订单",
                 "color": "#3054EB",
-                "icon": "1_2_order",
+                "icon": "sys_1_2_order",
                 "action": "create_record",
                 "worksheet": "订单"
               },

@@ -117,6 +117,60 @@ def _ordered_derived(worksheets: list[dict[str, Any]]) -> list[tuple[str, dict[s
     return [(ws_name, node[(ws_name, fname)]) for (ws_name, fname) in result]
 
 
+def _ordered_worksheets(
+    worksheets: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Order worksheet *creation* so a worksheet that is the target of a
+    SubTable child Relation is created BEFORE the worksheet hosting that
+    SubTable.
+
+    Top-level Relation fields are built in a deferred second pass, so they
+    impose no constraint on creation order. But a SubTable's child Relation
+    is baked into the host worksheet at creation time (``steps._wire_subtable
+    _child_relations`` resolves the target's worksheetId right then), so the
+    target must already exist in the store. The design may declare them in
+    any order, so we topologically sort by these child-relation edges.
+
+    A stable fixpoint sort preserves document order among independent
+    worksheets; a dependency cycle (or a child relation to an unknown name)
+    degrades gracefully to document order — the build then surfaces the same
+    clear ResolveError instead of silently misbuilding."""
+    names = {ws["name"] for ws in worksheets}
+
+    def child_relation_targets(ws: dict[str, Any]) -> set[str]:
+        out: set[str] = set()
+        for f in ws.get("fields", []) or []:
+            if f.get("type") != "SubTable":
+                continue
+            for cf in f.get("child_fields", []) or []:
+                if cf.get("type") == "Relation":
+                    tgt = (cf.get("relation") or {}).get("worksheet")
+                    if tgt and tgt in names and tgt != ws["name"]:
+                        out.add(tgt)
+        return out
+
+    deps = {ws["name"]: child_relation_targets(ws) for ws in worksheets}
+    by_name = {ws["name"]: ws for ws in worksheets}
+    emitted: set[str] = set()
+    result: list[dict[str, Any]] = []
+    progress = True
+    while progress and len(result) < len(worksheets):
+        progress = False
+        for ws in worksheets:                # iterate in doc order (stable)
+            n = ws["name"]
+            if n in emitted:
+                continue
+            if deps[n] <= emitted:
+                result.append(ws)
+                emitted.add(n)
+                progress = True
+    for ws in worksheets:                    # cycle fallback: keep doc order
+        if ws["name"] not in emitted:
+            result.append(ws)
+            emitted.add(ws["name"])
+    return result
+
+
 def compile_design(design: dict[str, Any]) -> list[Step]:
     steps: list[Step] = []
 
@@ -134,8 +188,11 @@ def compile_design(design: dict[str, Any]) -> list[Step]:
             phase="Optionsets", spec={"optionset": o},
         ))
 
-    # 2. worksheets (intra-sheet fields baked into create)
-    for ws in worksheets:
+    # 2. worksheets (intra-sheet fields baked into create). Ordered so a
+    #    SubTable child Relation's target worksheet is created first (its id
+    #    is resolved at host-worksheet create time). Top-level relations are
+    #    deferred below, so they don't constrain this order.
+    for ws in _ordered_worksheets(worksheets):
         _emit(steps, Step(
             id=f"worksheet:{ws['name']}", kind="worksheet", name=ws["name"],
             phase="Worksheets", spec={"worksheet": ws},

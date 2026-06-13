@@ -29,13 +29,13 @@ def _vd(design):
     import copy
     from scripts import schema
     d = copy.deepcopy(design)
-    d.setdefault("app", {}).setdefault("icon", "1_2_order")
+    d.setdefault("app", {}).setdefault("icon", "sys_1_2_order")
     for w in d.get("worksheets", []) or []:
         if isinstance(w, dict):
-            w.setdefault("icon", "1_2_order")
+            w.setdefault("icon", "sys_1_2_order")
     for pg in d.get("custom_pages", []) or []:
         if isinstance(pg, dict):
-            pg.setdefault("icon", "1_2_order")
+            pg.setdefault("icon", "sys_1_2_order")
     return schema.validate_design(d)
 
 
@@ -203,6 +203,214 @@ def test_compiler_reverse_relation_ordering() -> None:
     rev2 = ids2.index("relation_reverse:费用.项目")
     assert rev2 > max(i for i, k in enumerate(kinds2) if k == "derived"), \
         "non-bridge reverse relation must build after derived fields"
+
+
+def test_duplicate_field_name_rejected() -> None:
+    """Two fields sharing a name on one worksheet (e.g. two SubTables both
+    named '费用明细') must fail validation: build resolves by name, so a
+    Rollup `via:费用明细` would silently bind the wrong one and crash
+    mid-build. Also covers duplicate child names inside a SubTable."""
+    dup_top = {
+        "app": {"name": "X", "sections": ["S"]},
+        "worksheets": [{"name": "账单", "section": "S", "fields": [
+            {"type": "Text", "name": "标题", "is_title": True},
+            {"type": "SubTable", "name": "费用明细", "child_fields": [
+                {"type": "Number", "name": "数量"}]},
+            {"type": "SubTable", "name": "费用明细", "child_fields": [
+                {"type": "Currency", "name": "费用金额"}]},
+        ]}],
+    }
+    errs = _vd(dup_top)
+    assert any("duplicate field name '费用明细'" in e for e in errs), errs
+
+    dup_child = {
+        "app": {"name": "Y", "sections": ["S"]},
+        "worksheets": [{"name": "单", "section": "S", "fields": [
+            {"type": "Text", "name": "标题", "is_title": True},
+            {"type": "SubTable", "name": "明细", "child_fields": [
+                {"type": "Number", "name": "金额"},
+                {"type": "Currency", "name": "金额"}]},
+        ]}],
+    }
+    errs2 = _vd(dup_child)
+    assert any("duplicate child field name '金额'" in e for e in errs2), errs2
+
+    # NEGATIVE: a Divider may share its label with the SubTable it introduces
+    # (a common section-header idiom that builds fine) — must NOT be flagged.
+    divider_ok = {
+        "app": {"name": "Z", "sections": ["S"]},
+        "worksheets": [{"name": "单", "section": "S", "fields": [
+            {"type": "Text", "name": "标题", "is_title": True},
+            {"type": "Divider", "name": "明细"},
+            {"type": "SubTable", "name": "明细", "child_fields": [
+                {"type": "Number", "name": "金额"}]},
+        ]}],
+    }
+    assert not any("duplicate field name '明细'" in e for e in _vd(divider_ok)), \
+        _vd(divider_ok)
+
+
+def test_derived_bridge_integrity() -> None:
+    """Rollup/Lookup ``via`` must name a relation/SubTable ON the host
+    worksheet, and ``field`` must exist on the bridged target. A via that
+    names a two_way reverse living on ANOTHER worksheet (销量总数 via 相关订单
+    where 相关订单 is 店铺's reverse, not 商品SKU's) is dangling."""
+    bad_via = {
+        "app": {"name": "X", "sections": ["S"]},
+        "worksheets": [
+            {"name": "商品SKU", "section": "S", "fields": [
+                {"type": "Text", "name": "SKU编码", "is_title": True},
+                # via names a reverse that lives on 店铺, not here.
+                {"type": "Rollup", "name": "销量总数",
+                 "rollup": {"via": "相关订单", "field": "数量", "aggregate": "sum"}},
+            ]},
+            {"name": "店铺", "section": "S", "fields": [
+                {"type": "Text", "name": "店铺名", "is_title": True}]},
+            {"name": "销售订单", "section": "S", "fields": [
+                {"type": "Text", "name": "单号", "is_title": True},
+                {"type": "Number", "name": "数量"},
+                {"type": "Relation", "name": "店铺",
+                 "relation": {"worksheet": "店铺", "multi": False,
+                              "two_way": {"name": "相关订单", "display": "tab_table",
+                                          "show_fields": ["单号"]}}},
+            ]},
+        ],
+    }
+    assert any("via '相关订单' is not a Relation or SubTable" in e
+               for e in _vd(bad_via)), _vd(bad_via)
+
+    # SubTable bridge whose aggregated column doesn't exist in the children.
+    bad_col = {
+        "app": {"name": "Y", "sections": ["S"]},
+        "worksheets": [{"name": "账单", "section": "S", "fields": [
+            {"type": "Text", "name": "标题", "is_title": True},
+            {"type": "SubTable", "name": "明细", "child_fields": [
+                {"type": "Currency", "name": "费用金额"}]},
+            {"type": "Rollup", "name": "合计",
+             "rollup": {"via": "明细", "field": "行金额", "aggregate": "sum"}},
+        ]}],
+    }
+    assert any("field '行金额' not found in SubTable '明细'" in e
+               for e in _vd(bad_col)), _vd(bad_col)
+
+
+def test_workflow_field_reference_integrity() -> None:
+    """A workflow ``$trigger-<ws>/<field>$`` (or fieldId) reference to a field
+    that doesn't exist on a real worksheet is dangling — e.g. matching on
+    $trigger-消耗记录/耗材库存编号$ when 消耗记录 has no such field (no relation
+    was modelled). System fields (ctime/ownerid/...) are exempt."""
+    design = {
+        "app": {"name": "X", "sections": ["S"]},
+        "roles": [{"name": "主管"}],
+        "worksheets": [
+            {"name": "消耗记录", "section": "S", "fields": [
+                {"type": "Text", "name": "单号", "is_title": True},
+                {"type": "Number", "name": "消耗数量"}]},
+            {"name": "耗材库存", "section": "S", "fields": [
+                {"type": "Text", "name": "名称", "is_title": True},
+                {"type": "Number", "name": "当前数量"}]},
+        ],
+        "workflows": [{
+            "name": "扣库存",
+            "trigger": {"type": "record_create_or_update",
+                        "worksheet": "消耗记录", "fields": ["消耗数量"]},
+            "nodes": [{
+                "nodeAlias": "deduct", "nodeType": "query_update",
+                "name": "扣减",
+                "config": {
+                    "worksheet": "耗材库存",
+                    "fields": [{"fieldId": "耗材库存/当前数量", "addType": 2,
+                                "valueRef": {"kind": "field",
+                                             "node": {"nodeAlias": "trigger"},
+                                             "fieldId": "消耗记录/消耗数量"}}],
+                    "match": [{"fieldId": "耗材库存/当前数量",
+                               "value": "$trigger-消耗记录/耗材库存编号$"}],
+                },
+            }],
+        }],
+    }
+    errs = _vd(design)
+    assert any("耗材库存编号" in e and "消耗记录" in e for e in errs), errs
+    # the legit refs (耗材库存/当前数量, 消耗记录/消耗数量) must NOT be flagged.
+    assert not any("当前数量" in e for e in errs), errs
+    assert not any("消耗记录/消耗数量" in e for e in errs), errs
+
+
+def test_query_update_match_desugars_to_filter() -> None:
+    """query_update's ``match`` shortcut has no wire handler; the pre-walk pass
+    must desugar it into a ``filter`` whose ``left`` reads a field of the
+    query_update node itself (gotcha #6), eq the match value/valueRef — else the
+    node ships an unhandled ``match`` key, has no find condition, and publish
+    fails (warningType 200)."""
+    from scripts.workflow_dsl import _apply_node_context_defaults
+    nodes = [{
+        "nodeAlias": "deduct", "nodeType": "query_update", "name": "扣减",
+        "config": {
+            "worksheet": "耗材库存",
+            "fields": [{"fieldId": "耗材库存/当前数量", "addType": 2,
+                        "valueRef": {"kind": "field",
+                                     "node": {"nodeAlias": "trigger"},
+                                     "fieldId": "消耗记录/消耗数量"}}],
+            "match": [{"fieldId": "耗材库存/rowid",
+                       "valueRef": {"kind": "field",
+                                    "node": {"nodeAlias": "trigger"},
+                                    "fieldId": "消耗记录/耗材库存"}}],
+        },
+    }]
+    _apply_node_context_defaults(nodes)
+    cfg = nodes[0]["config"]
+    assert "match" not in cfg, cfg
+    assert cfg.get("execute_type") == 2, cfg
+    items = cfg["filter"]["items"]
+    assert len(items) == 1, items
+    cond = items[0]
+    # left reads the query_update node's OWN field (gotcha #6)
+    assert cond["left"]["node"] == {"nodeAlias": "deduct"}, cond
+    assert cond["left"]["fieldId"] == "耗材库存/rowid", cond
+    assert cond["op"] == "eq", cond
+    assert cond["right"]["fieldId"] == "消耗记录/耗材库存", cond
+    # an explicit filter is left untouched (no double-desugar)
+    nodes2 = [{"nodeAlias": "q", "nodeType": "query_update",
+               "config": {"filter": {"items": []}, "match": [{"fieldId": "x/y"}]}}]
+    _apply_node_context_defaults(nodes2)
+    assert nodes2[0]["config"].get("match") == [{"fieldId": "x/y"}], \
+        "must not desugar when an explicit filter is already present"
+
+
+def test_compiler_subtable_child_relation_ordering() -> None:
+    """A SubTable child Relation is resolved at host-worksheet CREATE time
+    (steps._wire_subtable_child_relations), so the target worksheet must be
+    created first. The compiler must topologically order the Worksheets
+    phase by these child-relation edges — even when the design declares the
+    host BEFORE its target (the order that crashed r3-hardware: 产品BOM's
+    BOM明细 child relation -> 物料库存, declared after 产品BOM)."""
+    from scripts import compiler
+
+    design = {
+        "app": {"name": "BOM"},
+        "worksheets": [
+            # host declared FIRST, target SECOND — the failing order.
+            {"name": "产品BOM", "fields": [
+                {"type": "Text", "name": "产品名称", "is_title": True},
+                {"type": "SubTable", "name": "BOM明细", "child_fields": [
+                    {"type": "Relation", "name": "物料",
+                     "relation": {"worksheet": "物料库存", "multi": False,
+                                  "display": "card",
+                                  "show_fields": ["物料名称"]}},
+                    {"type": "Number", "name": "标准用量"},
+                ]},
+            ]},
+            {"name": "物料库存", "fields": [
+                {"type": "Text", "name": "物料名称", "is_title": True},
+                {"type": "Number", "name": "当前库存"},
+            ]},
+        ],
+    }
+    steps = compiler.compile_design(design)
+    ws_order = [s.name for s in steps if s.kind == "worksheet"]
+    assert ws_order.index("物料库存") < ws_order.index("产品BOM"), (
+        "child-relation target 物料库存 must be created before its host "
+        f"产品BOM; got {ws_order}")
 
 
 def test_amount_in_words() -> None:
@@ -519,6 +727,85 @@ def test_workflow_dsl() -> None:
     assert cc["content"] == "$trigger-c_qty$", cc  # alias kept, field resolved
 
 
+def test_create_record_target_derived() -> None:
+    """A create_record node carries no target record; its destination
+    worksheet is implied by the ``表名/字段`` prefix on its fields. The
+    translator must derive ``config.worksheet`` (-> appId) from that prefix
+    when the design gives none — otherwise the node ships appId="" and the
+    server drops every field (publish warningType 103). Also covers a
+    create_record nested inside a branch path, and an explicit worksheet
+    being left untouched."""
+    from scripts.store import Store
+    from scripts import workflow_dsl as W
+
+    d = Path(tempfile.mkdtemp()) / "appCr"
+    s = Store(d)
+    s.put_app("appCr", "Cr", "org1", [{"id": "sec1", "name": "S"}])
+    s.put_entity("worksheet", "WS_LOG", "催办记录", {"name": "催办记录"})
+    s.put_entity("worksheet", "WS_SRC", "督查事项", {"name": "督查事项"})
+    s.put_controls("WS_LOG", [
+        {"controlId": "c_when", "controlName": "催办时间", "type": 16},
+        {"controlId": "c_who", "controlName": "被催办人", "type": 26},
+    ])
+
+    nodes = [
+        # top-level create_record, no explicit worksheet -> derive 催办记录
+        {"nodeAlias": "gen", "nodeType": "create_record", "config": {"fields": [
+            {"fieldId": "催办记录/催办时间", "valueRef": {"kind": "system", "field": "now"}},
+            {"fieldId": "催办记录/被催办人", "value": "x"},
+        ]}},
+        # create_record nested in a branch path -> recursion must reach it
+        {"nodeAlias": "route", "nodeType": "branch", "config": {"paths": [
+            {"alias": "p", "nodes": [
+                {"nodeAlias": "gen2", "nodeType": "create_record", "config": {"fields": [
+                    {"fieldId": "催办记录/催办时间", "value": "y"}]}}]}]}},
+    ]
+    out = W.translate_nodes(s, nodes)
+    assert out[0]["config"]["worksheet"] == "WS_LOG", out[0]["config"]
+    nested = out[1]["config"]["paths"][0]["nodes"][0]["config"]
+    assert nested["worksheet"] == "WS_LOG", nested
+    # input list not mutated by the derivation
+    assert "worksheet" not in nodes[0]["config"], "must not mutate caller's nodes"
+
+
+def test_subprocess_owner_recipient_follows_sub_trigger() -> None:
+    """A record-scoped recipient (``{kind:"owner"}`` / ``{kind:"field"}``) on a
+    notice INSIDE a sub_process must default its source node to ``sub_trigger``
+    (the iterated record), not ``trigger``. The wire layer defaults recipients
+    to ``trigger``; left alone, a per-record-loop notice addressed to the
+    record owner resolves to the nonexistent trigger record and publish fails
+    warningType 103. A top-level owner recipient stays on the trigger default
+    (no node injected). ``triggerUser`` is user-scoped and never rewritten."""
+    from scripts.store import Store
+    from scripts import workflow_dsl as W
+
+    d = Path(tempfile.mkdtemp()) / "appSp"
+    s = Store(d)
+    s.put_app("appSp", "Sp", "org1", [{"id": "sec1", "name": "S"}])
+    s.put_entity("worksheet", "WS", "督查事项", {"name": "督查事项"})
+    s.put_controls("WS", [{"controlId": "c_t", "controlName": "事项标题", "type": 2}])
+
+    nodes = [
+        # top-level owner: keep the trigger default (no node injected)
+        {"nodeAlias": "n_top", "nodeType": "notice",
+         "config": {"content": "x", "accounts": [{"kind": "owner"}]}},
+        {"nodeAlias": "loop", "nodeType": "sub_process", "config": {"process": {
+            "name": "p", "data_source": {"kind": "record", "node": {"nodeAlias": "n_top"}},
+            "nodes": [
+                {"nodeAlias": "n_in", "nodeType": "notice", "config": {
+                    "content": "$sub_trigger-督查事项/事项标题$",
+                    "accounts": [{"kind": "owner"},
+                                 {"kind": "triggerUser"}]}}]}}},
+    ]
+    out = W.translate_nodes(s, nodes)
+    top_owner = out[0]["config"]["accounts"][0]
+    assert "node" not in top_owner, top_owner  # top level keeps trigger default
+    inner = out[1]["config"]["process"]["nodes"][0]["config"]["accounts"]
+    assert inner[0]["node"] == {"nodeAlias": "sub_trigger"}, inner[0]
+    # triggerUser is user-scoped — must NOT be rewritten to sub_trigger
+    assert "node" not in inner[1], inner[1]
+
+
 def test_workflow_schema() -> None:
     from scripts import schema
     base = {"app": {"name": "x"},
@@ -540,7 +827,9 @@ def test_workflow_schema() -> None:
                  "op": "eq", "right": {"kind": "literal", "value": "加急"}}]},
              "nodes": [{"nodeAlias": "c", "nodeType": "cc",
                         "config": {"accounts": [{"kind": "role", "role": "仓库主管"}], "content": "hi"}}]}]}},
-        {"nodeAlias": "sp", "nodeType": "sub_process", "config": {"process": {"nodes": [
+        {"nodeAlias": "sp", "nodeType": "sub_process", "config": {
+            "data_source": {"kind": "record", "node": {"nodeAlias": "trigger"}},
+            "process": {"nodes": [
             {"nodeAlias": "g", "nodeType": "get_single",
              "config": {"worksheet": "库存", "filter": {"items": [
                  {"left": {"kind": "field", "node": {"nodeAlias": "g"}, "fieldId": "库存/物料"},
@@ -554,6 +843,36 @@ def test_workflow_schema() -> None:
             {"left": {"kind": "field", "node": {"nodeAlias": "t"}, "fieldId": "a/b"}, "op": "ge"}]}}]}}]))
     assert _vd(_with([{"nodeAlias": "c", "nodeType": "cc",
                                           "config": {"accounts": [{"kind": "role"}]}}]))
+
+    # Per-nodeType required config (allOf/if/then) — guards validate-pass /
+    # build-fail. Each negative must be flagged; each shorthand positive clean.
+    # notice without content (only accounts) -> flagged
+    assert _vd(_with([{"nodeAlias": "n", "nodeType": "notice",
+                       "config": {"accounts": [{"kind": "owner"}]}}]))
+    # sub_process without any data_source -> flagged
+    assert _vd(_with([{"nodeAlias": "s", "nodeType": "sub_process",
+                       "config": {"process": {"nodes": []}}}]))
+    # data_source on config.process is also accepted (no error)
+    assert _vd(_with([{"nodeAlias": "s", "nodeType": "sub_process",
+                       "config": {"process": {
+                           "data_source": {"kind": "record", "node": {"nodeAlias": "trigger"}},
+                           "nodes": []}}}])) == []
+    # get_multiple without worksheet -> flagged
+    assert _vd(_with([{"nodeAlias": "g", "nodeType": "get_multiple", "config": {}}]))
+    # rollup needs mode; the singular `aggregate` shorthand (no aggregations[]) is OK
+    assert _vd(_with([{"nodeAlias": "r", "nodeType": "rollup", "config": {"aggregate": "count"}}]))
+    assert _vd(_with([{"nodeAlias": "r", "nodeType": "rollup", "config": {
+        "mode": "worksheet", "aggregate": "count",
+        "data_source": {"kind": "record", "node": {"nodeAlias": "trigger"}}}}])) == []
+    # send_email needs only accounts; subject+content (no body) is a valid body source
+    assert _vd(_with([{"nodeAlias": "m", "nodeType": "send_email",
+                       "config": {"subject": "s", "content": "c",
+                                  "accounts": [{"kind": "owner"}]}}])) == []
+    # compute: date_diff needs start/end/out_unit; other modes need formula
+    assert _vd(_with([{"nodeAlias": "cp", "nodeType": "compute",
+                       "config": {"mode": "date_diff", "start": "a", "end": "b"}}]))
+    assert _vd(_with([{"nodeAlias": "cp", "nodeType": "compute",
+                       "config": {"mode": "number", "formula": "1+1"}}])) == []
 
 
 def test_filter_field_map() -> None:
@@ -1021,18 +1340,114 @@ def test_partial_step_failure_carries_id() -> None:
     assert rec.created_id == "proc_42", "partial id must survive onto the record"
 
 
+def test_icon_validation() -> None:
+    """The validate command's icon layer: every ``icon`` field, wherever it
+    nests, must resolve to a real catalogue icon by EXACT fileName match.
+
+    Driven through a fake ``hap icon search`` runner so the test stays offline
+    — it mimics the real CLI: an exact catalogue name comes back as itself,
+    a short form resolves to its canonical ``sys_`` name (rejected), and a
+    fabricated name yields a random ``suggested`` placeholder (rejected)."""
+    from scripts import validate
+
+    class _Res:
+        def __init__(self, data):
+            self.data = data
+
+    # Mimic `hap icon search <q> --limit 1`: real -> exact row, short form ->
+    # canonical sys_ row, anything else -> a suggested placeholder.
+    catalogue = {"sys_1_2_order", "sys_18_5_warehouse", "sys_form_symbol"}
+
+    def fake_run(args, **kw):
+        q = args[2]
+        if q in catalogue:
+            return _Res([{"fileName": q, "tags": [], "score": 1}])
+        if "sys_" + q in catalogue:
+            return _Res([{"fileName": "sys_" + q, "tags": [], "score": 1}])
+        return _Res([{"fileName": "sys_18_5_warehouse", "tags": [],
+                      "suggested": True}])
+
+    # Path collection reaches deeply-nested icons (page component buttons).
+    doc = {
+        "app": {"name": "Demo", "icon": "sys_1_2_order"},
+        "worksheets": [{"name": "WS", "icon": "sys_18_5_warehouse"}],
+        "custom_pages": [{
+            "name": "P", "icon": "sys_form_symbol",
+            "components": [{
+                "name": "C", "icon": "sys_form_symbol",
+                "button": {"buttons": [{"icon": "sys_1_2_order"}]},
+            }],
+        }],
+    }
+    refs = dict(validate._collect_icons(doc))
+    assert "custom_pages[0].components[0].button.buttons[0].icon" in refs, refs
+    assert validate._check_icons(doc, runner=fake_run) == []
+
+    # icon_color is NOT an icon ref (different key) — must be ignored.
+    assert validate._collect_icons({"app": {"icon_color": "#ffffff"}}) == []
+
+    # Fabricated + non-canonical short form both rejected, each with its path.
+    bad = {
+        "app": {"name": "D", "icon": "sys_15_3_user"},   # fabricated
+        "worksheets": [{"name": "W", "icon": "1_2_order"}],  # short form
+    }
+    errs = validate._check_icons(bad, runner=fake_run)
+    assert len(errs) == 2, errs
+    assert any("app.icon" in e and "sys_15_3_user" in e for e in errs), errs
+    assert any("worksheets[0].icon" in e and "1_2_order" in e for e in errs), errs
+
+
+def test_append_strips_client_control_ids() -> None:
+    """Cross-sheet controls (forward relations, lookups, rollups, …) are
+    appended with AddWorksheetControls, which only mints a real 24-hex
+    controlId when the client OMITS its own. A client ``uuid4().hex`` is
+    persisted verbatim and breaks grid/relation rendering, so the append
+    pass must drop any non-ObjectId controlId before sending — while
+    keeping a real 24-hex placeholder (a two-way relation's reverse half
+    is paired by that id).
+    """
+    import uuid
+    from scripts.steps import _strip_client_control_ids, _OBJECT_ID_RE
+
+    forward = {"controlName": "所属项目", "type": 29,
+               "controlId": uuid.uuid4().hex}           # 32-hex, client-side
+    derived = {"controlName": "汇总", "type": 31,
+               "controlId": uuid.uuid4().hex}
+    reverse = {"controlName": "版本需求", "type": 29,
+               "controlId": "6a2bd705597a269e879f0982"}  # 24-hex placeholder
+
+    controls = [forward, derived, reverse]
+    _strip_client_control_ids(controls)
+
+    assert "controlId" not in forward, forward
+    assert "controlId" not in derived, derived
+    # The reverse placeholder is a valid ObjectId — pairing depends on it.
+    assert reverse["controlId"] == "6a2bd705597a269e879f0982", reverse
+    assert _OBJECT_ID_RE.match(reverse["controlId"])
+    # A 32-hex uuid hex must NOT be mistaken for an ObjectId.
+    assert not _OBJECT_ID_RE.match(uuid.uuid4().hex)
+
+
 def main() -> int:
     tests = [test_store, test_schema, test_fields, test_compiler,
              test_compiler_reverse_relation_ordering,
+             test_compiler_subtable_child_relation_ordering,
+             test_query_update_match_desugars_to_filter,
+             test_duplicate_field_name_rejected,
+             test_derived_bridge_integrity,
+             test_workflow_field_reference_integrity,
              test_compiler_derived_topo_order, test_size_snap,
              test_amount_in_words, test_cascade_select, test_seed,
              test_seed_self_relation_tree,
-             test_workflow_dsl, test_workflow_schema, test_filter_field_map,
+             test_workflow_dsl, test_create_record_target_derived,
+             test_subprocess_owner_recipient_follows_sub_trigger,
+             test_workflow_schema, test_filter_field_map,
              test_ranking_sort_and_limit, test_embedded_view_reference,
              test_view_role_field_references, test_view_actions_reference,
              test_merge_designs, test_filter_extensions, test_schema_extensions,
              test_workflow_formula_refs,
-             test_report_three_state, test_partial_step_failure_carries_id]
+             test_report_three_state, test_partial_step_failure_carries_id,
+             test_icon_validation, test_append_strips_client_control_ids]
     for t in tests:
         try:
             t()
