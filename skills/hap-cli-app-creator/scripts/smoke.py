@@ -69,7 +69,10 @@ def main(argv: list[str] | None = None) -> int:
 
     steps = compiler.compile_design(design)
     design_label = " + ".join(p.name for p in design_paths)
-    print(f"▶ smoke: {design_label} — {len(steps)} steps, org={org_id}, run={run_id}\n")
+    # flush so the header shows the instant compilation finishes, before the
+    # first (possibly slow) step rather than waiting on a buffer fill.
+    print(f"▶ smoke: {design_label} — {len(steps)} steps, org={org_id}, run={run_id}\n",
+          flush=True)
 
     recorders = [
         ConsoleRecorder(),

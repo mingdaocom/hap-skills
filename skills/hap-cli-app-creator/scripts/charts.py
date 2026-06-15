@@ -307,11 +307,18 @@ def chart_component(
 
 def view_component(*, worksheet_id: str, view_id: str, name: str,
                    layout: dict[str, int]) -> dict[str, Any]:
-    """Build a type-5 embedded-view component."""
+    """Build a type-5 embedded-view component.
+
+    The component's display title lives in ``config.name`` (pd-openweb
+    customPage editWidget/view/Setting.jsx reads/writes ``config.name``),
+    so the design's component name goes there. The view already renders its
+    own header, so the outer widget title bar is hidden on both web and
+    mobile (``titleVisible: False``).
+    """
     return {
         "type": 5, "value": worksheet_id, "viewId": view_id, "name": name,
-        "config": {"objectId": uuid.uuid4().hex},
-        "web": {"title": "", "titleVisible": True, "visible": True,
+        "config": {"objectId": uuid.uuid4().hex, "name": name},
+        "web": {"title": "", "titleVisible": False, "visible": True,
                 "layout": {**layout, "minW": 2, "minH": 4}},
         "mobile": {"title": "", "titleVisible": False, "visible": True, "layout": None},
     }

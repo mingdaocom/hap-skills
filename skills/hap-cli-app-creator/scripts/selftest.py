@@ -140,10 +140,12 @@ def test_compiler() -> None:
 
 
 def test_compiler_reverse_relation_ordering() -> None:
-    """Two-way reverse relations split by bridge usage (BUILD-09):
-    a reverse NOT used as a derived field's `via` is built AFTER the
-    Derived phase, so its show_fields can reference rollup/lookup columns;
-    a reverse that IS a derived `via` bridge stays BEFORE Derived."""
+    """A two-way relation creates BOTH halves in its forward ``relation``
+    step (forward carries the reverse as an embedded sourceControl). So the
+    reverse EXISTS before the Derived pass — a derived field that bridges
+    through it resolves fine. The separate ``relation_reverse`` step is now
+    a deferred display-column REFRESH, always emitted AFTER Derived so
+    two_way.show_fields can reference rollup/lookup columns (BUILD-09)."""
     from scripts import compiler
 
     design = {
@@ -170,12 +172,15 @@ def test_compiler_reverse_relation_ordering() -> None:
     kinds = [s.kind for s in steps]
     ids = [s.id for s in steps]
     assert "relation_reverse" in kinds, kinds
-    # forward relation always in the Relations pass, before derived
+    # The forward relation step (which now also creates the reverse) must
+    # precede Derived, so a rollup bridging through the reverse "客户订单"
+    # resolves it.
     assert kinds.index("relation") < kinds.index("derived")
-    # "客户订单" is a rollup via-bridge -> its reverse must precede Derived
+    # The relation_reverse step is a display refresh -> always AFTER Derived,
+    # even when the reverse is a rollup via-bridge.
     rev_idx = ids.index("relation_reverse:订单.客户")
-    assert rev_idx < kinds.index("derived"), \
-        "bridge reverse relation must build before derived fields"
+    assert rev_idx > max(i for i, k in enumerate(kinds) if k == "derived"), \
+        "reverse display-refresh must run after derived fields"
 
     # a reverse NOT used as a bridge moves AFTER derived
     design2 = {
@@ -334,6 +339,118 @@ def test_workflow_field_reference_integrity() -> None:
     # the legit refs (耗材库存/当前数量, 消耗记录/消耗数量) must NOT be flagged.
     assert not any("当前数量" in e for e in errs), errs
     assert not any("消耗记录/消耗数量" in e for e in errs), errs
+
+
+def test_workflow_subtable_field_reference() -> None:
+    """A 3-part ``<ws>/<subtable>/<child>`` reference (a SubTable column,
+    resolved at build time by workflow_dsl) must validate when the child
+    exists, and be flagged when it doesn't — a SubTable child path is NOT a
+    flat field on the parent worksheet, so the naive 2-part check used to
+    false-flag every valid sub_process reference (warehouse 执行出库)."""
+    def _design(child_ref: str) -> dict:
+        return {
+            "app": {"name": "X", "sections": ["S"]},
+            "worksheets": [{"name": "出库单", "section": "S", "fields": [
+                {"type": "Text", "name": "单号", "is_title": True},
+                {"type": "SubTable", "name": "出库明细", "child_fields": [
+                    {"type": "Number", "name": "出库数量"}]}]}],
+            "workflows": [{
+                "name": "改明细", "trigger": {"type": "button"},
+                "nodes": [{
+                    "nodeAlias": "u", "nodeType": "update_record", "name": "改",
+                    "config": {
+                        "worksheet": "出库单/出库明细",
+                        "target": {"kind": "record", "node": {"nodeAlias": "trigger"}},
+                        "fields": [{"fieldId": child_ref, "type": 6, "value": "1"}],
+                    }}]}],
+        }
+
+    # valid child column -> no field-reference error
+    ok = _vd(_design("出库单/出库明细/出库数量"))
+    assert not any("field reference" in e for e in ok), ok
+    # missing child column -> flagged
+    bad = _vd(_design("出库单/出库明细/不存在"))
+    assert any("不存在" in e and "出库明细" in e for e in bad), bad
+    # a non-SubTable middle segment -> flagged
+    notsub = _vd(_design("出库单/单号/x"))
+    assert any("is not a SubTable" in e for e in notsub), notsub
+
+
+def test_button_trigger_worksheet_mismatch() -> None:
+    """A button-triggered workflow's ``trigger`` record IS a record of the
+    worksheet its custom action sits on (the host). A node that binds the
+    reserved ``trigger`` alias to a DIFFERENT worksheet's columns (treating
+    the button record as if it were another table's record) builds against the
+    host with foreign column ids and the server rejects publish (warningType
+    200). Must be caught at validate time, not at build. Mirrors the live
+    ducha-2606 failure: a 发起延期 button on 督查事项 whose flow updates the
+    trigger as if it were a 延期申请 record."""
+    base = {
+        "app": {"name": "X", "sections": ["S"]},
+        "roles": [{"name": "督查专员"}],
+        "worksheets": [
+            {"name": "督查事项", "section": "S", "fields": [
+                {"type": "Text", "name": "事项标题", "is_title": True},
+                {"type": "Date", "name": "完成时限"}]},
+            {"name": "延期申请", "section": "S", "fields": [
+                {"type": "Text", "name": "申请编号", "is_title": True},
+                {"type": "SingleSelect", "name": "审批状态",
+                 "options": ["待审核", "已通过"]},
+                {"type": "Relation", "name": "关联事项",
+                 "relation": {"worksheet": "督查事项", "multi": False}}]},
+        ],
+        "custom_actions": [{
+            "worksheet": "督查事项", "name": "发起延期",
+            "type": "trigger_workflow", "workflow": "延期审批流程"}],
+    }
+    # BAD: trigger (a 督查事项 record) updated with 延期申请 columns.
+    bad = dict(base)
+    bad["workflows"] = [{
+        "name": "延期审批流程", "trigger": {"type": "button"},
+        "nodes": [{
+            "nodeAlias": "更新延期", "nodeType": "update_record",
+            "name": "更新延期",
+            "config": {
+                "target": {"kind": "record", "node": {"nodeAlias": "trigger"}},
+                "fields": [{"fieldId": "延期申请/审批状态", "value": "已通过"}]},
+        }],
+    }]
+    errs = _vd(bad)
+    assert any("延期申请" in e and "督查事项" in e for e in errs), errs
+
+    # BAD via a $trigger-<other>/...$ template too.
+    bad2 = dict(base)
+    bad2["workflows"] = [{
+        "name": "延期审批流程", "trigger": {"type": "button"},
+        "nodes": [{
+            "nodeAlias": "通知", "nodeType": "notice", "name": "通知",
+            "config": {"accounts": [{"kind": "role", "role": "督查专员"}],
+                       "content": "延期至 $trigger-延期申请/审批状态$"}},
+        ],
+    }]
+    assert any("延期申请" in e and "督查事项" in e for e in _vd(bad2)), _vd(bad2)
+
+    # GOOD: trigger refs the host (督查事项); 延期申请 record is reached via a
+    # create_record node and updated by binding to THAT node — not trigger.
+    good = dict(base)
+    good["workflows"] = [{
+        "name": "延期审批流程", "trigger": {"type": "button"},
+        "nodes": [{
+            "nodeAlias": "建延期申请", "nodeType": "create_record",
+            "name": "建延期申请",
+            "config": {"fields": [
+                {"fieldId": "延期申请/审批状态", "value": "待审核"},
+                {"fieldId": "延期申请/关联事项",
+                 "valueRef": {"kind": "field", "node": {"nodeAlias": "trigger"},
+                              "fieldId": "督查事项/rowid"}}]}},
+            {"nodeAlias": "通知", "nodeType": "notice", "name": "通知",
+             "config": {"accounts": [{"kind": "role", "role": "督查专员"}],
+                        "content": "事项 $trigger-督查事项/事项标题$ 延期已提交"}},
+        ],
+    }]
+    errs = _vd(good)
+    assert not any("trigger-bound" in e for e in errs), errs
+    assert not any("督查事项" in e and "延期申请" in e for e in errs), errs
 
 
 def test_query_update_match_desugars_to_filter() -> None:
@@ -1082,6 +1199,23 @@ def test_embedded_view_reference() -> None:
     assert _vd(design) == [], _vd(design)
 
 
+def test_view_component_shape() -> None:
+    """An embedded-view page component carries its display title in
+    ``config.name`` (where pd-openweb's view widget reads it), and hides the
+    outer widget title bar on both web and mobile (the view renders its own
+    header)."""
+    from scripts import charts as CH
+
+    comp = CH.view_component(
+        worksheet_id="ws1", view_id="v1", name="本月订单",
+        layout={"x": 0, "y": 0, "w": 48, "h": 12},
+    )
+    assert comp["type"] == 5
+    assert comp["config"]["name"] == "本月订单"
+    assert comp["web"]["titleVisible"] is False
+    assert comp["mobile"]["titleVisible"] is False
+
+
 def test_merge_designs() -> None:
     """Split-generation: independently-authored parts merge into one whole.
     `app` is single-owner; array sections concatenate; cross-part duplicate
@@ -1340,6 +1474,37 @@ def test_partial_step_failure_carries_id() -> None:
     assert rec.created_id == "proc_42", "partial id must survive onto the record"
 
 
+def test_console_recorder_live_progress() -> None:
+    """The console recorder emits a ▶ in-progress line at step START (so a
+    slow step isn't a silent wait) and a ✓/✗ result line at finish. On a
+    non-tty stream (a pipe / agent capture) both lines are kept; the start
+    line must appear BEFORE the result so progress streams incrementally."""
+    import io
+    from scripts.recording.console import ConsoleRecorder
+    from scripts.executor import StepRecord, STATUS_OK
+    from scripts.steps import Step
+
+    buf = io.StringIO()  # StringIO.isatty() -> False, so non-tty path
+    cr = ConsoleRecorder(stream=buf)
+    step = Step(id="worksheet:客户", kind="worksheet", name="客户",
+                phase="Worksheets", spec={})
+
+    cr.on_start(step)
+    mid = buf.getvalue()
+    # the start line is emitted immediately, before any result
+    assert "▶ [Worksheets] 客户" in mid, mid
+    assert "✓" not in mid, mid
+
+    cr.on_step(StepRecord(step_id="worksheet:客户", kind="worksheet",
+                          name="客户", phase="Worksheets", status=STATUS_OK,
+                          created_id="ws1", duration_ms=123))
+    out = buf.getvalue()
+    assert "✓ [Worksheets] 客户" in out and "id=ws1" in out, out
+    assert out.index("▶") < out.index("✓"), out
+    # non-tty path emits clean lines, no ANSI control codes
+    assert "\033" not in out, repr(out)
+
+
 def test_icon_validation() -> None:
     """The validate command's icon layer: every ``icon`` field, wherever it
     nests, must resolve to a real catalogue icon by EXACT fileName match.
@@ -1436,6 +1601,8 @@ def main() -> int:
              test_duplicate_field_name_rejected,
              test_derived_bridge_integrity,
              test_workflow_field_reference_integrity,
+             test_workflow_subtable_field_reference,
+             test_button_trigger_worksheet_mismatch,
              test_compiler_derived_topo_order, test_size_snap,
              test_amount_in_words, test_cascade_select, test_seed,
              test_seed_self_relation_tree,
@@ -1443,10 +1610,12 @@ def main() -> int:
              test_subprocess_owner_recipient_follows_sub_trigger,
              test_workflow_schema, test_filter_field_map,
              test_ranking_sort_and_limit, test_embedded_view_reference,
+             test_view_component_shape,
              test_view_role_field_references, test_view_actions_reference,
              test_merge_designs, test_filter_extensions, test_schema_extensions,
              test_workflow_formula_refs,
              test_report_three_state, test_partial_step_failure_carries_id,
+             test_console_recorder_live_progress,
              test_icon_validation, test_append_strips_client_control_ids]
     for t in tests:
         try:

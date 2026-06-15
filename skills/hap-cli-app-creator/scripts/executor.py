@@ -59,6 +59,10 @@ class RunSummary:
 
 
 class Recorder(Protocol):
+    # on_start is optional — emitted just before a step's handler runs so a
+    # live console can show "in progress" feedback during a slow step. Only
+    # recorders that define it are notified.
+    def on_start(self, step: "Step") -> None: ...
     def on_step(self, rec: StepRecord) -> None: ...
     def on_finish(self, summary: RunSummary) -> None: ...
 
@@ -88,6 +92,12 @@ class Executor:
             self.summary.app_id = store.app_id
             self.summary.app_name = store.app_meta().get("name", "")
 
+    def _emit_start(self, step: Step) -> None:
+        for r in self.recorders:
+            hook = getattr(r, "on_start", None)
+            if hook is not None:
+                hook(step)
+
     def _emit(self, rec: StepRecord) -> None:
         if rec.status == STATUS_OK:
             self.summary.ok += 1
@@ -111,6 +121,7 @@ class Executor:
                 ))
                 continue
 
+            self._emit_start(step)
             start = time.monotonic()
             try:
                 outcome = S.get_handler(step.kind)(self.ctx, step)

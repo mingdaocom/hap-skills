@@ -177,6 +177,7 @@
 - `button`：由自定义动作按钮触发。这条工作流写在 `workflows[]`，`trigger` 只需 `{"type":"button"}`（无需 worksheet）；
   另在 `custom_actions[]` 配一个 `type:"trigger_workflow"` 的按钮、其 `workflow` 字段指向本工作流名（一对一配对，见 [custom-actions.md](custom-actions.md)）。
   节点里用 `{nodeAlias:"trigger"}` 引用按下按钮的那条记录。
+  > ⛔ **`trigger` 就是按钮所在表（宿主表）的记录**：自定义动作 `worksheet="A"` ⇒ `trigger` 永远是一条 A 表记录。所有 `{nodeAlias:"trigger"}` 引用与 `$trigger-表/字段$` 模板的 `表名` 前缀**必须是 A**。要写/审另一张表 B 的记录，**先 `create_record` 建 B 记录、再绑定到那个节点的别名**（别把 `trigger` 当 B 记录用），否则发布报 `warningType 200`、validate 会直接拦下。详见 [workflow-gotchas.md](workflow-gotchas.md) 按钮触发条目。
 - `webhook`：外部系统通过 HTTP 推送触发。`trigger` 写 `{"type":"webhook","sample":{...}}`——`sample` 是一份**代表性入站 JSON 请求体样例**，构建时会把它发到 webhook 接收地址，由服务端按结构推导入站参数（每个顶层键成为一个参数，**参数名即键名**）。下游节点用 `$trigger-键名$` 取对应入站值写入工作表（如 create_record 的字段 `{"fieldId":"订单/订单号","value":"$trigger-order_id$"}`）。
   - sample 的值类型决定参数类型（字符串/数字），尽量给真实示例值。键名建议用字母/数字/下划线，避免连字符（`$trigger-...$` 以首个 `-` 分隔别名与参数名）。
   - 全链路已 live 验证：建表→建 webhook 流→发布→真实 POST 入站值正确落库。

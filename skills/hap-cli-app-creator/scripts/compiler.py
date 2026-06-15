@@ -198,23 +198,15 @@ def compile_design(design: dict[str, Any]) -> list[Step]:
             phase="Worksheets", spec={"worksheet": ws},
         ))
 
-    # Which relation names are used as a derived field's bridge (`via`)?
-    # A Rollup/Lookup aggregates THROUGH a relation; if that bridge is a
-    # two-way REVERSE relation, the reverse control must exist BEFORE the
-    # Derived pass. Reverses NOT used as a bridge are deferred to AFTER
-    # Derived so their show_fields can reference rollup/lookup columns
-    # (BUILD-09: two_way.show_fields pointing at a derived column failed
-    # because the column did not exist yet at relation-build time).
-    bridge_vias: set[str] = set()
-    for ws in worksheets:
-        for f in ws.get("fields", []) or []:
-            cfg = f.get("rollup") or f.get("lookup")
-            if cfg and cfg.get("via"):
-                bridge_vias.add(cfg["via"])
-
-    # 3. relations (forward Relation fields — second pass). The reverse half
-    #    of a two-way relation is emitted separately: as a bridge here if a
-    #    derived field aggregates through it, otherwise deferred to step 4b.
+    # 3. relations (forward Relation fields — second pass). A two-way
+    #    relation creates BOTH halves in its forward step (the forward
+    #    carries its reverse as an embedded sourceControl, saved in one
+    #    SaveWorksheetControls call). The reverse therefore EXISTS after the
+    #    forward step — available to any derived field that bridges through
+    #    it. The separate ``relation_reverse`` step is deferred to AFTER the
+    #    Derived pass purely to REFRESH the reverse's display columns once
+    #    two_way.show_fields pointing at rollup/lookup columns have been
+    #    built (BUILD-09); it is a no-op otherwise.
     deferred_reverses: list[Step] = []
     for ws in worksheets:
         for f in ws.get("fields", []) or []:
@@ -228,18 +220,13 @@ def compile_design(design: dict[str, Any]) -> list[Step]:
             two_way = (f.get("relation") or {}).get("two_way")
             if not two_way:
                 continue
-            rev_step = Step(
+            deferred_reverses.append(Step(
                 id=f"relation_reverse:{ws['name']}.{f['name']}",
                 kind="relation_reverse",
                 name=f"{f['relation']['worksheet']}.{two_way['name']}",
-                phase="Relations",
+                phase="Reverse relations",
                 spec={"worksheet": ws["name"], "field": f},
-            )
-            if two_way["name"] in bridge_vias:
-                _emit(steps, rev_step)  # bridge: must precede Derived
-            else:
-                rev_step.phase = "Reverse relations"
-                deferred_reverses.append(rev_step)
+            ))
 
     # 4. derived (Lookup/Rollup/Formula — third pass), in DEPENDENCY order so
     #    a derived field that references another derived field builds after it

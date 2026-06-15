@@ -41,6 +41,15 @@
   完整示例：`"trigger":{ "type":"date", "worksheet":"设备", "date_field":"下次保养日", "date_config":{ "offset_type":"before","offset_number":3,"offset_unit":"day","time":"09:00","repeat":"once" } }`。
   > 记录触发(`record_*`)同理：`worksheet` 也是必填。button / scheduled / webhook 才不写 worksheet。
 - **按钮 `button`**：工作流写在 `workflows[]`（`trigger:{type:"button"}`），再由一个 `trigger_workflow` 自定义动作的 `workflow` 字段按名指向它；触发记录用 `{nodeAlias:"trigger"}`。
+  > ⛔ **`trigger` 记录 = 自定义动作所在的那张表（宿主表）的记录，不是别的表。**
+  > 自定义动作挂在 A 表（`custom_actions[].worksheet="A"`），用户就是在 A 表的某条记录上点按钮，所以 `trigger` 永远是一条 **A 表记录**。
+  > 因此**所有** `{nodeAlias:"trigger"}` 的引用——update/query 的 `target`+`fields`、`valueRef`、filter 的 left/right、`$trigger-表/字段$` 模板——其 `表名/字段` 前缀**必须是宿主表 A**。
+  > 写成 `$trigger-B/...$`，或 `target=trigger` 却填 B 表字段（把按钮记录当成 B 表记录），构建会把节点绑到 A 表却塞入 B 表列 id，发布必报 `warningType 200`（"N 个节点未设置有效的操作或操作内容异常"）、整条流程发布失败。**validate 现在会直接拦下这类引用。**
+  > **要操作另一张表 B 的记录**（典型："从 督查事项 点『发起延期』，要落一条 延期申请"）：
+  > 1. 先加 `create_record` 节点在 B 表建记录（关联字段用 `valueRef:{node:{nodeAlias:"trigger"},fieldId:"A/rowid"}` 指回 A；其余值来自 `$trigger-A/字段$`）；
+  > 2. 之后对这条 B 记录的所有 update/引用，**绑定到该 create_record 节点的别名**（如 `target:{kind:"record",node:{nodeAlias:"建延期申请"}}`），**不要用 `trigger`**；
+  > 3. 审批块要审 B 记录时，让它跟在 create_record 之后，块内用 `approval_trigger` 引用被审记录。
+  > 一句话：`trigger` 只代表宿主表那条记录；别的表的记录都得先用节点建出来/取出来再引用。
 
 > ⚠️ **「到期前 N 天 / 未来 N 天内到期」怎么写**——工作流日期条件**只能跟某个时间点比较（早于/晚于/在范围内），没有「当前时间 ± N 天」的相对偏移**。所以：
 > - **逐条「到期前 N 天」提醒** → 直接用 **date 日期触发器**：`date_config.offset_type:"before"` + `offset_number:N`（每条记录在其日期字段前 N 天自动触发，无需扫描）。这是首选。

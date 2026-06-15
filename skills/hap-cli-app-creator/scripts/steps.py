@@ -12,9 +12,11 @@ directly so the exact end-to-end command path is exercised.
 """
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import re
+import uuid
 from dataclasses import dataclass, field as dc_field
 from typing import Any, Callable, Optional
 
@@ -234,27 +236,18 @@ def _strip_client_control_ids(controls: list[dict[str, Any]]) -> list[dict[str, 
     return controls
 
 
-def _append_controls_pass(
-    store: Store, worksheet_id: str, new_controls: list[dict[str, Any]]
-) -> list[str]:
-    """Append raw controls to a worksheet via ``add-fields --controls``.
+def _layout_new_controls(
+    existing: list[dict[str, Any]], new_controls: list[dict[str, Any]]
+) -> None:
+    """Assign row/col to ``new_controls`` relative to ``existing`` (mutates).
 
-    Sends ONLY the new controls (incremental AddWorksheetControls). The
-    existing saved controls are read purely to compute layout (row/col)
-    for the additions — they are NOT re-sent. Re-sending the full layout
-    via ``update-fields`` (SaveWorksheetControls) silently drops the new
-    controls once the worksheet already holds bidirectional reverse
-    relation controls (sourceControlType=2), so two-way back-references
-    and any field appended after them would vanish. Verified live.
-    Returns the argv used.
+    Layout strategy:
+      * a new control with an explicit design ``__row__`` slots into THAT
+        row (the design controls the whole form), col = next free slot;
+      * the rest auto-pack into the 12-grid AFTER the existing layout —
+        fill the last row while width remains, else wrap — so they land
+        below the intra fields, half-widths side-by-side.
     """
-    existing = store.worksheet_controls(worksheet_id)
-    # Controls in each row, for col assignment. Layout strategy:
-    #   * a new control with an explicit design ``__row__`` slots into THAT
-    #     row (the design controls the whole form), col = next free slot;
-    #   * the rest auto-pack into the 12-grid AFTER the existing layout —
-    #     fill the last row while width remains, else wrap — so they land
-    #     below the intra fields, half-widths side-by-side.
     rows_map: dict[int, list[dict[str, Any]]] = {}
     for c in existing:
         rows_map.setdefault(c.get("row", 0), []).append(c)
@@ -284,9 +277,59 @@ def _append_controls_pass(
         c["col"] = slot
         used += size
         slot += 1
+
+
+def _append_controls_pass(
+    store: Store, worksheet_id: str, new_controls: list[dict[str, Any]]
+) -> list[str]:
+    """Append raw controls to a worksheet via ``add-fields --controls``.
+
+    Sends ONLY the new controls (incremental AddWorksheetControls). The
+    existing saved controls are read purely to compute layout (row/col)
+    for the additions — they are NOT re-sent. Used for one-way relations
+    and derived (lookup/rollup/barcode/cascade) controls. Returns the argv.
+    """
+    existing = store.worksheet_controls(worksheet_id)
+    _layout_new_controls(existing, new_controls)
     _strip_client_control_ids(new_controls)
     argv = ["worksheet", "add-fields", worksheet_id,
             "--controls", json.dumps(new_controls, ensure_ascii=False)]
+    hap.run(argv)
+    _read_and_store_controls(store, worksheet_id)
+    return argv
+
+
+def _new_placeholder() -> str:
+    """A dashed uuid4 placeholder controlId. SaveWorksheetControls detects
+    the ``-`` separators, treats the control as new, and re-mints it to a
+    real 24-hex ObjectId (and pairs a two-way relation's two halves)."""
+    return str(uuid.uuid4())
+
+
+def _save_controls_pass(
+    store: Store, worksheet_id: str, new_controls: list[dict[str, Any]]
+) -> list[str]:
+    """Add new controls via a FULL SaveWorksheetControls (update-fields).
+
+    Re-sends the worksheet's existing controls verbatim plus the new
+    control(s). Used for two-way relations: the forward control carries
+    its reverse half as an embedded ``sourceControl`` and the server only
+    creates BOTH halves correctly paired on SaveWorksheetControls
+    (AddWorksheetControls overwrites the reverse's back-link with a
+    dangling placeholder). Client placeholder ids are NOT stripped — the
+    server re-mints dashed-uuid placeholders itself.
+
+    Re-sending existing controls is safe against the historical "drops new
+    additions / duplicates when >=3 reverse controls exist" quirk: that
+    quirk is triggered by re-sending a reverse whose back-link is DANGLING,
+    and controls created via this path are never dangling (verified live:
+    re-saving a clean reverse neither duplicates nor drops).
+    """
+    existing = store.worksheet_controls(worksheet_id)
+    _layout_new_controls(existing, new_controls)
+    full = list(existing) + list(new_controls)
+    argv = ["worksheet", "update-fields", worksheet_id,
+            "--controls", json.dumps(full, ensure_ascii=False)]
     hap.run(argv)
     _read_and_store_controls(store, worksheet_id)
     return argv
@@ -474,11 +517,18 @@ def _h_worksheet(ctx: ExecCtx, step: Step) -> StepOutcome:
 
 @handler("relation")
 def _h_relation(ctx: ExecCtx, step: Step) -> StepOutcome:
-    """Forward half of a Relation field. When the field is two-way, the
-    control reserves a ``sourceControlId`` placeholder for its reverse; the
-    reverse control itself is created by a separate ``relation_reverse``
-    step (a bridge-reverse right after this in the Relations phase, a
-    non-bridge reverse deferred to after the Derived pass — see compiler)."""
+    """Forward half of a Relation field.
+
+    One-way: appended via AddWorksheetControls (server mints the id).
+
+    Two-way: the forward carries its reverse half as an embedded
+    ``sourceControl`` and is sent via SaveWorksheetControls (see
+    :func:`fields.bidirectional_relation_control`). The server creates BOTH
+    halves correctly paired in one call, so the reverse's back-link never
+    dangles (the bug that left a multi/tab_table reverse blank in the grid).
+    The reverse therefore EXISTS after this step — the deferred
+    ``relation_reverse`` step only refreshes its display columns once any
+    derived ``two_way.show_fields`` have been built."""
     store = _require_store(ctx)
     host = step.spec["worksheet"]
     field = step.spec["field"]
@@ -490,19 +540,46 @@ def _h_relation(ctx: ExecCtx, step: Step) -> StepOutcome:
     multi = rel.get("multi", False)
     show_ids = _show_field_ids(store, target_wsid, rel.get("show_fields"),
                                multi, rel.get("display"))
-    ctrl = F.relation_control(
-        field["name"],
-        target_worksheet_id=target_wsid,
-        multi=multi,
-        display=rel.get("display"),
-        show_control_ids=show_ids,
-        required=field.get("required", False),
-        bidirectional=bool(two_way),
-    )
-    F.apply_permission(ctrl, field)
-    commands = [_append_controls_pass(store, host_wsid, [ctrl])]
     summary = f"relation {host}.{field['name']} -> {rel['worksheet']}"
     refs: dict[str, Any] = {"target": target_wsid, "show_controls": show_ids}
+
+    if two_way:
+        # Reverse display columns (host columns shown in the reverse
+        # tab_table). Derived columns that don't exist yet are skipped here
+        # and filled in by the deferred relation_reverse step.
+        rev_show = _show_field_ids(store, host_wsid, two_way.get("show_fields"),
+                                   True, two_way.get("display"))
+        ctrl = F.bidirectional_relation_control(
+            field["name"],
+            target_worksheet_id=target_wsid,
+            host_worksheet_id=host_wsid,
+            forward_id=_new_placeholder(),
+            reverse_id=_new_placeholder(),
+            reverse_name=two_way["name"],
+            multi=multi,
+            display=rel.get("display"),
+            show_control_ids=show_ids,
+            reverse_display=two_way.get("display"),
+            reverse_show_control_ids=rev_show,
+            required=field.get("required", False),
+        )
+        F.apply_permission(ctrl, field)
+        commands = [_save_controls_pass(store, host_wsid, [ctrl])]
+        # The reverse now lives on the target worksheet — refresh its store.
+        _read_and_store_controls(store, target_wsid)
+        refs["reverse_show_controls"] = rev_show
+    else:
+        ctrl = F.relation_control(
+            field["name"],
+            target_worksheet_id=target_wsid,
+            multi=multi,
+            display=rel.get("display"),
+            show_control_ids=show_ids,
+            required=field.get("required", False),
+            bidirectional=False,
+        )
+        F.apply_permission(ctrl, field)
+        commands = [_append_controls_pass(store, host_wsid, [ctrl])]
 
     return StepOutcome(
         created_id=host_wsid,
@@ -515,12 +592,16 @@ def _h_relation(ctx: ExecCtx, step: Step) -> StepOutcome:
 
 @handler("relation_reverse")
 def _h_relation_reverse(ctx: ExecCtx, step: Step) -> StepOutcome:
-    """Reverse half of a two-way Relation, created on the target worksheet.
+    """Deferred refresh of a two-way relation's reverse display columns.
 
-    Split from the forward step so a non-bridge reverse can be deferred to
-    AFTER the Derived pass — then its ``show_fields`` may reference rollup /
-    lookup columns of the host worksheet (BUILD-09). A reverse used as a
-    derived field's ``via`` bridge is emitted earlier (still in Relations)."""
+    The reverse control is now created together with the forward (see
+    :func:`_h_relation`), so it already exists on the target worksheet by
+    the time this runs. This step exists only to run AFTER the Derived pass
+    and fill in any ``two_way.show_fields`` that point at rollup / lookup
+    columns of the host — columns that did not exist at relation-build time
+    (BUILD-09). It is a no-op when the reverse's display columns are already
+    complete (the common case: show_fields are plain columns, or omitted).
+    """
     store = _require_store(ctx)
     host = step.spec["worksheet"]
     field = step.spec["field"]
@@ -529,39 +610,41 @@ def _h_relation_reverse(ctx: ExecCtx, step: Step) -> StepOutcome:
 
     host_wsid = store.resolve("worksheet", host)
     target_wsid = store.resolve("worksheet", rel["worksheet"])
+    summary = f"reverse {rel['worksheet']}.{two_way['name']} <- {host}.{field['name']}"
 
-    # The forward control carries the reserved sourceControlId placeholder.
-    fwd = store.get_control(host_wsid, field["name"])
-    placeholder = fwd.get("sourceControlId")
-    forward_id = fwd["controlId"]
-    if not placeholder:
-        raise RuntimeError(
-            f"two-way relation: forward control {field['name']!r} has no "
-            f"reserved sourceControlId — bidirectional pairing unavailable"
-        )
-    # The reverse half (the parent / tab_table side) ALWAYS lists every
-    # record pointing back, so it is always multi — regardless of the
-    # forward cardinality. The forward ``multi`` flag alone toggles the
-    # relationship type: forward multi=false => 1:N; forward multi=true =>
-    # M:N (both halves multi).
     rev_show = _show_field_ids(store, host_wsid, two_way.get("show_fields"),
                                True, two_way.get("display"))
-    rev = F.reverse_relation_control(
-        two_way["name"],
-        source_worksheet_id=host_wsid,
-        forward_control_id=forward_id,
-        placeholder_id=placeholder,
-        multi=True,  # reverse half is always multi (see note above)
-        display=two_way.get("display"),
-        show_control_ids=rev_show,
-    )
-    argv = _append_controls_pass(store, target_wsid, [rev])
+    try:
+        rev = store.get_control(target_wsid, two_way["name"])
+    except ResolveError:
+        rev = None
+    # Nothing to refresh: reverse missing (shouldn't happen), no show_fields
+    # to resolve, or the display columns already match.
+    if not rev or not rev_show or rev.get("showControls") == rev_show:
+        return StepOutcome(
+            created_id=target_wsid, summary=f"{summary} (display up to date)",
+            commands=[], capture_files=[f"worksheet_{target_wsid}.json"],
+            resolved_refs={"reverse_control": rev.get("controlId") if rev else None},
+        )
+
+    rev_id = rev["controlId"]
+    controls = copy.deepcopy(store.worksheet_controls(target_wsid))
+    for c in controls:
+        if c.get("controlId") == rev_id:
+            c["showControls"] = rev_show
+    # Re-save the target's full layout with the reverse's display columns
+    # updated. The reverse is clean (created paired), so the re-save neither
+    # duplicates nor drops it.
+    argv = ["worksheet", "update-fields", target_wsid,
+            "--controls", json.dumps(controls, ensure_ascii=False)]
+    hap.run(argv)
+    _read_and_store_controls(store, target_wsid)
     return StepOutcome(
         created_id=target_wsid,
-        summary=f"reverse {rel['worksheet']}.{two_way['name']} <- {host}.{field['name']}",
+        summary=f"{summary} (display refreshed)",
         commands=[argv],
         capture_files=[f"worksheet_{host_wsid}.json", f"worksheet_{target_wsid}.json"],
-        resolved_refs={"reverse_control": placeholder, "source": host_wsid},
+        resolved_refs={"reverse_control": rev_id, "show_controls": rev_show},
     )
 
 

@@ -152,6 +152,93 @@ def validate_design(doc: Any, schema: Optional[dict[str, Any]] = None) -> list[s
     errors = _Validator(schema).validate(doc)
     errors.extend(_semantic_checks(doc))
     errors.extend(_reference_checks(doc))
+    errors.extend(_button_trigger_host_checks(doc))
+    return errors
+
+
+def _button_trigger_host_checks(doc: Any) -> list[str]:
+    """A button-triggered workflow's ``trigger`` record IS a record of the
+    worksheet its custom action sits on (the *host* worksheet). Every reference
+    bound to the reserved ``trigger`` alias therefore addresses a host-worksheet
+    field.
+
+    If such a reference carries a ``"<worksheet>/<field>"`` prefix that names a
+    DIFFERENT real worksheet, the design is treating the button record as if it
+    were that other table's record. The build wires the node against the host
+    worksheet but with foreign column ids, so the server rejects publish with
+    ``warningType 200`` ("N 个节点未设置有效的操作或操作内容异常") and the whole
+    workflow stays unpublished. Schema validation passes (the fields are real,
+    just on the wrong table) so this only surfaces mid-build — catch it here.
+
+    To read/update a different worksheet's record from a button flow, add a
+    ``create_record`` / ``get_single`` node and bind to THAT node's alias
+    instead of ``trigger``.
+
+    Conservative: only flagged when the offending worksheet is a known
+    worksheet in the (merged) doc — a workflow-only fragment never false-flags.
+    """
+    errors: list[str] = []
+    if not isinstance(doc, dict):
+        return errors
+    workflows = doc.get("workflows") or []
+    wf_by_name = {w.get("name"): w for w in workflows if isinstance(w, dict)}
+    ws_names = {w.get("name") for w in (doc.get("worksheets") or [])
+                if isinstance(w, dict)}
+    if not ws_names:
+        return errors
+    # host worksheet per button workflow, via its trigger_workflow custom action.
+    host_of: dict[str, str] = {}
+    for ca in doc.get("custom_actions") or []:
+        if (isinstance(ca, dict) and ca.get("type") == "trigger_workflow"
+                and ca.get("workflow") in wf_by_name and ca.get("worksheet")):
+            host_of[ca["workflow"]] = ca["worksheet"]
+
+    _trig_tpl_re = re.compile(r'\$trigger-([^/$]+/[^$]+?)\$')
+
+    def _flag(ref: Any, host: str, where: str) -> None:
+        if not isinstance(ref, str) or "/" not in ref:
+            return
+        wsn = ref.partition("/")[0]
+        if wsn in ws_names and wsn != host:
+            errors.append(
+                f"{where}: trigger-bound reference {ref!r} addresses worksheet "
+                f"{wsn!r}, but this button workflow's trigger record is a "
+                f"{host!r} record (the worksheet its custom action sits on) — "
+                f"not a {wsn!r} record. To touch a {wsn!r} record, add a "
+                f"create_record/get_single node and bind to that node's alias "
+                f"instead of 'trigger'.")
+
+    def _scan(obj: Any, host: str, where: str) -> None:
+        if isinstance(obj, dict):
+            # update/query target == trigger: its fields[] address the host ws.
+            tgt = obj.get("target")
+            if (isinstance(tgt, dict) and isinstance(tgt.get("node"), dict)
+                    and tgt["node"].get("nodeAlias") == "trigger"):
+                for fld in obj.get("fields") or []:
+                    if isinstance(fld, dict):
+                        _flag(fld.get("fieldId"), host, f"{where}.fields")
+            # a field ref read FROM the trigger record: {node:{nodeAlias:trigger},fieldId}
+            node = obj.get("node")
+            if (isinstance(node, dict) and node.get("nodeAlias") == "trigger"
+                    and isinstance(obj.get("fieldId"), str)):
+                _flag(obj["fieldId"], host, where)
+            for v in obj.values():
+                if isinstance(v, str):
+                    for m in _trig_tpl_re.findall(v):
+                        _flag(m, host, where)
+                else:
+                    _scan(v, host, where)
+        elif isinstance(obj, list):
+            for v in obj:
+                _scan(v, host, where)
+
+    for name, wf in wf_by_name.items():
+        if (wf.get("trigger") or {}).get("type") != "button":
+            continue
+        host = host_of.get(name)
+        if not host:  # no custom action -> _semantic_checks already flags it
+            continue
+        _scan(wf.get("nodes"), host, f"workflows[{name!r}]")
     return errors
 
 
@@ -662,12 +749,35 @@ def _reference_checks(doc: Any) -> list[str]:
     def _chk_wf_ref(ref: Any, where: str) -> None:
         if not isinstance(ref, str) or "/" not in ref:
             return
-        wsn, _, fld = ref.partition("/")
-        if (wsn in field_index and field_index[wsn] and fld
-                and fld not in field_index[wsn]
-                and fld not in _SYSTEM_FIELD_NAMES):
-            errors.append(f"{where}: field reference {ref!r} — field {fld!r} "
-                          f"not found on worksheet {wsn!r}")
+        parts = ref.split("/")
+        wsn = parts[0]
+        # Conservative: only check refs whose worksheet is known and indexed,
+        # so a workflow-only fragment or a control-id ref never false-flags.
+        if wsn not in field_index or not field_index[wsn]:
+            return
+        if len(parts) == 2:
+            fld = parts[1]
+            if (fld and fld not in field_index[wsn]
+                    and fld not in _SYSTEM_FIELD_NAMES):
+                errors.append(f"{where}: field reference {ref!r} — field "
+                              f"{fld!r} not found on worksheet {wsn!r}")
+        elif len(parts) == 3:
+            # "<worksheet>/<subtable>/<child>" — a SubTable column, resolved
+            # at build time by workflow_dsl. Validate the subtable exists and
+            # the child column is one of its child_fields (or a system field).
+            sub_name, child = parts[1], parts[2]
+            sub = field_index[wsn].get(sub_name)
+            if not (isinstance(sub, dict) and sub.get("type") == "SubTable"):
+                errors.append(f"{where}: field reference {ref!r} — {sub_name!r} "
+                              f"is not a SubTable on worksheet {wsn!r}")
+                return
+            child_names = {cf.get("name") for cf in (sub.get("child_fields") or [])
+                           if isinstance(cf, dict)}
+            if (child and child not in child_names
+                    and child not in _SYSTEM_FIELD_NAMES):
+                errors.append(f"{where}: field reference {ref!r} — child field "
+                              f"{child!r} not found on SubTable {sub_name!r} of "
+                              f"worksheet {wsn!r}")
 
     def _scan_wf_refs(obj: Any, where: str) -> None:
         if isinstance(obj, dict):

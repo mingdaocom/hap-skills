@@ -243,6 +243,66 @@ def reverse_relation_control(
     return ctrl
 
 
+def bidirectional_relation_control(
+    name: str,
+    *,
+    target_worksheet_id: str,
+    host_worksheet_id: str,
+    forward_id: str,
+    reverse_id: str,
+    reverse_name: str,
+    multi: bool = False,
+    display: Optional[str] = None,
+    show_control_ids: Optional[list[str]] = None,
+    reverse_display: Optional[str] = None,
+    reverse_show_control_ids: Optional[list[str]] = None,
+    required: bool = False,
+) -> dict[str, Any]:
+    """Build a FORWARD relate control that carries its REVERSE half as an
+    embedded ``sourceControl`` object.
+
+    Sent in a SINGLE SaveWorksheetControls call on the host worksheet, the
+    server creates BOTH halves correctly paired —
+    ``forward.sourceControlId == reverse.controlId`` AND
+    ``reverse.sourceControlId == forward.controlId`` — and re-mints the
+    client placeholder ids to real 24-hex ObjectIds. This mirrors the
+    pd-openweb widget-config protocol (verified live).
+
+    Creating the reverse this way, rather than as a separate
+    AddWorksheetControls call, is what keeps its back-link from being
+    overwritten with a dangling placeholder — the bug that left a
+    multi/tab_table reverse blank in the grid until a manual form re-save.
+
+    ``forward_id`` / ``reverse_id`` MUST be dashed uuid4 placeholders: the
+    server only re-mints (and pairs) ids it recognises as new, which it
+    detects by the ``-`` separators. The reverse half always lists every
+    record pointing back, so it is always multi.
+    """
+    fwd = relation_control(
+        name,
+        target_worksheet_id=target_worksheet_id,
+        multi=multi,
+        display=display,
+        show_control_ids=show_control_ids,
+        required=required,
+        bidirectional=True,
+    )
+    rev = reverse_relation_control(
+        reverse_name,
+        source_worksheet_id=host_worksheet_id,
+        forward_control_id=forward_id,
+        placeholder_id=reverse_id,
+        multi=True,
+        display=reverse_display,
+        show_control_ids=reverse_show_control_ids,
+    )
+    fwd["controlId"] = forward_id
+    fwd["sourceControlId"] = reverse_id
+    fwd["sourceControlType"] = 2
+    fwd["sourceControl"] = rev
+    return fwd
+
+
 def apply_attrs(ctrl: dict[str, Any], field: dict[str, Any]) -> dict[str, Any]:
     """Stamp a cross-sheet control with the field's optional ``size`` (12
     grid), explicit form position, and hidden/readonly/hidden_on_create
