@@ -1,0 +1,250 @@
+{
+  "custom_pages": [
+    {
+      "name": "出入库统计看板",
+      "section": "统计分析",
+      "icon": "sys_2_3_statistics",
+      "components": [
+        {
+          "type": "filter",
+          "name": "日期筛选",
+          "filter": {
+            "name": "出入库日期",
+            "filters": [
+              {
+                "name": "单据日期",
+                "op": "date_is",
+                "field_map": {
+                  "入库单": "入库日期",
+                  "出库单": "出库日期"
+                }
+              }
+            ]
+          },
+          "layout": {
+            "x": 0,
+            "y": 0,
+            "w": 48,
+            "h": 3
+          }
+        },
+        {
+          "type": "chart",
+          "name": "入库单总数",
+          "chart": {
+            "worksheet": "入库单",
+            "report_type": "number",
+            "metrics": [
+              {
+                "field": "count",
+                "aggregate": "count"
+              }
+            ]
+          },
+          "layout": {
+            "x": 0,
+            "y": 3,
+            "w": 16,
+            "h": 5
+          }
+        },
+        {
+          "type": "chart",
+          "name": "出库单总数",
+          "chart": {
+            "worksheet": "出库单",
+            "report_type": "number",
+            "metrics": [
+              {
+                "field": "count",
+                "aggregate": "count"
+              }
+            ]
+          },
+          "layout": {
+            "x": 16,
+            "y": 3,
+            "w": 16,
+            "h": 5
+          }
+        },
+        {
+          "type": "chart",
+          "name": "物料总数",
+          "chart": {
+            "worksheet": "物料",
+            "report_type": "number",
+            "metrics": [
+              {
+                "field": "count",
+                "aggregate": "count"
+              }
+            ]
+          },
+          "layout": {
+            "x": 32,
+            "y": 3,
+            "w": 16,
+            "h": 5
+          }
+        },
+        {
+          "type": "chart",
+          "name": "入库状态分布",
+          "chart": {
+            "worksheet": "入库单",
+            "report_type": "pie",
+            "dimensions": [
+              {
+                "field": "单据状态"
+              }
+            ],
+            "metrics": [
+              {
+                "field": "count",
+                "aggregate": "count"
+              }
+            ]
+          },
+          "layout": {
+            "x": 0,
+            "y": 8,
+            "w": 24,
+            "h": 10
+          }
+        },
+        {
+          "type": "chart",
+          "name": "出库状态分布",
+          "chart": {
+            "worksheet": "出库单",
+            "report_type": "pie",
+            "dimensions": [
+              {
+                "field": "单据状态"
+              }
+            ],
+            "metrics": [
+              {
+                "field": "count",
+                "aggregate": "count"
+              }
+            ]
+          },
+          "layout": {
+            "x": 24,
+            "y": 8,
+            "w": 24,
+            "h": 10
+          }
+        },
+        {
+          "type": "chart",
+          "name": "入库单数透视(状态×优先级)",
+          "chart": {
+            "worksheet": "入库单",
+            "report_type": "pivot",
+            "rows": [
+              {
+                "field": "单据状态"
+              }
+            ],
+            "columns": [
+              {
+                "field": "优先级"
+              }
+            ],
+            "metrics": [
+              {
+                "field": "count",
+                "aggregate": "count"
+              }
+            ]
+          },
+          "layout": {
+            "x": 0,
+            "y": 18,
+            "w": 24,
+            "h": 10
+          }
+        },
+        {
+          "type": "button",
+          "name": "快捷操作",
+          "button": {
+            "shape": "graphic",
+            "count": 4,
+            "direction": "vertical",
+            "buttons": [
+              {
+                "label": "新建入库单",
+                "color": "#4CAF50",
+                "icon": "sys_form_symbol",
+                "action": "create_record",
+                "worksheet": "入库单"
+              },
+              {
+                "label": "新建出库单",
+                "color": "#FC532E",
+                "icon": "sys_form_symbol",
+                "action": "create_record",
+                "worksheet": "出库单"
+              },
+              {
+                "label": "查看待审批入库",
+                "color": "#3054EB",
+                "icon": "sys_1_2_order",
+                "action": "open_view",
+                "worksheet": "入库单",
+                "view": "待审批入库",
+                "open_mode": "new_page"
+              },
+              {
+                "label": "公司官网",
+                "color": "#4051B6",
+                "icon": "sys_16_5_globe_earth",
+                "action": "open_link",
+                "url": "https://www.example.com",
+                "open_mode": "dialog"
+              }
+            ]
+          },
+          "layout": {
+            "x": 24,
+            "y": 18,
+            "w": 24,
+            "h": 10
+          }
+        },
+        {
+          "type": "view",
+          "name": "待审批入库",
+          "view": {
+            "worksheet": "入库单",
+            "view": "待审批入库"
+          },
+          "layout": {
+            "x": 0,
+            "y": 28,
+            "w": 48,
+            "h": 12
+          }
+        }
+      ]
+    }
+  ],
+  "chatbots": [
+    {
+      "name": "仓库智能助手",
+      "section": "统计分析",
+      "prompt": "你是仓库管理智能助手，帮助仓管员查询物料库存水位、出入库单据进度，并解答仓储作业相关问题。回答简洁、专业，必要时引导用户到对应的看板或视图。",
+      "description": "查询库存水位、出入库单据状态与仓储作业答疑。",
+      "greeting": "你好！我是仓库智能助手，可以帮你查询库存、出入库进度，或解答仓储作业问题。",
+      "preset_questions": [
+        "当前哪些物料库存不足？",
+        "本月入库总量是多少？",
+        "查询待出库的单据"
+      ]
+    }
+  ]
+}

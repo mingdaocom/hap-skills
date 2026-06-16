@@ -1,0 +1,3756 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hap-cli/hap-cli-app-creator/design.schema.json",
+  "title": "HAP 应用设计文档",
+  "type": "object",
+  "required": [
+    "app"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "app": {
+      "$ref": "#/$defs/app"
+    },
+    "worksheets": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/worksheet"
+      },
+      "description": "工作表列表。关联/他表/汇总字段直接写在各表 fields 里，执行器自动推迟跨表字段到二趟。"
+    },
+    "views": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/view"
+      }
+    },
+    "custom_actions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/customAction"
+      }
+    },
+    "custom_pages": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/customPage"
+      }
+    },
+    "chatbots": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/chatbot"
+      }
+    },
+    "workflows": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/workflow"
+      }
+    },
+    "roles": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/role"
+      }
+    },
+    "optionsets": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/optionset"
+      }
+    }
+  },
+  "$defs": {
+    "app": {
+      "type": "object",
+      "required": [
+        "name",
+        "icon"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "应用名，2-8个字符。"
+        },
+        "icon": {
+          "type": "string",
+          "description": "应用图标标识。必须从 `hap icon search <多个相关关键词>` 的搜索结果中挑选一个，不可编造。"
+        },
+        "icon_color": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$",
+          "description": "图标背景色。"
+        },
+        "nav_color": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$",
+          "description": "导航栏颜色。"
+        },
+        "sections": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "分组名列表，按序创建；逻辑名文档内唯一，被 worksheet.section 等引用。"
+        },
+        "nav_layout": {
+          "type": "string",
+          "enum": [
+            "top",
+            "group",
+            "card",
+            "tree"
+          ],
+          "default": "group",
+          "description": "PC 端应用导航方式。按业务场景与复杂度选择：top=经典(导航在上方)；group=左侧分组导航(默认，适合大多数业务应用)；tree=树形(结构复杂、层级深、多层分组)；card=卡片(门户/工作台型、首页入口明显)。多业务域并列(多个独立模块)用 top。"
+        }
+      }
+    },
+    "fieldType": {
+      "type": "string",
+      "description": "字段类型 CODE（PascalCase）。选型提示：SingleSelect 与 Dropdown 本质是同一种【单选】字段的两种呈现——SingleSelect 平铺为 radio，适合少量固定选项（状态、性别、方式等）；Dropdown 是下拉，适合选项较多的枚举（单位、类别、地区等）。多选用 MultipleSelect。",
+      "enum": [
+        "Text",
+        "PhoneNumber",
+        "LandlinePhone",
+        "Email",
+        "Number",
+        "Certificate",
+        "Currency",
+        "SingleSelect",
+        "MultipleSelect",
+        "Dropdown",
+        "Attachment",
+        "Date",
+        "DateTime",
+        "Region",
+        "DynamicLink",
+        "Divider",
+        "AmountInWords",
+        "Collaborator",
+        "Department",
+        "Rating",
+        "Relation",
+        "Lookup",
+        "Formula",
+        "Concatenate",
+        "AutoNumber",
+        "SubTable",
+        "CascadingSelect",
+        "Checkbox",
+        "Rollup",
+        "DateFormula",
+        "Location",
+        "RichText",
+        "Signature",
+        "OCR",
+        "Time",
+        "Barcode",
+        "OrgRole",
+        "QueryRecord",
+        "Section",
+        "FunctionFormula"
+      ]
+    },
+    "field": {
+      "type": "object",
+      "required": [
+        "type",
+        "name"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "$ref": "#/$defs/fieldType"
+        },
+        "name": {
+          "type": "string",
+          "description": "列显示名。本表内逻辑名唯一。"
+        },
+        "required": {
+          "type": "boolean",
+          "default": false
+        },
+        "unique": {
+          "type": "boolean",
+          "default": false
+        },
+        "hidden": {
+          "type": "boolean",
+          "default": false,
+          "description": "隐藏字段（在表单/详情中不显示）。"
+        },
+        "readonly": {
+          "type": "boolean",
+          "default": false,
+          "description": "只读字段（不可编辑）。"
+        },
+        "hidden_on_create": {
+          "type": "boolean",
+          "default": false,
+          "description": "新增记录时隐藏（仅在编辑已有记录时显示）。双向关联自动生成的反向多条字段默认开启。"
+        },
+        "is_title": {
+          "type": "boolean",
+          "default": false,
+          "description": "设为标题字段，每表【有且仅有一个】。优先选识别度最高的 Text 字段；仅 Text/AutoNumber/Date/DateTime/Collaborator/Location 可设为标题。没有合适字段就新建一个 Text 字段当标题。"
+        },
+        "hint": {
+          "type": "string",
+          "description": "占位提示。"
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 12,
+          "description": "12 栅格的列宽。**有效值只有 3=四分之一行 / 6=半行 / 12=整行**——请只用这三个值。其它值会被执行器自动归一到最接近的有效值（4→3、5/7/8→6、9/10/11→12），但不要依赖它，直接写 3/6/12。布局主要由 size 驱动（两个 size=6 自动并排，四个 size=3 一行）。**每个字段都建议给 size**（含关联/汇总等后置字段，否则按类型默认，常为整行）。"
+        },
+        "row": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "可选的显式行号（从 0 起），用于把若干字段强制分到指定行分组。普通字段要么整表都给 row+size，要么都只给 size 走自动拼行——不要只给一部分。关联/汇总等后置字段无需 row，执行器会按 size 自动拼到普通字段之后。"
+        },
+        "col": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "该行内的列位次（0 起）。仅在显式 row 时有意义；通常无需手填，执行器自动按行内顺序补。"
+        },
+        "decimals": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 6,
+          "description": "小数位数，仅 Number/Currency/Formula。映射控件 dot；省略=0（整数）。"
+        },
+        "source": {
+          "type": "string",
+          "description": "【来源字段】逻辑名（同表）。Barcode：要编码的字段，必填。AmountInWords（金额大写）：要转成大写的 Number/Currency/Rollup 数值字段，必填——大写金额不能独立显示，必须指定来源数值字段（不要用 formula 表达）。"
+        },
+        "auto_number": {
+          "$ref": "#/$defs/autoNumber",
+          "description": "仅 AutoNumber：自动编号规则（前缀/日期/自增）。"
+        },
+        "cascade": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "source"
+          ],
+          "description": "仅 CascadingSelect（级联选择）：数据源。source 必须是一张【自关联父子层级】工作表（含指向自身的 Relation 字段），从其层级树逐级选择。扁平枚举请改用 Dropdown/SingleSelect，不要用级联。",
+          "properties": {
+            "source": {
+              "type": "string",
+              "description": "源工作表逻辑名（须为自关联父子表）。"
+            },
+            "show_fields": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "在选择器里展示的源表字段逻辑名列表。"
+            }
+          }
+        },
+        "region_level": {
+          "type": "string",
+          "enum": [
+            "province",
+            "city",
+            "county"
+          ],
+          "description": "仅 type=Region 必填。"
+        },
+        "options": {
+          "type": "array",
+          "description": "仅 SingleSelect/MultipleSelect/Dropdown 的【独占】选项（字符串数组，首项默认选中；或 {value,color,checked}）。选项集只属于本字段、不与别处共用时用 options。若多个单选/多选要共用同一组选项，改用顶层 optionsets 定义一次、再用本字段的 optionset 引用 —— 不要既建 optionset 又在字段里重复写 options（二者互斥）。",
+          "items": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "value"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "value": {
+                    "type": "string"
+                  },
+                  "color": {
+                    "type": "string",
+                    "enum": [
+                      "#C0E6FC",
+                      "#C3F2F2",
+                      "#00C345",
+                      "#FAD714",
+                      "#FF9300",
+                      "#F52222",
+                      "#EB2F96",
+                      "#7500EA",
+                      "#2D46C4",
+                      "#484848"
+                    ],
+                    "description": "选项状态色，只能取这 10 个值之一（HAP 选项调色板）。状态/阶段/优先级类字段【必须】给色，纯分类/标签字段不给。语义取色：负面/失败=#F52222(红) 正面/完成=#00C345(绿) 警告/待处理=#FAD714(黄) 进行中=#2D46C4(蓝) 取消/归档=#484848(灰)。注意：这是选项状态色，与应用主题色的 9 色是两套。"
+                  },
+                  "checked": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "optionset": {
+          "type": "string",
+          "description": "引用顶层 optionsets 的逻辑名，复用共享选项集。仅当该组选项被多个字段共用时才这么做；与 options 互斥（共用走 optionset，独占走 options）。"
+        },
+        "formula": {
+          "type": "string",
+          "description": "仅 Formula/DateFormula/FunctionFormula。列引用用 ${字段逻辑名}，执行期换成 $controlId$。"
+        },
+        "relation": {
+          "$ref": "#/$defs/relationField",
+          "description": "仅 type=Relation。"
+        },
+        "lookup": {
+          "$ref": "#/$defs/lookupField",
+          "description": "仅 type=Lookup（他表字段）。"
+        },
+        "rollup": {
+          "$ref": "#/$defs/rollupField",
+          "description": "仅 type=Rollup（汇总）。"
+        },
+        "child_fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/field"
+          },
+          "description": "仅 type=SubTable（内联新建子表，推荐）。递归同 field 形状。"
+        },
+        "advanced_setting": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "高级设置覆盖，合并到类型默认之上。逃生通道。"
+        },
+        "extra": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "直接合并进最终 control 的自由覆盖。"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "Relation"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "relation"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "Lookup"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "lookup"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "Rollup"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "rollup"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "Region"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "region_level"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "Barcode"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "source"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "AmountInWords"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "source"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "CascadingSelect"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "cascade"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "AutoNumber"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "auto_number"
+            ]
+          }
+        }
+      ]
+    },
+    "autoNumber": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "自动编号规则，按 prefix -> date -> 自增 的顺序拼接（映射 advancedSetting.increase）。",
+      "properties": {
+        "prefix": {
+          "type": "string",
+          "description": "固定前缀，如 WL-（可含分隔符）。"
+        },
+        "date_format": {
+          "type": "string",
+          "enum": [
+            "YYYY",
+            "YYYYMM",
+            "YYYYMMDD",
+            "YYYYMMDDHH"
+          ],
+          "description": "日期段格式；省略则不含日期。"
+        },
+        "digits": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 12,
+          "default": 4,
+          "description": "自增序号位数（补零），如 4 -> 0001。"
+        },
+        "reset": {
+          "type": "string",
+          "enum": [
+            "never",
+            "daily",
+            "monthly",
+            "yearly"
+          ],
+          "default": "never",
+          "description": "自增序号的重置周期。"
+        }
+      }
+    },
+    "relationField": {
+      "type": "object",
+      "required": [
+        "worksheet"
+      ],
+      "additionalProperties": false,
+      "description": "Relation 关联记录，按逻辑名指向目标表。如需在目标表反向看到指向它的多条记录，用 two_way 开启双向关联（HAP 特有：一方建好后另一方基于该字段开放反向，不要在两个表各建一次）。",
+      "properties": {
+        "worksheet": {
+          "type": "string",
+          "description": "目标工作表逻辑名 -> 真实 worksheetId(dataSource)。"
+        },
+        "multi": {
+          "type": "boolean",
+          "default": false,
+          "description": "true=多条 false=单条。在 two_way 双向关联中:false=一对多(默认,当前表为多/子侧),true=多对多(两侧皆多条)。"
+        },
+        "display": {
+          "type": "string",
+          "enum": [
+            "dropdown",
+            "card",
+            "list",
+            "table",
+            "tab_table"
+          ],
+          "description": "显示方式。单条可选 dropdown(默认)/card；多条可选 tab_table(默认)/card/list/table。dropdown 仅显标题(无需 show_fields)；card 数据选择+展示关键字段(默认推荐，show_fields 必须≥2)；table 子表式多列(show_fields 5-10)；tab_table 大量记录独立管理(放表单末尾,show_fields 5-10)。映射 advancedSetting.showtype：dropdown=3,card=1,list=2,table=5,tab_table=6。multi 与 display 不匹配时校验报错。"
+        },
+        "show_fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "关联控件里展示的目标表字段逻辑名 -> showControls(controlId)。【单条关联不需要，可省略】；【多条 table/tab_table 是表格展示，需要多列：省略时执行器默认取目标表前 5 个字段作为显示列；也可显式列出想要的字段】；多条 card/list 可选。"
+        },
+        "two_way": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name"
+          ],
+          "description": "开启双向关联:在目标表自动生成一个反向关联字段,展示所有指向它的本表记录。HAP 特有机制——正向设 bidirectional 后服务端预留反向占位 id,执行器据此在目标表开放反向字段(不是在两个表各加一次)。反向半边恒为多条(父/tab_table 侧,列出所有指向它的记录,默认 tab_table)。正向 multi=false 即一对多;正向 multi=true 即多对多(两侧皆多条)。",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "目标表上反向字段的显示名（如 物料 表上的 相关库存）。"
+            },
+            "display": {
+              "type": "string",
+              "enum": [
+                "dropdown",
+                "card",
+                "list",
+                "table",
+                "tab_table"
+              ],
+              "description": "反向字段显示方式。反向通常是多条，默认 tab_table；可选 card/list/table。"
+            },
+            "show_fields": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "反向字段展示的【本表】字段逻辑名列表。反向多条为 table/tab_table 时省略则默认取本表前 5 个字段作为显示列。"
+            }
+          }
+        }
+      }
+    },
+    "lookupField": {
+      "type": "object",
+      "required": [
+        "via",
+        "field"
+      ],
+      "additionalProperties": false,
+      "description": "Lookup 他表字段：经本表某 Relation 桥接镜像目标表某列。",
+      "properties": {
+        "via": {
+          "type": "string",
+          "description": "本表作桥的 Relation 字段逻辑名 -> 其 controlId(dataSource)。"
+        },
+        "field": {
+          "type": "string",
+          "description": "目标表要镜像的列逻辑名 -> source_control_id。"
+        }
+      }
+    },
+    "rollupField": {
+      "type": "object",
+      "required": [
+        "via",
+        "field"
+      ],
+      "additionalProperties": false,
+      "description": "Rollup 汇总：经本表 SubTable 或多条 Relation 桥接，对目标表某列聚合。可带筛选条件（仅统计符合条件的子记录）。",
+      "properties": {
+        "via": {
+          "type": "string",
+          "description": "本表桥字段(SubTable 或多条 Relation)逻辑名。"
+        },
+        "field": {
+          "type": "string",
+          "description": "被聚合的目标表列逻辑名。"
+        },
+        "aggregate": {
+          "type": "string",
+          "enum": [
+            "sum",
+            "count",
+            "avg",
+            "max",
+            "min",
+            "distinct_count"
+          ],
+          "default": "sum",
+          "description": "聚合方式（映射 SUBTOTAL enumDefault：sum=5,count=6,avg=1,max=2,min=3,distinct_count=21）。"
+        },
+        "filter": {
+          "$ref": "#/$defs/filter",
+          "description": "可选：只汇总符合条件的子记录（条件字段为目标表列）。"
+        }
+      }
+    },
+    "filter": {
+      "type": "array",
+      "description": "HAP 通用工作表筛选器：数组，每个元素是一个【条件】(filterCondition)或一个【条件组】(filterGroup)。条件之间按各自 join(and/or) 组合（spliceType）；条件组用于表达 (A且B) 或 (C且D) 这类嵌套。可复用于汇总/视图/图表/动作启用条件等。注意：此为通用筛选器，与工作流条件 wfCondition 是两套规则、互不通用。",
+      "items": {
+        "oneOf": [
+          { "$ref": "#/$defs/filterCondition" },
+          { "$ref": "#/$defs/filterGroup" }
+        ]
+      }
+    },
+    "filterGroup": {
+      "type": "object",
+      "required": [
+        "conditions"
+      ],
+      "additionalProperties": false,
+      "description": "条件组（映射 HAP SaveWorksheetFilter 的 isGroup:true + groupFilters[]）。组内 conditions 按 group_join(and/or) 组合，本组与外层其它条件/组之间按 join(and/or) 组合（spliceType：and=1, or=2）。用于 (A且B) 或 (C且D) 这类嵌套筛选。",
+      "properties": {
+        "join": {
+          "type": "string",
+          "enum": [
+            "and",
+            "or"
+          ],
+          "default": "and",
+          "description": "本组与外层其它条件/组的连接（spliceType）。"
+        },
+        "group_join": {
+          "type": "string",
+          "enum": [
+            "and",
+            "or"
+          ],
+          "default": "and",
+          "description": "组内各 conditions 之间的连接。"
+        },
+        "conditions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/filterCondition"
+          },
+          "description": "组内条件列表。"
+        }
+      }
+    },
+    "filterCondition": {
+      "type": "object",
+      "required": [
+        "field",
+        "op"
+      ],
+      "additionalProperties": false,
+      "description": "单个筛选条件。field 为字段逻辑名（执行期解析为 controlId，dataType 取该字段类型）。值的填法随字段类型不同——见 value/values 说明。",
+      "properties": {
+        "field": {
+          "type": "string",
+          "description": "参与筛选的字段逻辑名 -> controlId。"
+        },
+        "op": {
+          "type": "string",
+          "enum": [
+            "eq",
+            "ne",
+            "is",
+            "in",
+            "notin",
+            "contains",
+            "notcontains",
+            "startswith",
+            "endswith",
+            "isempty",
+            "isnotempty",
+            "gt",
+            "ge",
+            "lt",
+            "le",
+            "between",
+            "notbetween",
+            "date_is",
+            "date_is_not",
+            "date_gt",
+            "date_ge",
+            "date_lt",
+            "date_le",
+            "date_between",
+            "date_not_between"
+          ],
+          "description": "运算符（映射 HAP filterType）：eq是/ne不是/contains包含/notcontains不包含/startswith开头是/endswith结尾是/isempty为空/isnotempty不为空/gt>/ge>=/lt</le<=/between在范围内/notbetween不在范围/date_is日期是(配 date_range)/date_is_not日期不是/date_gt晚于/date_ge晚于等于/date_lt早于/date_le早于等于/date_between日期区间(配 min/max)/date_not_between。【是其中之一】用 eq+values 数组，也可直接用 in（等价别名，自动转 eq+values）；notin=不在其中(=ne+values)；is 是 eq 的别名。选项字段用 eq/ne/in(填显示名)；关联/成员字段用 eq/ne(自动转 RCEq=24/RCNe=25)。"
+        },
+        "value": {
+          "description": "单值（文本/数字字段）。**选项字段（单选/多选/下拉）请填选项的【显示名称】，执行期自动转成 options 里的 key 并放入 values**——不要直接填 key。关联/成员/部门/角色字段填记录或成员的 id。"
+        },
+        "values": {
+          "type": "array",
+          "description": "多值数组。选项字段多选、关联/成员多值时用；选项字段同样填【名称】(自动转 key)，关联/成员填 id 数组。给了 value 时会自动包成单元素 values。"
+        },
+        "date_range": {
+          "type": "string",
+          "enum": [
+            "today",
+            "yesterday",
+            "tomorrow",
+            "this_week",
+            "last_week",
+            "next_week",
+            "this_month",
+            "last_month",
+            "next_month",
+            "this_quarter",
+            "last_quarter",
+            "next_quarter",
+            "this_year",
+            "last_year",
+            "next_year",
+            "custom",
+            "last_7_days",
+            "last_14_days",
+            "last_30_days",
+            "next_7_days",
+            "next_14_days",
+            "next_33_days"
+          ],
+          "description": "日期范围（仅 op=date_is/date_is_not 时用，映射 DateRangeEnum）。custom 时配 min/max。"
+        },
+        "min": {
+          "description": "区间下界（between / date_between / date_range=custom）。"
+        },
+        "max": {
+          "description": "区间上界。"
+        },
+        "join": {
+          "type": "string",
+          "enum": [
+            "and",
+            "or"
+          ],
+          "default": "and",
+          "description": "与其它条件的组合方式（spliceType：and=1, or=2）。"
+        },
+        "data_type": {
+          "type": "integer",
+          "description": "可选：覆盖 dataType（默认取字段控件类型 fieldTypeId）。"
+        }
+      }
+    },
+    "worksheet": {
+      "type": "object",
+      "required": [
+        "name",
+        "icon"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "工作表名。逻辑名文档内唯一，被 relation/view/workflow 等按名引用。"
+        },
+        "section": {
+          "type": "string",
+          "description": "所属分组逻辑名（须在 app.sections）。省略放默认分组。"
+        },
+        "icon": {
+          "type": "string",
+          "description": "工作表图标标识。必须从 `hap icon search <多个相关关键词>` 的搜索结果中挑选一个，不可编造。"
+        },
+        "alias": {
+          "type": "string",
+          "description": "工作表 API 别名。"
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/field"
+          }
+        }
+      }
+    },
+    "view": {
+      "type": "object",
+      "required": [
+        "worksheet",
+        "name",
+        "view_type"
+      ],
+      "additionalProperties": false,
+      "description": "工作表视图。view_type 决定类型，类型专属参数（分组/封面/日期/层级/定位等）一律按【字段逻辑名】引用，执行期由 CLI 自动解析为 controlId。",
+      "properties": {
+        "worksheet": {
+          "type": "string",
+          "description": "所属工作表逻辑名。"
+        },
+        "name": {
+          "type": "string",
+          "description": "视图名，同表内唯一。"
+        },
+        "view_type": {
+          "type": "string",
+          "enum": [
+            "table",
+            "kanban",
+            "gallery",
+            "calendar",
+            "gantt",
+            "hierarchy",
+            "detail",
+            "resource",
+            "map"
+          ],
+          "default": "table",
+          "description": "table 表格 / kanban 看板 / gallery 画廊 / calendar 日历 / gantt 甘特图 / hierarchy 层级 / detail 详情 / resource 资源 / map 地图。"
+        },
+        "group_by": {
+          "type": "string",
+          "description": "分组字段逻辑名。kanban 看板按此列(单选/关联)分列；table 表格按此列分组。"
+        },
+        "cover": {
+          "type": "string",
+          "description": "封面图字段逻辑名（附件字段）。gallery 画廊 / kanban 看板的卡片封面。"
+        },
+        "cover_direction": {
+          "type": "string",
+          "enum": [
+            "top",
+            "left",
+            "right"
+          ],
+          "default": "top",
+          "description": "封面位置。"
+        },
+        "cover_display": {
+          "type": "string",
+          "enum": [
+            "full",
+            "fill"
+          ],
+          "default": "full",
+          "description": "封面显示方式：full 完整 / fill 填充。"
+        },
+        "hierarchy_field": {
+          "type": "string",
+          "description": "hierarchy 层级视图的层级字段逻辑名（自关联字段，或多表层级的关联字段）。"
+        },
+        "hierarchy_type": {
+          "type": "string",
+          "enum": [
+            "self",
+            "multi"
+          ],
+          "default": "self",
+          "description": "层级方式：self 单表自关联 / multi 多表层级（childType 1/2）。"
+        },
+        "location": {
+          "type": "string",
+          "description": "map 地图视图的定位字段逻辑名（定位字段）。"
+        },
+        "dates": {
+          "type": "array",
+          "description": "calendar 日历视图的日期段，每项 {start, end} 为日期字段逻辑名（end 可省略）。",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "start": {
+                "type": "string"
+              },
+              "end": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "start"
+            ]
+          }
+        },
+        "start_date": {
+          "type": "string",
+          "description": "gantt/resource 的开始日期字段逻辑名。"
+        },
+        "end_date": {
+          "type": "string",
+          "description": "gantt/resource 的结束日期字段逻辑名。"
+        },
+        "resource_field": {
+          "type": "string",
+          "description": "resource 资源视图的资源泳道字段逻辑名（成员/部门等）。"
+        },
+        "detail_mode": {
+          "type": "string",
+          "enum": [
+            "all",
+            "first"
+          ],
+          "description": "detail 详情视图：all 全部记录 / first 仅第一条。"
+        },
+        "card": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "title",
+            "display_fields"
+          ],
+          "description": "卡片摘要（gallery/kanban 等卡片视图）：标题/摘要/展示字段，均为字段逻辑名。",
+          "properties": {
+            "title": {
+              "type": "string",
+              "description": "卡片标题字段逻辑名。必填。"
+            },
+            "summary": {
+              "type": "string",
+              "description": "卡片摘要字段逻辑名。"
+            },
+            "display_fields": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string"
+              },
+              "description": "卡片上展示的字段逻辑名列表（必填、至少 1 个）。看板/画廊等卡片视图据此决定每张卡显示哪些字段。"
+            },
+            "show_field_names": {
+              "type": "boolean",
+              "default": true,
+              "description": "卡片上每个展示字段前是否显示「字段名称」。省略时默认 true（推荐打开，卡片更易读）；设 false 则只显示值。"
+            }
+          }
+        },
+        "filter": {
+          "$ref": "#/$defs/filter",
+          "description": "视图行筛选（通用筛选器）。"
+        },
+        "filter_list": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "左侧分类导航字段逻辑名列表。"
+        },
+        "actions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "把本表的自定义动作按钮外露在该视图里（行操作列）。填本表 custom_actions 的动作【逻辑名】列表，执行期解析为 btnId。动作须挂在本视图所属工作表上、且已在 custom_actions 中定义。"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "view_type": {
+                "const": "kanban"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "group_by",
+              "card"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "view_type": {
+                "const": "gallery"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "cover"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "view_type": {
+                "const": "hierarchy"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "hierarchy_field"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "view_type": {
+                "const": "map"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "location"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "view_type": {
+                "const": "gantt"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "start_date",
+              "end_date"
+            ]
+          }
+        }
+      ]
+    },
+    "customAction": {
+      "type": "object",
+      "required": [
+        "worksheet",
+        "name",
+        "type"
+      ],
+      "additionalProperties": false,
+      "description": "工作表自定义动作按钮。type 映射 action_spec_adapter：update_record=updateCurrentRecord, create_related=createRelatedRecord, trigger_workflow=triggerWorkflow。每个按钮在服务端都派生一个影子工作流。",
+      "properties": {
+        "worksheet": {
+          "type": "string",
+          "description": "按钮所在工作表逻辑名。"
+        },
+        "name": {
+          "type": "string",
+          "description": "按钮名。"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "update_record",
+            "create_related",
+            "trigger_workflow"
+          ],
+          "description": "动作类型。"
+        },
+        "update_fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "type=update_record：用户填写的字段逻辑名列表 -> writeControls(controlId)。"
+        },
+        "relation_field": {
+          "type": "string",
+          "description": "type=create_related：新建关联记录所用的 Relation 字段逻辑名 -> controlId。"
+        },
+        "confirm": {
+          "type": "boolean",
+          "default": false,
+          "description": "二次确认。"
+        },
+        "confirm_msg": {
+          "type": "string",
+          "description": "二次确认文案。"
+        },
+        "enable_when": {
+          "$ref": "#/$defs/filter",
+          "description": "可选：按钮启用条件（通用筛选器，落 SaveWorksheetBtn 的 filters）。仅当记录满足条件时按钮可点。选项字段填【显示名】(自动转 key，eq/在其中→filterType 2)，关联/成员填 id。"
+        },
+        "workflow": {
+          "type": "string",
+          "description": "type=trigger_workflow 必填：本按钮触发的【顶层工作流逻辑名】，指向 workflows[] 里一条 trigger.type=button 的工作流。按钮本身只是触发器，工作流的节点拓扑（审批块/子流程/分支/抄送…）写在那条工作流里，不再内联到按钮上。"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "update_record"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "update_fields"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "create_related"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "relation_field"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "trigger_workflow"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "workflow"
+            ]
+          }
+        }
+      ]
+    },
+    "customPage": {
+      "type": "object",
+      "required": [
+        "name",
+        "icon"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "页面名，逻辑名唯一。"
+        },
+        "section": {
+          "type": "string",
+          "description": "所属分组逻辑名。"
+        },
+        "icon": {
+          "type": "string",
+          "description": "页面图标标识。必须从 `hap icon search <多个相关关键词>` 的搜索结果中挑选一个，不可编造。"
+        },
+        "components": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/pageComponent"
+          },
+          "description": "页面组件列表。省略=空白页（第一阶段最简路径）。"
+        }
+      }
+    },
+    "pageComponent": {
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "chart",
+            "rich_text",
+            "embed_url",
+            "button",
+            "view",
+            "filter"
+          ],
+          "description": "组件类型（友好名，映射到数字 type）。仅这 6 种有 builder：chart 图表 / rich_text 富文本 / embed_url 网页内嵌 / button 按钮组 / view 内嵌视图 / filter 全局筛选条。"
+        },
+        "name": {
+          "type": "string",
+          "description": "组件标题。"
+        },
+        "layout": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "x": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 47
+            },
+            "y": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "w": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 48
+            },
+            "h": {
+              "type": "integer",
+              "minimum": 2
+            }
+          },
+          "description": "48 栅格布局。省略则自动堆叠。"
+        },
+        "chart": {
+          "$ref": "#/$defs/chartConfig",
+          "description": "type=chart 必填。"
+        },
+        "view": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "worksheet": {
+              "type": "string"
+            },
+            "view": {
+              "type": "string",
+              "description": "视图逻辑名"
+            },
+            "allow_add": {
+              "type": "boolean"
+            },
+            "show_search": {
+              "type": "boolean"
+            }
+          },
+          "description": "type=view 必填：嵌入某表某视图（按逻辑名解析 worksheetId+viewId）。"
+        },
+        "rich_text": {
+          "type": "string",
+          "description": "type=rich_text：HTML 内容。"
+        },
+        "embed_url": {
+          "type": "string",
+          "description": "type=embed_url：外链地址。"
+        },
+        "button": {
+          "$ref": "#/$defs/buttonGroup",
+          "description": "type=button 必填：页面上的一组操作按钮。"
+        },
+        "filter": {
+          "$ref": "#/$defs/filterBar",
+          "description": "type=filter 必填：页面顶部的全局筛选条，联动多个图表。"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "chart"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "chart"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "view"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "view"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "button"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "button"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "filter"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "filter"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "embed_url"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "embed_url"
+            ]
+          }
+        }
+      ]
+    },
+    "filterBar": {
+      "type": "object",
+      "required": [
+        "filters"
+      ],
+      "additionalProperties": false,
+      "description": "全局筛选条(type=6)的内容。无独立端点：随 custom-page save 提交，CLI 内部调 Worksheet/SaveFiltersGroup 建组并回填 filtersGroupId。每个 filter 按字段联动到一个或多个图表组件（按图表的 objectId + 该图表工作表上同名字段的 controlId 绑定）。filter 组件应放在被联动的图表之后（执行器会自动延后构建，但被引用的图表名须存在于同页）。",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "筛选条名称（可留空）。映射 SaveFiltersGroup.name。"
+        },
+        "enable_btn": {
+          "type": "boolean",
+          "default": false,
+          "description": "是否显示「查询/重置」按钮（手动触发筛选）。映射 enableBtn。"
+        },
+        "filters": {
+          "type": "array",
+          "minItems": 1,
+          "description": "筛选项列表，每项联动一个字段。映射 SaveFiltersGroup.filters。",
+          "items": {
+            "$ref": "#/$defs/filterBarItem"
+          }
+        }
+      }
+    },
+    "filterBarItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "单个全局筛选项。按字段逻辑名联动图表：默认联动到所有「其数据源工作表含同名字段」的图表组件。需要一个筛选项同时驱动【不同名字段】的多张图表时（如一个日期筛选器同时联动 入库单/入库日期 与 出库单/出库日期），用 field_map 按工作表分别映射。field 与 field_map 至少给一个。",
+      "anyOf": [
+        {
+          "required": [
+            "field"
+          ]
+        },
+        {
+          "required": [
+            "field_map"
+          ]
+        }
+      ],
+      "properties": {
+        "field": {
+          "type": "string",
+          "description": "用于筛选的字段逻辑名（所有被联动图表共用同一字段名时用它）。必须存在于每个被联动图表的数据源工作表上（执行期解析为各表的 controlId）。与 field_map 配合时作为未在 field_map 中列出的工作表的兜底字段。"
+        },
+        "field_map": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "按【工作表逻辑名 → 字段逻辑名】映射，让一个筛选项在不同工作表上联动各自的字段（如 {\"入库单\":\"入库日期\",\"出库单\":\"出库日期\"}）。每个被联动图表用其数据源工作表对应的字段解析 controlId；未列出的工作表回退到 field。映射 filters[].objectControls 的逐图表 controlId。"
+        },
+        "name": {
+          "type": "string",
+          "description": "筛选项显示名。省略则用 field。映射 filters[].name。"
+        },
+        "op": {
+          "type": "string",
+          "enum": [
+            "eq",
+            "ne",
+            "contains",
+            "isempty",
+            "isnotempty",
+            "between",
+            "gt",
+            "ge",
+            "lt",
+            "le",
+            "date_is",
+            "date_is_not",
+            "date_between"
+          ],
+          "description": "筛选方式（filterType）。省略时按字段类型自动推断：日期类→date_is(范围筛选)，其余→eq。映射 filters[].filterType。"
+        },
+        "date_range": {
+          "type": "string",
+          "enum": [
+            "today",
+            "yesterday",
+            "this_week",
+            "last_week",
+            "this_month",
+            "last_month",
+            "this_quarter",
+            "last_quarter",
+            "this_year",
+            "last_year",
+            "custom",
+            "last_7_days",
+            "last_30_days"
+          ],
+          "description": "仅日期字段：默认选中的时间范围（用户仍可在页面上改）。省略则不预选。映射 filters[].dateRange。"
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "显式指定联动哪些图表组件（按图表的 name）。省略=自动联动所有「数据源工作表含 field（或 field_map 中该表对应字段）」的图表。映射 filters[].objectControls。"
+        }
+      }
+    },
+    "buttonGroup": {
+      "type": "object",
+      "required": [
+        "buttons"
+      ],
+      "additionalProperties": false,
+      "description": "按钮组组件(type=4)的内容。直接随 custom-page save 的 components 一起提交，无需单独建报表。",
+      "properties": {
+        "shape": {
+          "type": "string",
+          "enum": [
+            "button",
+            "graphic"
+          ],
+          "default": "graphic",
+          "description": "按钮外观：button=文字按钮；graphic=图标磁贴（默认）。映射 config.btnType（button=1, graphic=2）。"
+        },
+        "style": {
+          "type": "integer",
+          "enum": [
+            1,
+            2,
+            3
+          ],
+          "default": 2,
+          "description": "样式变体（含义随 shape 不同）：shape=button 时 1=实心/2=圆角/3=虚线；shape=graphic 时 1=圆角矩形/2=实心圆/3=虚线。映射 button.style。"
+        },
+        "width": {
+          "type": "integer",
+          "enum": [
+            1,
+            2
+          ],
+          "default": 2,
+          "description": "仅 shape=button 生效的宽度模式：1=等分铺满；2=自适应文字宽度。映射 button.wdith（注意服务端字段名拼写如此）。"
+        },
+        "direction": {
+          "type": "string",
+          "enum": [
+            "vertical",
+            "horizontal"
+          ],
+          "default": "vertical",
+          "description": "仅 shape=graphic 生效的磁贴内图标/文字排布：vertical=上图下字；horizontal=左图右字。映射 config.direction（vertical=1, horizontal=2）。"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8,
+          "default": 2,
+          "description": "PC 端每行按钮个数（1-8）。映射 button.count。"
+        },
+        "mobile_count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8,
+          "description": "移动端每行按钮个数（1-8）。省略则与 count 相同。映射 button.mobileCount。"
+        },
+        "explain": {
+          "type": "string",
+          "description": "按钮组下方的说明文字。映射 button.explain。"
+        },
+        "buttons": {
+          "type": "array",
+          "minItems": 1,
+          "description": "按钮列表，按顺序排布。映射 button.buttonList。",
+          "items": {
+            "$ref": "#/$defs/buttonItem"
+          }
+        }
+      }
+    },
+    "buttonItem": {
+      "type": "object",
+      "required": [
+        "label",
+        "action",
+        "icon"
+      ],
+      "additionalProperties": false,
+      "description": "单个按钮。必填字段随 action 不同（见 action 的说明）。所有资源均按逻辑名引用，执行期解析为真实 id。",
+      "properties": {
+        "label": {
+          "type": "string",
+          "description": "按钮显示文字。映射 buttonList[].name。"
+        },
+        "color": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$",
+          "description": "按钮颜色，十六进制（如 #2196f3）。省略用默认蓝色。"
+        },
+        "icon": {
+          "type": "string",
+          "description": "图标标识。必须从 `hap icon search <多个相关关键词>` 的搜索结果中挑选一个，不可编造。"
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "create_record",
+            "open_view",
+            "open_link",
+            "scan",
+            "call_process"
+          ],
+          "description": "点击动作。已完整支持：create_record=新建记录(需 worksheet，可选 custom_action)；open_view=打开视图(需 worksheet+view)；open_link=打开链接(需 url)。需逃生通道：scan=扫码 / call_process=调用封装业务流程(在 config 里给 value/processId)。映射 buttonList[].action（1/2/4/5/6）。"
+        },
+        "worksheet": {
+          "type": "string",
+          "description": "目标工作表逻辑名。action=create_record/open_view 必填，解析为 buttonList[].value。"
+        },
+        "view": {
+          "type": "string",
+          "description": "目标视图逻辑名（须属于上面的 worksheet）。action=open_view 必填，解析为 buttonList[].viewId。"
+        },
+        "url": {
+          "type": "string",
+          "description": "外部链接地址。action=open_link 必填，写入 buttonList[].value。"
+        },
+        "custom_action": {
+          "type": "string",
+          "description": "可选。新建记录时套用某工作表自定义动作按钮的字段填充规则；给出该按钮逻辑名，解析为 buttonList[].btnId。仅 action=create_record 有意义。"
+        },
+        "open_mode": {
+          "type": "string",
+          "enum": [
+            "current_page",
+            "new_page",
+            "dialog"
+          ],
+          "description": "打开方式：current_page=当前页(1)；new_page=新页面(2)；dialog=弹窗(3，仅 open_link 支持)。省略时 create_record 默认当前页、其余默认新页面。映射 buttonList[].openMode。"
+        },
+        "value": {
+          "type": "string",
+          "description": "逃生通道：action=scan/call_process 时直接给底层 value（如 processId）。其余 action 由执行期自动填充，勿手填。"
+        },
+        "config": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "逃生通道：合并进该按钮 config 的额外字段（如扫码/业务流程的深层配置）。"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "create_record"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "worksheet"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "open_view"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "worksheet",
+              "view"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "open_link"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "url"
+            ]
+          }
+        }
+      ]
+    },
+    "chartConfig": {
+      "type": "object",
+      "required": [
+        "worksheet",
+        "report_type"
+      ],
+      "additionalProperties": false,
+      "description": "图表配置，字段全部按逻辑名引用所属工作表的列。映射到 reportConfig.saveReportConfig 的 xaxes/yaxisList/filter/displaySetup。",
+      "properties": {
+        "worksheet": {
+          "type": "string",
+          "description": "数据来源工作表逻辑名。"
+        },
+        "report_type": {
+          "type": "string",
+          "enum": [
+            "number",
+            "bar",
+            "line",
+            "pie",
+            "pivot",
+            "funnel",
+            "radar",
+            "bidirectional_bar",
+            "ranking",
+            "scatter",
+            "wordcloud",
+            "world_map",
+            "dual_axes",
+            "gauge",
+            "progress",
+            "region_map"
+          ],
+          "description": "图表类型。number 数值卡(无维度,只配 metrics) / bar 柱图 / line 折线 / pie 饼图 / pivot 透视(rows/columns/metrics) / funnel 漏斗 / radar 雷达 / bidirectional_bar 对称条形 / ranking 排行榜 / scatter 散点(1 维度+2 值) / wordcloud 词云(1 文本维度+1 值) / world_map 世界地图(1 国家维度+1 值) / dual_axes 双轴(维度 + 左 metrics + 右 right_metrics) / gauge 仪表盘(1 值,可配 target/min_field/max_field,无维度) / progress 进度(1 值 + target,无维度) / region_map 区域地图(1 个 Region 维度 + 1 值)。映射 reportType 10/1/2/3/8/6/5/11/16/12/13/17/7/14/15/9。"
+        },
+        "dimensions": {
+          "type": "array",
+          "description": "维度（分组）字段，用于 bar/line/pie。映射 xaxes。pivot 用 rows/columns 代替。",
+          "items": {
+            "type": "object",
+            "required": [
+              "field"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "field": {
+                "type": "string",
+                "description": "维度列逻辑名"
+              },
+              "date_grain": {
+                "type": "string",
+                "enum": [
+                  "day",
+                  "week",
+                  "month",
+                  "quarter",
+                  "year"
+                ],
+                "description": "日期字段归组粒度，映射 particleSizeType 1/2/3/4/5"
+              },
+              "sort": {
+                "type": "string",
+                "enum": [
+                  "default",
+                  "asc",
+                  "desc"
+                ]
+              }
+            }
+          }
+        },
+        "rows": {
+          "type": "array",
+          "description": "仅 pivot：行维度。映射 pivotTable.lines（含行汇总 lineSummary）。",
+          "items": {
+            "type": "object",
+            "required": [
+              "field"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "field": {
+                "type": "string",
+                "description": "行维度列逻辑名"
+              },
+              "date_grain": {
+                "type": "string",
+                "enum": [
+                  "day",
+                  "week",
+                  "month",
+                  "quarter",
+                  "year"
+                ],
+                "description": "日期字段归组粒度，映射 particleSizeType。"
+              }
+            }
+          }
+        },
+        "columns": {
+          "type": "array",
+          "description": "仅 pivot：列维度。映射 pivotTable.columns（含列汇总 columnSummary）。",
+          "items": {
+            "type": "object",
+            "required": [
+              "field"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "field": {
+                "type": "string",
+                "description": "列维度列逻辑名"
+              },
+              "date_grain": {
+                "type": "string",
+                "enum": [
+                  "day",
+                  "week",
+                  "month",
+                  "quarter",
+                  "year"
+                ],
+                "description": "日期字段归组粒度，映射 particleSizeType。"
+              }
+            }
+          }
+        },
+        "metrics": {
+          "type": "array",
+          "description": "值字段。映射 yaxisList。",
+          "items": {
+            "type": "object",
+            "required": [
+              "field"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "field": {
+                "type": "string",
+                "description": "值列逻辑名；特殊值 \"count\" 表示记录数量(record_count)。"
+              },
+              "aggregate": {
+                "type": "string",
+                "enum": [
+                  "sum",
+                  "count",
+                  "avg",
+                  "max",
+                  "min"
+                ],
+                "default": "sum",
+                "description": "聚合方式，映射 normType（sum=1, count=5, 其余 best-effort）。记录数量用 field=count + aggregate=count。"
+              }
+            }
+          }
+        },
+        "filter": {
+          "oneOf": [
+            { "$ref": "#/$defs/filter" },
+            { "$ref": "#/$defs/filterCondition" },
+            { "$ref": "#/$defs/filterGroup" }
+          ],
+          "description": "图表筛选（通用筛选器，CLI 自动 mint filterId）。推荐传【数组】(每项为条件或条件组)；为容错也接受单个条件/条件组对象，执行期自动包成数组。`filters` 是等价别名。"
+        },
+        "filters": {
+          "oneOf": [
+            { "$ref": "#/$defs/filter" },
+            { "$ref": "#/$defs/filterCondition" },
+            { "$ref": "#/$defs/filterGroup" }
+          ],
+          "description": "`filter` 的等价别名（复数形式）。二者择一即可，同时给以 `filters` 为准。"
+        },
+        "display": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "展示设置(图例/数值/堆叠等，映射 displaySetup)，逃生通道。"
+        },
+        "right_metrics": {
+          "type": "array",
+          "description": "仅 dual_axes（双轴）：右轴的值字段。形状同 metrics。左轴用 metrics，右轴用 right_metrics。",
+          "items": {
+            "type": "object",
+            "required": [
+              "field"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "field": {
+                "type": "string",
+                "description": "右轴值列逻辑名；特殊值 \"count\" 表示记录数量。"
+              },
+              "aggregate": {
+                "type": "string",
+                "enum": [
+                  "sum",
+                  "count",
+                  "avg",
+                  "max",
+                  "min"
+                ],
+                "default": "sum"
+              }
+            }
+          }
+        },
+        "right_type": {
+          "type": "string",
+          "enum": [
+            "bar",
+            "line"
+          ],
+          "default": "line",
+          "description": "仅 dual_axes：右轴的图形类型（柱/折线）。默认折线。"
+        },
+        "target": {
+          "type": "string",
+          "description": "仅 gauge/progress：目标值（100% 达成）所取的数值字段逻辑名 -> config.targetList。"
+        },
+        "min_field": {
+          "type": "string",
+          "description": "仅 gauge：刻度下界所取的数值字段逻辑名 -> config.min（省略=自动）。"
+        },
+        "max_field": {
+          "type": "string",
+          "description": "仅 gauge：刻度上界所取的数值字段逻辑名 -> config.max（省略=自动）。"
+        },
+        "map_level": {
+          "type": "string",
+          "enum": [
+            "province",
+            "city",
+            "county"
+          ],
+          "default": "province",
+          "description": "仅 region_map（区域地图）：行政层级粒度 -> particleSizeType（province=1/city=2/county=3）。"
+        },
+        "limit": {
+          "type": "integer",
+          "description": "只取前 N 项（TopN，映射 displaySetup.showXAxisCount）。常用于 ranking 排行榜、bar 柱图，限制展示条数。省略=全部。"
+        },
+        "sort": {
+          "type": "string",
+          "enum": [
+            "desc",
+            "asc"
+          ],
+          "default": "desc",
+          "description": "仅 ranking（排行榜）：按数值排序方向，desc 从大到小（默认）/ asc 从小到大。排行榜默认即按 metrics 第一项数值降序。"
+        }
+      }
+    },
+    "chatbot": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false,
+      "description": "AI 助手。建立走 AddWorkSheet(type=3)，需 org + section（缺 section 默认放第一个分组）。",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "AI 助手名，逻辑名唯一。"
+        },
+        "section": {
+          "type": "string",
+          "description": "所属分组逻辑名。省略默认第一个分组。"
+        },
+        "prompt": {
+          "type": "string",
+          "description": "系统提示词（定义助手行为）。省略则用 description。"
+        },
+        "description": {
+          "type": "string",
+          "description": "助手用途描述（remark）。"
+        },
+        "greeting": {
+          "type": "string",
+          "description": "开场白。"
+        },
+        "preset_questions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "预设引导问题。"
+        }
+      }
+    },
+    "workflow": {
+      "type": "object",
+      "required": [
+        "name",
+        "trigger"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "流程名，逻辑名唯一。"
+        },
+        "trigger": {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "record_create",
+                "record_update",
+                "record_create_or_update",
+                "scheduled",
+                "date",
+                "button",
+                "webhook"
+              ],
+              "description": "触发方式，映射 startEventAppType。"
+            },
+            "worksheet": {
+              "type": "string",
+              "description": "⚠️【必填条件】当 trigger.type 为 record_create / record_update / record_create_or_update / date 时，worksheet 与 date_field 一样【都是必填】——只给 date_field 而漏 worksheet 是常见错误，会校验失败。worksheet 是该触发绑定的工作表逻辑名。button 触发【不写】worksheet（工作表来自配对的 trigger_workflow 自定义动作所在表）；scheduled / webhook 触发也不需要 worksheet。"
+            },
+            "fields": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "仅记录更新触发：指定哪些字段（逻辑名）变更时才触发（assignFieldIds）。省略=任意字段变更都触发。"
+            },
+            "schedule": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "仅定时触发(type=scheduled)：周期调度配置。",
+              "properties": {
+                "repeat": {
+                  "type": "string",
+                  "enum": [
+                    "day",
+                    "week",
+                    "month",
+                    "year",
+                    "workday",
+                    "hour",
+                    "minute",
+                    "custom"
+                  ],
+                  "description": "重复单位 → repeatType(day1/week2/month3/year4/workday5/custom6/hour7/minute8)。"
+                },
+                "interval": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "每 N 个单位重复一次。"
+                },
+                "week_days": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 6
+                  },
+                  "description": "repeat=week/workday 时的星期(0=周日…6=周六)。"
+                },
+                "start_time": {
+                  "type": "string",
+                  "description": "首次执行/锚点时间 executeTime（如 2026-06-01 10:00）。"
+                },
+                "end_time": {
+                  "type": "string",
+                  "description": "结束执行时间 executeEndTime（可选）。"
+                },
+                "config": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "repeat=custom 的 cron 对象逃生通道。"
+                }
+              }
+            },
+            "date_field": {
+              "type": "string",
+              "description": "仅日期触发(type=date)：驱动触发的日期/时间字段【裸字段逻辑名】(assignFieldId)。⚠️ 只写字段名(如「下次复诊日」)，【不要】带「工作表名/」前缀(如「患者/下次复诊日」是错的)——该字段已隐含属于 trigger.worksheet。"
+            },
+            "date_config": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "仅日期触发：相对该日期字段的触发时机。",
+              "properties": {
+                "offset_type": {
+                  "type": "string",
+                  "enum": [
+                    "on",
+                    "before",
+                    "after"
+                  ],
+                  "description": "当天/提前/延后(executeTimeType 0/1/2)。"
+                },
+                "offset_number": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "提前/延后的数量。"
+                },
+                "offset_unit": {
+                  "type": "string",
+                  "enum": [
+                    "minute",
+                    "hour",
+                    "day"
+                  ],
+                  "description": "偏移单位(unit 1/2/3)。"
+                },
+                "time": {
+                  "type": "string",
+                  "description": "触发时刻(HH:mm)。"
+                },
+                "repeat": {
+                  "type": "string",
+                  "enum": [
+                    "once",
+                    "year",
+                    "month",
+                    "week"
+                  ],
+                  "description": "是否重复(frequency 0/1/2/3)。"
+                }
+              }
+            },
+            "filter": {
+              "$ref": "#/$defs/wfCondition",
+              "description": "仅工作表触发：触发筛选条件(operateCondition)，只有满足条件的记录才进入流程。按触发记录字段(nodeAlias:trigger)写。"
+            },
+            "sample": {
+              "type": "object",
+              "additionalProperties": true,
+              "description": "仅 webhook 触发(type=webhook)：一份代表性的入站 JSON 请求体样例。构建时会把它 POST 到 webhook 的接收地址，由服务端按其结构推导入站参数(每个顶层键成为一个参数，参数 id=键名)。下游节点用 $trigger-键名$ 引用对应入站值。"
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "type": {
+                    "enum": [
+                      "record_create",
+                      "record_update",
+                      "record_create_or_update",
+                      "date"
+                    ]
+                  }
+                },
+                "required": [
+                  "type"
+                ]
+              },
+              "then": {
+                "required": [
+                  "worksheet"
+                ]
+              }
+            }
+          ]
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/workflowNode"
+          },
+          "description": "节点列表（hap-cli 节点 DSL，逻辑名形式）。执行器经 workflow_dsl.translate_nodes 把名→id 后交给 `workflow node batch-add` 逐节点建。"
+        }
+      }
+    },
+    "workflowNode": {
+      "type": "object",
+      "required": [
+        "nodeAlias",
+        "nodeType"
+      ],
+      "additionalProperties": false,
+      "description": "一个工作流节点（逻辑名形式）。执行器（workflow_dsl.translate_nodes）把值里的名翻成 id：字段引用用 \"工作表名/字段名\"、工作表/角色用名、选项用显示名、模板用 $别名-工作表名/字段名$。config 的具体形状由 nodeType 经下方 allOf/if/then 约束。",
+      "properties": {
+        "nodeAlias": {
+          "type": "string",
+          "description": "流程内唯一别名，供 prevNode / 条件 / 模板 / target.node 按 {nodeAlias} 引用。触发节点固定别名 trigger（执行器注册）；子流程内固定 sub_trigger（当前迭代记录）；审批块内固定 approval_trigger。"
+        },
+        "nodeType": {
+          "type": "string",
+          "enum": [
+            "update_record",
+            "create_record",
+            "delete_record",
+            "get_single",
+            "get_multiple",
+            "get_relation_records",
+            "query_update",
+            "branch",
+            "approval_block",
+            "approve",
+            "sub_process",
+            "cc",
+            "notice",
+            "send_email",
+            "fill_in",
+            "compute",
+            "rollup"
+          ],
+          "description": "节点类型。映射 flowNodeType/actionId：update/create/delete_record→6(2/1/3)；get_single→7；get_multiple→13；branch→2；approve→4；approval_block→26；sub_process→16；cc→5；notice→27；send_email→11；fill_in→3；compute/rollup→9。"
+        },
+        "name": {
+          "type": "string",
+          "description": "节点显示名。"
+        },
+        "prevNode": {
+          "type": "string",
+          "description": "前驱节点 nodeAlias（省略=接上一个/容器起点）。"
+        },
+        "config": {
+          "$ref": "#/$defs/wfNodeConfig"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "nodeType": {
+                "enum": [
+                  "update_record"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "config"
+            ],
+            "properties": {
+              "config": {
+                "required": [
+                  "target",
+                  "fields"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "nodeType": {
+                "enum": [
+                  "create_record"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "config"
+            ],
+            "properties": {
+              "config": {
+                "required": [
+                  "fields"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "nodeType": {
+                "enum": [
+                  "delete_record"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "config"
+            ],
+            "properties": {
+              "config": {
+                "required": [
+                  "target"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "nodeType": {
+                "enum": [
+                  "get_single"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "config"
+            ],
+            "properties": {
+              "config": {
+                "required": [
+                  "worksheet",
+                  "filter"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "nodeType": {
+                "enum": [
+                  "get_multiple"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "config"
+            ],
+            "properties": {
+              "config": {
+                "required": [
+                  "worksheet"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "nodeType": {
+                "enum": [
+                  "get_relation_records"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "config"
+            ],
+            "properties": {
+              "config": {
+                "required": [
+                  "relation_field"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "nodeType": {
+                "enum": [
+                  "query_update"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "config"
+            ],
+            "properties": {
+              "config": {
+                "required": [
+                  "worksheet",
+                  "fields"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "nodeType": {
+                "enum": [
+                  "branch"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "config"
+            ],
+            "properties": {
+              "config": {
+                "required": [
+                  "paths"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "nodeType": {
+                "enum": [
+                  "approval_block"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "config"
+            ],
+            "properties": {
+              "config": {
+                "required": [
+                  "process"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "nodeType": {
+                "enum": [
+                  "sub_process"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "config"
+            ],
+            "properties": {
+              "config": {
+                "required": [
+                  "process"
+                ]
+              }
+            },
+            "anyOf": [
+              {
+                "properties": {
+                  "config": {
+                    "required": [
+                      "data_source"
+                    ]
+                  }
+                }
+              },
+              {
+                "properties": {
+                  "config": {
+                    "properties": {
+                      "process": {
+                        "required": [
+                          "data_source"
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "nodeType": {
+                "enum": [
+                  "approve"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "config"
+            ],
+            "properties": {
+              "config": {
+                "required": [
+                  "accounts"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "nodeType": {
+                "enum": [
+                  "cc",
+                  "notice"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "config"
+            ],
+            "properties": {
+              "config": {
+                "required": [
+                  "accounts",
+                  "content"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "nodeType": {
+                "enum": [
+                  "send_email"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "config"
+            ],
+            "properties": {
+              "config": {
+                "required": [
+                  "accounts"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "nodeType": {
+                "enum": [
+                  "fill_in"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "config"
+            ],
+            "properties": {
+              "config": {
+                "required": [
+                  "worksheet"
+                ]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "nodeType": {
+                "enum": [
+                  "compute"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "config"
+            ],
+            "properties": {
+              "config": {
+                "required": [
+                  "mode"
+                ]
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "config": {
+                      "required": [
+                        "mode"
+                      ],
+                      "properties": {
+                        "mode": {
+                          "const": "date_diff"
+                        }
+                      }
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "config": {
+                      "required": [
+                        "start",
+                        "end",
+                        "out_unit"
+                      ]
+                    }
+                  }
+                },
+                "else": {
+                  "properties": {
+                    "config": {
+                      "required": [
+                        "formula"
+                      ]
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "nodeType": {
+                "enum": [
+                  "rollup"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "config"
+            ],
+            "properties": {
+              "config": {
+                "required": [
+                  "mode"
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "wfNodeRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "节点引用：用 nodeAlias（逻辑别名，推荐）或 nodeId（已知物理 id）。",
+      "properties": {
+        "nodeAlias": {
+          "type": "string"
+        },
+        "nodeId": {
+          "type": "string"
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "nodeAlias"
+          ]
+        },
+        {
+          "required": [
+            "nodeId"
+          ]
+        }
+      ]
+    },
+    "wfFieldRef": {
+      "type": "object",
+      "required": [
+        "kind",
+        "node",
+        "fieldId"
+      ],
+      "additionalProperties": false,
+      "description": "字段值引用：某节点输出记录上的某字段。",
+      "properties": {
+        "kind": {
+          "const": "field"
+        },
+        "node": {
+          "$ref": "#/$defs/wfNodeRef"
+        },
+        "fieldId": {
+          "type": "string",
+          "description": "\"工作表名/字段名\"（执行器译成 controlId）；系统列直接写 rowid/ctime 等。"
+        }
+      }
+    },
+    "wfRecordRef": {
+      "type": "object",
+      "required": [
+        "kind",
+        "node"
+      ],
+      "additionalProperties": false,
+      "description": "记录引用：某节点输出的记录（作为写入目标/数据源）。",
+      "properties": {
+        "kind": {
+          "const": "record"
+        },
+        "node": {
+          "$ref": "#/$defs/wfNodeRef"
+        }
+      }
+    },
+    "wfLiteral": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false,
+      "description": "字面量。选项字段比较时 value 写选项显示名，执行器转 option key。",
+      "properties": {
+        "kind": {
+          "const": "literal"
+        },
+        "value": {
+          "description": "任意字面值（字符串/数字/布尔/数组）。"
+        },
+        "values": {
+          "type": "array",
+          "description": "多值比较（in/是其中之一）。选项字段写显示名数组。"
+        }
+      }
+    },
+    "wfParamRef": {
+      "type": "object",
+      "required": [
+        "kind",
+        "name"
+      ],
+      "additionalProperties": false,
+      "description": "流程参数引用：子流程内引用从主流程传入的参数（如主单记录 ID）。",
+      "properties": {
+        "kind": {
+          "const": "param"
+        },
+        "name": {
+          "type": "string",
+          "description": "参数名（对应所在子流程 process.parameters[].name）。"
+        }
+      }
+    },
+    "wfValueRef": {
+      "description": "值引用：字段引用 / 记录引用 / 字面量 / 流程参数 / 系统值 五选一。系统值（当前时间/今天等）既可用于写值(wfFieldPatch.valueRef)，也可用于条件 right（如按「早于当前时间」筛记录）。",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/wfFieldRef"
+        },
+        {
+          "$ref": "#/$defs/wfRecordRef"
+        },
+        {
+          "$ref": "#/$defs/wfLiteral"
+        },
+        {
+          "$ref": "#/$defs/wfParamRef"
+        },
+        {
+          "$ref": "#/$defs/wfSystemRef"
+        }
+      ]
+    },
+    "wfSystemRef": {
+      "type": "object",
+      "required": [
+        "kind",
+        "field"
+      ],
+      "additionalProperties": false,
+      "description": "系统值引用：当前时间/今天/触发时间/触发者等。可用于写值，也可用于条件 right（按相对当前时间筛选记录，如定时/无触发记录的流程筛「某日期字段早于 now」）。",
+      "properties": {
+        "kind": {
+          "const": "system"
+        },
+        "field": {
+          "type": "string",
+          "enum": [
+            "now",
+            "today",
+            "yesterday",
+            "tomorrow",
+            "trigger_time",
+            "trigger_user",
+            "timestamp",
+            "timestamp_seconds"
+          ],
+          "description": "系统值：now/当前时间、today/今天、yesterday、tomorrow、trigger_time/触发时间、trigger_user/触发者、timestamp(毫秒)、timestamp_seconds(秒)。用于「已到期/已过期」筛选（日期字段 早于 now）。注意：平台**不支持相对偏移（now±N 天）**——「到期前 N 天提醒」用 date 日期触发器(offset_type=before)；「未来 N 天内到期」批量扫描请加一个 DateFormula『距到期天数』字段、再用数值条件 0≤天数≤N（详见 workflow-gotchas）。"
+        }
+      }
+    },
+    "wfProcessParam": {
+      "type": "object",
+      "required": [
+        "name",
+        "value"
+      ],
+      "additionalProperties": false,
+      "description": "子流程入参：把主流程的某个值（如触发记录的 rowid）以命名参数传入子流程，子流程内用 {kind:param,name} 引用。用于子表无反向关联、子流程拿不到主单时把主单 ID 传进去。",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "参数名。"
+        },
+        "value": {
+          "$ref": "#/$defs/wfValueRef",
+          "description": "传入值（通常 {kind:field,node:{nodeAlias:trigger},fieldId:\"出库单/rowid\"}）。"
+        }
+      }
+    },
+    "wfFieldPatch": {
+      "type": "object",
+      "required": [
+        "fieldId"
+      ],
+      "additionalProperties": false,
+      "description": "字段写入项（create/update_record 的 fields[]）。value=静态值（选项写显示名）；valueRef=动态取自其他节点的字段。",
+      "properties": {
+        "fieldId": {
+          "type": "string",
+          "description": "\"工作表名/字段名\" -> controlId。"
+        },
+        "type": {
+          "type": "integer",
+          "description": "字段控件类型（可省，便于服务端识别选项/成员等）。"
+        },
+        "value": {
+          "description": "静态写入值（选项字段写显示名，执行器转 key；模板可用 $别名-工作表名/字段名$）。"
+        },
+        "valueRef": {
+          "type": "object",
+          "description": "动态取值：①从某节点的字段取值（给 fieldId=\"工作表名/字段名\"，可带 node 指定来源节点，默认 trigger）；②系统值（kind:\"system\" + field，如当前时间/触发时间/触发者）。",
+          "additionalProperties": true,
+          "properties": {
+            "kind": {
+              "type": "string",
+              "description": "省略或 \"field\"=取节点字段；\"system\"=系统值。"
+            },
+            "node": {
+              "$ref": "#/$defs/wfNodeRef"
+            },
+            "fieldId": {
+              "type": "string",
+              "description": "kind=field：来源字段 \"工作表名/字段名\"。"
+            },
+            "field": {
+              "type": "string",
+              "description": "kind=system：系统值名——now/当前时间、trigger_time/触发时间、trigger_user/触发者、timestamp(毫秒)、timestamp_seconds(秒)。"
+            },
+            "nodeActionId": {
+              "type": "string"
+            },
+            "nodeAppId": {
+              "type": "string"
+            },
+            "nodeAppType": {
+              "type": "integer"
+            }
+          },
+          "anyOf": [
+            {
+              "required": [
+                "fieldId"
+              ]
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "system"
+                }
+              },
+              "required": [
+                "kind",
+                "field"
+              ]
+            }
+          ]
+        },
+        "addType": {
+          "type": "integer",
+          "description": "写入方式：0=覆盖，1=累加，2=累减（query_update 扣减用 2）。"
+        },
+        "add_type": {
+          "type": "integer",
+          "description": "addType 的下划线别名。"
+        }
+      }
+    },
+    "wfConditionItem": {
+      "type": "object",
+      "required": [
+        "left",
+        "op"
+      ],
+      "additionalProperties": false,
+      "description": "单个条件：left 字段 op 比较 right 值。",
+      "properties": {
+        "left": {
+          "$ref": "#/$defs/wfFieldRef",
+          "description": "左侧字段。查询节点自身 filter 里 left.node 必须指向该查询节点自身；分支/触发器 filter 指向上游数据源节点。"
+        },
+        "op": {
+          "type": "string",
+          "enum": [
+            "eq",
+            "ne",
+            "gt",
+            "gte",
+            "lt",
+            "lte",
+            "in",
+            "not_in",
+            "empty",
+            "not_empty",
+            "contains",
+            "not_contains",
+            "starts_with",
+            "ends_with",
+            "all_contains",
+            "belongs",
+            "not_belongs",
+            "checked",
+            "unchecked"
+          ],
+          "description": "比较操作符（HAP 工作流仅支持这些字面值）。"
+        },
+        "right": {
+          "$ref": "#/$defs/wfValueRef",
+          "description": "右侧值（op 为 empty/not_empty/checked/unchecked 时省略）。"
+        }
+      }
+    },
+    "wfCondition": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "条件组（filter / branch path / 查询节点筛选）。两种写法二选一：①简单——用 items（一组条件），logic=and 全满足 / or 任一满足；②【或且组合】——用 groups（多组），每组内 items 之间是 AND，组与组之间是 OR，即「(组1全满足) 或 (组2全满足) 或 …」。需要纯 AND 就放进一个 items；需要 (A且B) 或 (C且D) 这种就用 groups。",
+      "properties": {
+        "logic": {
+          "type": "string",
+          "enum": [
+            "and",
+            "or"
+          ],
+          "default": "and",
+          "description": "仅 items 写法：组内各条件的连接（and 全满足 / or 任一满足）。"
+        },
+        "items": {
+          "type": "array",
+          "description": "简单写法：一组条件（按 logic 连接）。",
+          "items": {
+            "$ref": "#/$defs/wfConditionItem"
+          }
+        },
+        "groups": {
+          "type": "array",
+          "description": "或且组合写法：每个元素是一个 AND 组（组内 items 全满足），组与组之间 OR。",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "items"
+            ],
+            "properties": {
+              "items": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/wfConditionItem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "items"
+          ]
+        },
+        {
+          "required": [
+            "groups"
+          ]
+        }
+      ]
+    },
+    "wfAccount": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "additionalProperties": false,
+      "description": "收件人/审批人引用（accounts[]）。",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "role",
+            "user",
+            "triggerUser",
+            "owner",
+            "supervisor",
+            "field",
+            "email"
+          ],
+          "description": "role=应用角色；user=指定成员；triggerUser/owner=触发者/记录拥有者(type6 uaid)；supervisor=触发者的直属上司(roleType11)；field=记录上的成员字段；email=外部邮箱地址(仅 send_email 的 accounts/ccAccounts)。可选 node 指定取自哪个节点的记录(默认 trigger)。"
+        },
+        "role": {
+          "type": "string",
+          "description": "kind=role：角色逻辑名 -> roleId。"
+        },
+        "email": {
+          "type": "string",
+          "description": "kind=email：外部收件邮箱地址。"
+        },
+        "userId": {
+          "type": "string",
+          "description": "kind=user：成员 accountId。"
+        },
+        "userName": {
+          "type": "string"
+        },
+        "node": {
+          "$ref": "#/$defs/wfNodeRef",
+          "description": "kind=owner/triggerUser/supervisor：取自哪个节点的记录(默认 trigger)。"
+        },
+        "fieldId": {
+          "type": "string",
+          "description": "kind=field：成员字段 \"工作表名/字段名\" -> controlId。"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "role"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "role"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "user"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "userId"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "field"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "fieldId"
+            ]
+          }
+        }
+      ]
+    },
+    "wfAggregation": {
+      "type": "object",
+      "required": [
+        "alias"
+      ],
+      "additionalProperties": false,
+      "description": "compute/rollup 的聚合项（如对 get_multiple 结果计数，结果存到 alias 字段，供下游条件引用 $别名-alias$）。聚合方式用 `aggregate`(小写，推荐，与字段级 Rollup 一致) 或 `func`(大写)二选一，省略默认 count；二者执行期都会归一化为底层大写 func。",
+      "properties": {
+        "alias": {
+          "type": "string",
+          "description": "聚合结果别名（如 total_count）。"
+        },
+        "fieldId": {
+          "type": "string",
+          "description": "被聚合字段 \"工作表名/字段名\"，计数行数时可省略或用 rowid。"
+        },
+        "aggregate": {
+          "type": "string",
+          "enum": [
+            "sum",
+            "count",
+            "avg",
+            "max",
+            "min"
+          ],
+          "description": "聚合方式（小写，推荐）。与 func 二选一。"
+        },
+        "func": {
+          "type": "string",
+          "enum": [
+            "COUNT",
+            "SUM",
+            "AVG",
+            "MAX",
+            "MIN",
+            "count",
+            "sum",
+            "avg",
+            "max",
+            "min"
+          ],
+          "description": "聚合方式（大小写均可，执行期归一化为大写）。与 aggregate 二选一。"
+        }
+      }
+    },
+    "wfBranchPath": {
+      "type": "object",
+      "required": [
+        "nodes"
+      ],
+      "additionalProperties": false,
+      "description": "branch 的一条分支路径：满足 condition 时走 nodes（递归）。省略 condition=默认/否则分支。结果分支（result_branch=true）的路径用 result_type 指定走哪种结果，不写 condition。",
+      "properties": {
+        "alias": {
+          "type": "string",
+          "description": "分支路径别名。"
+        },
+        "condition": {
+          "$ref": "#/$defs/wfCondition"
+        },
+        "result_type": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "overrule",
+            "has_data",
+            "no_data"
+          ],
+          "description": "结果分支专用：本路径对应前驱节点的哪种结果。审批节点→pass(通过)/overrule(否决)；查询节点→has_data(有数据)/no_data(无数据)。仅当所在 branch 的 config.result_branch=true 时使用，且不要再写 condition。"
+        },
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/workflowNode"
+          }
+        },
+        "name": {
+          "type": "string",
+          "description": "分支路径显示名（标签）。"
+        },
+        "filter": {
+          "$ref": "#/$defs/wfCondition",
+          "description": "condition 的别名：满足该筛选时走本路径。"
+        }
+      }
+    },
+    "wfInnerProcess": {
+      "type": "object",
+      "required": [
+        "nodes"
+      ],
+      "additionalProperties": false,
+      "description": "子流程 / 审批块的内部流程。nodes 为内嵌节点（递归，固定起点别名 sub_trigger / approval_trigger）。审批块的 processConfig（allowRevoke/会签/多级等）经 process_config 内化（结构以 ground truth 校准后补充字段）。",
+      "properties": {
+        "nodes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/workflowNode"
+          }
+        },
+        "data_source": {
+          "$ref": "#/$defs/wfRecordRef",
+          "description": "仅 sub_process：遍历的数据源记录集（如 get_multiple 节点的关联明细）。"
+        },
+        "wait_complete": {
+          "type": "boolean",
+          "description": "仅 sub_process：子流程执行完毕后再开始下一个节点。"
+        },
+        "execute_type": {
+          "type": "integer",
+          "enum": [
+            1,
+            2,
+            3
+          ],
+          "default": 1,
+          "description": "仅 sub_process：对数据源多条记录的执行方式。1=并行(默认)；2=逐条串行(某条中止则不再触发后续记录)；3=逐条串行(某条中止仍继续下一条)。"
+        },
+        "parameters": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/wfProcessParam"
+          },
+          "description": "仅 sub_process：传入子流程的命名参数（主单 ID 等）。子流程内 get_single 的 filter 用 {kind:param,name} 引用。"
+        },
+        "process_config": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "仅 approval_block：审批块级配置（allowRevoke/allowUrge/sequence 等）。字段以 ground truth 校准后逐项内化。"
+        },
+        "name": {
+          "type": "string",
+          "description": "内部流程（子流程/审批流程）的名称，建完后经 process/update 写入（避免显示为「未命名子流程/审批流程」）。注意：这是内部流程名，不是节点名。"
+        },
+        "explain": {
+          "type": "string",
+          "description": "内部流程说明（process/update 的 explain）。"
+        },
+        "icon_color": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$",
+          "description": "内部流程图标色（process/update 的 iconColor）。"
+        }
+      }
+    },
+    "wfNodeConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "节点配置。键由 nodeType 经 workflowNode.allOf 约束：数据节点用 target/fields/filter；查询节点用 worksheet/filter；branch 用 paths；cc/notice/email 用 accounts/content；sub_process/approval_block 用 process；compute/rollup 用 target/aggregations。",
+      "properties": {
+        "worksheet": {
+          "type": "string",
+          "description": "目标/数据源工作表逻辑名 -> worksheetId（查询节点、跨表写入）。"
+        },
+        "target": {
+          "$ref": "#/$defs/wfRecordRef",
+          "description": "写入/聚合目标记录（数据节点、compute/rollup）。常用 {kind:record,node:{nodeAlias:trigger}}。"
+        },
+        "data_source": {
+          "$ref": "#/$defs/wfRecordRef",
+          "description": "聚合/遍历的数据源记录集（rollup 汇总指向某 get_multiple/get_relation_records 节点的结果；sub_process 也可在 process 内用 data_source）。"
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/wfFieldPatch"
+          },
+          "description": "create/update_record 的字段写入项。"
+        },
+        "filter": {
+          "$ref": "#/$defs/wfCondition",
+          "description": "查询/数据节点的筛选条件。"
+        },
+        "paths": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/wfBranchPath"
+          },
+          "description": "branch 的分支路径列表。"
+        },
+        "result_branch": {
+          "type": "boolean",
+          "description": "branch 专用：true=结果分支（审批结果/查询结果分支）。本分支必须紧跟一个审批节点(approve)或查询节点之后，按前驱结果路由——各 path 用 result_type 指定 pass/overrule(审批)或 has_data/no_data(查询)，不写 condition。省略/false=普通条件分支。"
+        },
+        "process": {
+          "$ref": "#/$defs/wfInnerProcess",
+          "description": "sub_process / approval_block 的内部流程。"
+        },
+        "accounts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/wfAccount"
+          },
+          "description": "cc/notice/email/approve 的收件人/审批人。"
+        },
+        "content": {
+          "type": "string",
+          "description": "cc/notice 正文（可用 $别名-工作表名/字段名$ 模板）。"
+        },
+        "subject": {
+          "type": "string",
+          "description": "email 主题(纯文本，可用 $别名-工作表名/字段名$ 模板)。"
+        },
+        "body": {
+          "type": "string",
+          "description": "email 正文。含 HTML 标签时自动按富文本发送(模板令牌会转成富文本提及)；纯文本则普通发送。"
+        },
+        "rich": {
+          "type": "boolean",
+          "description": "仅 send_email：强制正文按富文本(true)/纯文本(false)发送；省略=按是否含 HTML 自动判断。"
+        },
+        "sender_name": {
+          "type": "string",
+          "description": "仅 send_email：发件人显示名。"
+        },
+        "reply_email": {
+          "type": "string",
+          "description": "仅 send_email：回复邮箱地址。"
+        },
+        "ccAccounts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/wfAccount"
+          },
+          "description": "仅 send_email：抄送收件人(支持 {kind:email,email:'a@b.com'} 外部邮箱)。"
+        },
+        "aggregations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/wfAggregation"
+          },
+          "description": "compute/rollup 的聚合项。"
+        },
+        "countersign": {
+          "type": "string",
+          "enum": [
+            "single",
+            "all",
+            "sequential"
+          ],
+          "description": "仅 approve：会签方式（任一/全部/依次）。"
+        },
+        "relation_field": {
+          "type": "string",
+          "description": "get_relation_records：跟随的关联/子表字段逻辑名（父表/子表字段）。"
+        },
+        "match": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/wfFieldPatch"
+          },
+          "description": "query_update：定位待更新记录的匹配字段（findFields）。"
+        },
+        "sorts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "description": "query_update/查询：排序规则（默认按 ctime 倒序取最新）。"
+        },
+        "execute_type": {
+          "type": "integer",
+          "description": "查询/查询并更新：未命中时的执行方式（2=继续）。"
+        },
+        "splice_type": {
+          "type": "integer",
+          "description": "query_update filters 组的拼接方式（1=AND，2=OR）。"
+        },
+        "random": {
+          "type": "boolean",
+          "description": "仅 get_multiple：随机抽取记录（配合 count 限制条数）。"
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "仅 get_multiple：最多获取的记录条数（random 时为随机抽取的条数）。"
+        },
+        "permanent": {
+          "type": "boolean",
+          "description": "仅 delete_record：true=彻底删除(不可恢复)；省略/false=删到回收站。"
+        },
+        "source": {
+          "$ref": "#/$defs/wfValueRef",
+          "description": "approval_block/approve：进入审批/被审批的记录来源（默认触发记录）。"
+        },
+        "record": {
+          "$ref": "#/$defs/wfValueRef",
+          "description": "数据节点的目标记录（与 target 同义的别名）。"
+        },
+        "allow_revoke": {
+          "type": "boolean",
+          "description": "approval_block：是否允许撤回。"
+        },
+        "mode": {
+          "type": "string",
+          "description": "节点子模式。branch=exclusive(唯一分支，只走第一个匹配的路径，默认)/parallel(并行分支，每个匹配路径都跑)；compute=number(数值公式100)/date(日期公式101)/date_diff(日期差104)/function(函数106)；rollup=worksheet(工作表汇总107)/object(对象计数105)。"
+        },
+        "formula": {
+          "type": "string",
+          "description": "compute number/date/function 模式：运算公式表达式(可含 $alias-字段$ 模板)。"
+        },
+        "start": {
+          "$ref": "#/$defs/wfValueRef",
+          "description": "compute date_diff：开始日期字段。"
+        },
+        "end": {
+          "$ref": "#/$defs/wfValueRef",
+          "description": "compute date_diff：结束日期字段。"
+        },
+        "out_unit": {
+          "type": "string",
+          "enum": [
+            "minute",
+            "hour",
+            "day",
+            "month",
+            "year",
+            "second",
+            "week"
+          ],
+          "description": "compute date_diff：时长输出单位。"
+        },
+        "output_type": {
+          "type": "string",
+          "enum": [
+            "text",
+            "number",
+            "date",
+            "datetime"
+          ],
+          "description": "compute function 模式的结果数据类型，决定下游引用该节点结果的字段 id（text→string_fx_id / number→number_fx_id / date→date_fx_id / datetime→datetime_fx_id）。函数公式返回文本/日期时必须声明；省略默认 number。其他模式无需设置（number/date_diff 为数值、date 为日期）。"
+        },
+        "field": {
+          "type": "string",
+          "description": "rollup：被汇总的字段(工作表/字段)；省略=记录数量(count)。"
+        },
+        "aggregate": {
+          "type": "string",
+          "enum": [
+            "sum",
+            "avg",
+            "max",
+            "min",
+            "count"
+          ],
+          "description": "rollup 汇总方式(sum3/avg4/max5/min6；count=记录数量)。"
+        },
+        "card_fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "仅 cc：在抄送卡片上展示的字段逻辑名列表(showCard)；省略=不在卡片高亮任何字段。需配 worksheet 指明记录来源工作表。"
+        },
+        "editable_fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "fill_in/approve：填写人/审批人可修改的字段逻辑名(可改字段，property 2)。approve 需配 worksheet 才会生成可改字段表。"
+        },
+        "readonly_fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "fill_in/approve：仅可见、只读的字段逻辑名(property 1)。"
+        },
+        "hidden_fields": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "fill_in/approve：不展示的字段逻辑名(property 3)。"
+        },
+        "submit_btn_name": {
+          "type": "string",
+          "description": "fill_in：提交按钮文案(省略=默认)。"
+        },
+        "allow_transfer": {
+          "type": "boolean",
+          "description": "仅 approve：允许审批人转审(operationTypeList 加 6)。"
+        },
+        "allow_add_sign": {
+          "type": "boolean",
+          "description": "仅 approve：允许审批人加签(operationTypeList 加 7)。"
+        },
+        "reject_opinion_required": {
+          "type": "boolean",
+          "description": "仅 approve：否决时必须填写意见(auth.overruleTypeList=[100])。"
+        },
+        "pass_opinion_required": {
+          "type": "boolean",
+          "description": "仅 approve：通过时必须填写意见(auth.passTypeList=[100])。"
+        },
+        "batch_approve": {
+          "type": "boolean",
+          "description": "仅 approve：允许批量审批。"
+        },
+        "fast_approve": {
+          "type": "boolean",
+          "description": "仅 approve：允许快捷审批(列表内直接通过/否决)。"
+        },
+        "allow_attachment": {
+          "type": "boolean",
+          "description": "仅 approve：允许审批时上传附件。"
+        }
+      }
+    },
+    "role": {
+      "type": "object",
+      "required": [
+        "name",
+        "permission_scope"
+      ],
+      "additionalProperties": false,
+      "description": "应用角色，源自 sources/v3-api-schema/create_role.yaml。",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "角色名(必填)。"
+        },
+        "description": {
+          "type": "string",
+          "default": "",
+          "description": "角色描述(v3 必填，留空给默认)。"
+        },
+        "permission_scope": {
+          "type": "string",
+          "enum": [
+            "0"
+          ],
+          "description": "权限范围：一律为 \"0\"(细粒度)。必须配置 worksheet_permissions + page_permissions。不再支持 80/60/30/20 等全局快捷值。"
+        },
+        "hide_app_for_members": {
+          "type": "boolean",
+          "default": false
+        },
+        "worksheet_permissions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/roleWorksheetPerm"
+          },
+          "description": "permission_scope=0 时的工作表权限明细。工作表/字段/视图按逻辑名引用，执行期解析为 id。未列出的字段/视图按工作表级默认。"
+        },
+        "page_permissions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "page"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "page": {
+                "type": "string",
+                "description": "自定义页面逻辑名 -> id。"
+              },
+              "enable": {
+                "type": "boolean",
+                "default": true,
+                "description": "是否可查看该页面。"
+              }
+            }
+          },
+          "description": "permission_scope=0 时的自定义页面权限明细（页面按逻辑名）。"
+        },
+        "members": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "初始成员，映射 add_member_to_role.yaml。冒烟默认加当前登录者。",
+          "properties": {
+            "users": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "departments": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "department_trees": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "jobs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "org_roles": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "roleWorksheetPerm": {
+      "type": "object",
+      "required": [
+        "worksheet"
+      ],
+      "additionalProperties": false,
+      "description": "细粒度角色对一张工作表的权限（permission_scope=0）。映射 v3 worksheetPermissions 项。",
+      "properties": {
+        "worksheet": {
+          "type": "string",
+          "description": "工作表逻辑名 -> id。"
+        },
+        "data_scope": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "行记录数据范围。每项 0=未授权/20=仅自己的/30=自己及下属/100=全部，省略默认 100。",
+          "properties": {
+            "read": {
+              "type": "integer",
+              "enum": [
+                0,
+                20,
+                30,
+                100
+              ],
+              "default": 100
+            },
+            "edit": {
+              "type": "integer",
+              "enum": [
+                0,
+                20,
+                30,
+                100
+              ],
+              "default": 100
+            },
+            "delete": {
+              "type": "integer",
+              "enum": [
+                0,
+                20,
+                30,
+                100
+              ],
+              "default": 100
+            }
+          }
+        },
+        "actions": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "工作表级动作权限（worksheetActions），省略各项默认 false。",
+          "properties": {
+            "shareView": {
+              "type": "boolean"
+            },
+            "import": {
+              "type": "boolean"
+            },
+            "export": {
+              "type": "boolean"
+            },
+            "discuss": {
+              "type": "boolean"
+            },
+            "batchOperation": {
+              "type": "boolean"
+            }
+          }
+        },
+        "record_actions": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "行记录动作权限（recordActions），省略各项默认 false。",
+          "properties": {
+            "add": {
+              "type": "boolean"
+            },
+            "share": {
+              "type": "boolean"
+            },
+            "discuss": {
+              "type": "boolean"
+            },
+            "systemPrint": {
+              "type": "boolean"
+            },
+            "attachmentDownload": {
+              "type": "boolean"
+            },
+            "log": {
+              "type": "boolean"
+            }
+          }
+        },
+        "pay": {
+          "type": "boolean",
+          "default": false,
+          "description": "工作表内付款权限（paymentActions.pay）。"
+        },
+        "fields": {
+          "type": "array",
+          "description": "字段权限（仅列出要细控的字段，其余按工作表默认）。read/edit/add 省略默认 true，decrypt 默认 false。",
+          "items": {
+            "type": "object",
+            "required": [
+              "field"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "field": {
+                "type": "string",
+                "description": "字段逻辑名 -> id。"
+              },
+              "read": {
+                "type": "boolean",
+                "default": true
+              },
+              "edit": {
+                "type": "boolean",
+                "default": true
+              },
+              "add": {
+                "type": "boolean",
+                "default": true
+              },
+              "decrypt": {
+                "type": "boolean",
+                "default": false
+              }
+            }
+          }
+        },
+        "views": {
+          "type": "array",
+          "description": "视图下的行记录权限（recordPermissionInViews）。read/edit/delete 省略默认 true。",
+          "items": {
+            "type": "object",
+            "required": [
+              "view"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "view": {
+                "type": "string",
+                "description": "视图逻辑名 -> viewId。"
+              },
+              "read": {
+                "type": "boolean",
+                "default": true
+              },
+              "edit": {
+                "type": "boolean",
+                "default": true
+              },
+              "delete": {
+                "type": "boolean",
+                "default": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "optionset": {
+      "type": "object",
+      "required": [
+        "name",
+        "options"
+      ],
+      "additionalProperties": false,
+      "description": "选项集，源自 sources/v3-api-schema/create_optionset.yaml。",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "options": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "value"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "value": {
+                "type": "string",
+                "description": "选项值，不可重复。"
+              },
+              "index": {
+                "type": "integer",
+                "description": "排序值，越小越靠前；省略按数组下标。"
+              },
+              "color": {
+                "type": "string",
+                "enum": [
+                  "#C0E6FC",
+                  "#C3F2F2",
+                  "#00C345",
+                  "#FAD714",
+                  "#FF9300",
+                  "#F52222",
+                  "#EB2F96",
+                  "#7500EA",
+                  "#2D46C4",
+                  "#484848"
+                ],
+                "description": "选项状态色，只能取这 10 个值之一（HAP 选项调色板）。enable_color 时生效。状态/阶段/优先级类选项集必给色，语义取色：负面/失败=#F52222(红) 正面/完成=#00C345(绿) 警告/待处理=#FAD714(黄) 进行中=#2D46C4(蓝) 取消/归档=#484848(灰)；纯分类标签不给色。注意与应用主题色的 9 色是两套。"
+              },
+              "score": {
+                "type": "number",
+                "description": "enable_score 时生效，可小数/负数。"
+              }
+            }
+          }
+        },
+        "enable_color": {
+          "type": "boolean",
+          "default": true
+        },
+        "enable_score": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    }
+  }
+}
