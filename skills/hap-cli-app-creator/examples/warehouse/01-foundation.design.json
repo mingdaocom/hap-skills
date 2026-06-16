@@ -354,7 +354,7 @@
     {
       "name": "入库单",
       "section": "出入库单据",
-      "icon": "sys_form_symbol",
+      "icon": "sys_saved-items_office",
       "fields": [
         {
           "type": "Divider",
@@ -519,7 +519,7 @@
     {
       "name": "出库单",
       "section": "出入库单据",
-      "icon": "sys_form_symbol",
+      "icon": "sys_7_1_truck",
       "fields": [
         {
           "type": "Divider",

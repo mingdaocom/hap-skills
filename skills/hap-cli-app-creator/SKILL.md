@@ -1,22 +1,22 @@
 ---
 name: hap-cli-app-creator
-description: 从业务需求一站式建出完整的明道云 HAP 应用。从业务方案设计开始，确认后用 hap 命令行自动物理搭建。若已存在方案，可直接一键继续/恢复物理搭建。只要用户描述了业务场景并说出类似「建一个应用 / 建表 / 帮我把这个业务做成 HAP 应用 / 搭一个 CRM·库存·报修·借阅系统 / 生成工作表」之类的话，即使没有明说 HAP 或工作表，也应触发。
+description: 用 hap 命令行工具（CLI）从业务需求一站式建出完整的 HAP 应用。只要用户描述了业务场景并说出类似「建一个应用 / 帮我把这个业务做成 HAP 应用 / 搭一个 CRM·库存·报修·借阅系统 / 生成 HAP 应用」之类的话，即使没有明说 HAP ，也应触发。如果当前没有终端环境，则优先使用 hap-mcp-app-builder (如果有) 创建应用。
 ---
 
 # HAP 应用创建器（通过 HAP CLI）
 
-你是明道云 HAP（Hyper Application Platform）应用设计师。你把用户的业务需求，变成一个**真实建出来、可用、带示例数据**的明道云应用。
+你是 HAP（Hyper Application Platform）应用设计师。你把用户的业务需求，变成一个**真实建出来、可用、带示例数据**的 HAP 应用。
 
-整套「设计文档 → 建应用 → 填数据」的执行逻辑都封装在本 skill 的 `scripts/` 里（一套已 live 验证的框架，通过 subprocess 调用真实 `hap` 二进制）。
+整套「设计文档 → 建应用 → 填数据」的执行逻辑由 hap CLI 的 `hap app-creator` 命令承载。
 你只依次做 5 件事（重内容按需查阅 `references/`，不要一次性全读）：
 
 1. **Plan**：把需求拆成模块功能清单，与用户确认。
-2. **Design**：在 `scripts/design/design.schema.json` 定义约束下产出 ID-free 的设计文档 `design.json`，并**本地校验通过**。
-3. **Build**：执行本地脚本，以设计文档 JSON 一次性整建真实应用；中途失败只记录不重跑。
-4. **Seed**：根据应用结构生成示例数据模板，再由 AI 按模板生成数据，再执行本地脚本填充数据。
+2. **Design**：在 `design/design.schema.json` 定义约束下产出 ID-free 的设计文档 `design.json`，并**本地校验通过**。
+3. **Build**：用 `hap app-creator build` 以设计文档 JSON 一次性整建真实应用；中途失败只记录不重跑。
+4. **Seed**：根据应用结构生成示例数据模板，再由 AI 按模板生成数据，再用 `hap app-creator seed` 填充数据。
 5. **收尾与按需修复**：展示完整清单；若有失败项，提示用户先打开应用查看，再由用户决定是否用 hap-cli-app-editor 在原位修复。
 
-> `design.json` 全程用**逻辑名**（工作表名/字段名/角色名…）互相引用，没有任何 id。脚本的执行器负责把逻辑名解析成真实 id 并落盘。
+> `design.json` 全程用**逻辑名**（工作表名/字段名/角色名…）互相引用，没有任何 id。`hap app-creator build` 负责把逻辑名解析成真实 id 并落盘。
 
 ## 前置条件
 
@@ -31,7 +31,7 @@ description: 从业务需求一站式建出完整的明道云 HAP 应用。从�
 
 ### 2. 确定项目根目录（PROJECT_ROOT）与应用文件夹
 
-从用户当前活动的 **workspace URI** 提取项目根目录，记为 `PROJECT_ROOT`。
+从用户当前活动的 **workspace** 提取项目根目录，记为 `PROJECT_ROOT`。
 
 为本次要创建的应用确定一个文件夹名：**`{appName}-{ts}`**，其中 `ts` 是当前日期时间戳（如 `20260605-153000`）。整个应用文件夹记为 `{PROJECT_ROOT}/apps/{appName}-{ts}/`。
 
@@ -39,22 +39,21 @@ description: 从业务需求一站式建出完整的明道云 HAP 应用。从�
 > 后续所有通过本 skill 生成的文件必须使用 `{PROJECT_ROOT}/apps/{appName}-{ts}/...` 的绝对路径。严禁使用相对路径 `apps/{appName}-{ts}`，否则文件可能被创建到错误位置。
 > build 会自动把 store、运行日志、报告和示例数据都写进**设计文档所在的这个文件夹**，不会落到用户的 home 目录。
 
-### 3. 运行脚本的约定（重要）
+### 3. 运行命令的约定（重要）
 
-- **工作目录**：`cd` 到本 skill 目录（`skills/hap-cli-app-creator/`）再运行 `python3 -m scripts ...`，这样 `scripts` 包可被导入。
-- **解释器**：`scripts/` 是**纯标准库**、完全自包含，**不 import 任何外部包**（建表/字段的控件构造逻辑已内置在 `scripts/_hapmeta/`）。
-- **产物落盘**：脚本把每个应用的设计文档（`*.design.json`）、 store 和示例数据写到 `{PROJECT_ROOT}/apps/{appName}-{ts}/...` （即设计文档所在目录）。
-- 校验阶段失败时脚本返回非 0 并打印原因（带 JSON 路径）：读它、改 design、重新校验。
+- **命令**：所有步骤都用 `hap app-creator <子命令>`（`hap` 已随 hap-cli 安装）。运行前确保已 `hap auth login` 且选好组织。
+- **产物落盘**：每个应用的设计文档（`*.design.json`）、 store 和示例数据都写到 `{PROJECT_ROOT}/apps/{appName}-{ts}/...` （即设计文档所在目录），不会落到用户的 home 目录。
+- 校验阶段失败时命令返回非 0 并打印原因（带 JSON 路径）：读它、改 design、重新校验。
 - build 阶段则**永远从干净 design 一次性整跑到底**——中途某步（某条工作流/某个视图）失败只会被记录，流程继续，**绝不分阶段重跑、绝不自动改 design 重建**。失败项在全部跑完后用 hap-cli-app-editor 按真实 id 在原位修复（见 Step 5）。
 
 命令总览：
 
 ```bash
-python3 -m scripts validate <design.json>      # 本地校验 schema + 核验所有 icon 真实存在（不需登录；icon 走本地图标库）
-python3 -m scripts build    <design.json>      # 从零一次性整建整个应用，返回 appId；建完保留
-python3 -m scripts seed-template <appId>       # 读真实控件元数据，产出填值模板
-python3 -m scripts seed     <appId>            # 把你写的 _seed_data.json 推进应用
-python3 -m scripts cleanup  <appId> --yes      # 删应用 + 归档 store（绝不自动跑，按需手动）
+hap app-creator validate <design.json>      # 本地校验 schema + 核验所有 icon 真实存在 + 工作表/页面图标查重（不需登录；icon 走本地图标库）
+hap app-creator build    <design.json>      # 从零一次性整建整个应用，返回 appId；建完保留
+hap app-creator seed-template <appId>       # 读真实控件元数据，产出填值模板
+hap app-creator seed     <appId>            # 把你写的 _seed_data.json 推进应用
+hap app-creator cleanup  <appId> --yes      # 删应用 + 归档 store（绝不自动跑，按需手动）
 ```
 
 ---
@@ -63,18 +62,19 @@ python3 -m scripts cleanup  <appId> --yes      # 删应用 + 归档 store（绝�
 
 1. 执行 `hap auth list-my-orgs` 获取用户的组织列表，再用 `hap auth set-current-org` 选择当前组织
 2. 若只有一个组织 → 自动选择并告知用户
-3. 若有多个 → 列出所有组织让用户选择
+3. 若有多个 → 列出所有组织让用户选择 (优先使用 Ask User 类工具)
 
 > [!CAUTION]
 > **⛔ STOP — 等待用户确认组织后再继续。** 严禁在同一轮回复中同时输出组织选择和方案设计。
 
 ---
 
-## 你的 4 步工作流
+## 你的 5 步工作流
 
 ### Step 1 — Plan（业务方案，先与用户确认）
 
 **必须按照** [references/plan.md](references/plan.md) 中的规范，用**业务语言**产出一份方案总览（Markdown），包含（角色 / 业务流程 / 工作表+ER图 / 自定义页面 / 自动化工作流 / AI 助手 / 导航分组）。
+在输出总览之前，先分析用户的需求，在有必要时让用户对需求做出澄清。你自动分析需求中不清晰的地方，然后给出几个选项（其中一个是推荐），使用 Ask User 工具提示用户做出选择或自定义回答，选项一般不超过 4 个，所有问题不超过 3 个。
 输出总览后，附一句：「以上是应用方案总览，确认后我就开始生成设计并搭建。如需调整请直接说明。」**等用户确认**；用户要改就改完重出，直到确认。
 
 > [!CAUTION]
@@ -92,7 +92,7 @@ python3 -m scripts cleanup  <appId> --yes      # 删应用 + 归档 store（绝�
 
 ### Step 2 — 生成 design.json 并本地校验
 
-把确认后的方案，转成严格符合 [scripts/design/design.schema.json](scripts/design/design.schema.json) 的设计文档，写到 `{PROJECT_ROOT}/apps/{appName}-{ts}/` 下。
+把确认后的方案，转成严格符合 [design/design.schema.json](design/design.schema.json) 的设计文档，写到 `{PROJECT_ROOT}/apps/{appName}-{ts}/` 下。
 
 **文件命名（固定，不要带应用名——父文件夹已含名称）**：
 - **单份**（工作表 **≤ 5 个**）：就叫 **`app.design.json`**。
@@ -134,10 +134,10 @@ design.json 全程用**逻辑名**互引、无 id，所以可以拆成几份分�
    > - 其它 Agent：优先使用该环境官方的 delegation/subagent/worker 机制；如果该环境也要求用户显式授权多代理，就在派发前向用户请求这句授权。只有在环境完全没有子代理能力，或用户明确拒绝多代理时，才改为本地串行生成，并说明原因。
 3. **合并/校验/建**——所有分片回齐后，`build` 与 `validate` 直接接收多份文件，按序合并成一份整体再处理（数组键拼接、`app` 唯一、跨片重名报错）：
    ```bash
-   python3 -m scripts validate {PROJECT_ROOT}/apps/{appName}-{ts}/0*.design.json   # 合并后整体校验
-   python3 -m scripts build    {PROJECT_ROOT}/apps/{appName}-{ts}/0*.design.json   # 合并后建
+   hap app-creator validate {PROJECT_ROOT}/apps/{appName}-{ts}/0*.design.json   # 合并后整体校验
+   hap app-creator build    {PROJECT_ROOT}/apps/{appName}-{ts}/0*.design.json   # 合并后建
    ```
-   需要一份合并后的实体文件留档/检查，可用 `python3 -m scripts merge 0*.design.json --out merged.design.json`。
+   需要一份合并后的实体文件留档/检查，可用 `hap app-creator merge 0*.design.json --out merged.design.json`。
 
 > ≤ 5 表可单份 `app.design.json`；> 5 表必须拆分。拆分时务必：①只有地基含 `app`；②各片顶层键不相交；③跨片引用的表名/字段名、以及**视图外露的动作名、角色引用的页面名，必须与地基锁定的命名契约完全一致**（合并后会整体校验兜底）。
 
@@ -145,9 +145,9 @@ design.json 全程用**逻辑名**互引、无 id，所以可以拆成几份分�
 
 ```bash
 # 单份
-python3 -m scripts validate {PROJECT_ROOT}/apps/{appName}-{ts}/app.design.json
+hap app-creator validate {PROJECT_ROOT}/apps/{appName}-{ts}/app.design.json
 # 拆分（多份合并后整体校验）
-python3 -m scripts validate {PROJECT_ROOT}/apps/{appName}-{ts}/0*.design.json
+hap app-creator validate {PROJECT_ROOT}/apps/{appName}-{ts}/0*.design.json
 ```
 
 校验只查结构（缺必填/枚举越界/类型错/关联显示方式不匹配）。语义对不对靠你对照 references。
@@ -158,9 +158,9 @@ python3 -m scripts validate {PROJECT_ROOT}/apps/{appName}-{ts}/0*.design.json
 
 ```bash
 # 单份
-python3 -m scripts build {PROJECT_ROOT}/apps/{appName}-{ts}/app.design.json
+hap app-creator build {PROJECT_ROOT}/apps/{appName}-{ts}/app.design.json
 # 拆分（多份合并后建）
-python3 -m scripts build {PROJECT_ROOT}/apps/{appName}-{ts}/0*.design.json
+hap app-creator build {PROJECT_ROOT}/apps/{appName}-{ts}/0*.design.json
 ```
 
 - 成功会打印 **appId** + store 路径 + cleanup 命令。**记下 appId**（后续 seed/cleanup/修复 用它定位本应用）。文件夹名已用 `{appName}-{ts}`，**无需改名**。所有产物已落在该文件夹内。
@@ -183,10 +183,10 @@ python3 -m scripts build {PROJECT_ROOT}/apps/{appName}-{ts}/0*.design.json
 
 ```bash
 # ① (机械) 读真实控件元数据，产出填值模板
-python3 -m scripts seed-template <appId>
+hap app-creator seed-template <appId>
 # ② (你)   读 _seed_template.json + references/seed-data.md，写出 _seed_data.json
 # ③ (机械) 拓扑排序逐表写入，解析 @标签，回填真实 rowId
-python3 -m scripts seed <appId> {PROJECT_ROOT}/apps/{appName}-{ts}/_seed_data.json
+hap app-creator seed <appId> {PROJECT_ROOT}/apps/{appName}-{ts}/_seed_data.json
 ```
 
 数据规则**全部照 [references/seed-data.md](references/seed-data.md)**：只填模板列出的可写字段、关联用 `@标签` 引用别的行的 `_ref`、

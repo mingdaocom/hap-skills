@@ -130,32 +130,150 @@
       ]
     },
     {
-      "name": "提交入库审批",
+      "name": "新入库单建单抄送复核",
       "trigger": {
-        "type": "button"
+        "type": "record_create",
+        "worksheet": "入库单"
       },
       "nodes": [
         {
-          "nodeType": "update_record",
-          "name": "置为审批中",
+          "nodeAlias": "cc1",
+          "nodeType": "cc",
+          "name": "抄送仓库主管复核",
           "config": {
             "worksheet": "入库单",
+            "content": "新入库单「$trigger-入库单/入库单号$」已创建（入库类型：$trigger-入库单/入库类型$，供应商：$trigger-入库单/供应商$），请核对明细后提交审批。",
+            "card_fields": [
+              "入库类型",
+              "供应商",
+              "入库总数量"
+            ],
             "target": {
               "kind": "record",
               "node": {
                 "nodeAlias": "trigger"
               }
             },
-            "fields": [
+            "accounts": [
               {
-                "fieldId": "入库单/单据状态",
-                "type": 9,
-                "value": "审批中"
+                "kind": "role",
+                "role": "仓库主管"
+              },
+              {
+                "kind": "role",
+                "role": "库管组长"
               }
             ]
-          },
-          "nodeAlias": "u1"
-        },
+          }
+        }
+      ]
+    },
+    {
+      "name": "出库单超期未出库提醒",
+      "trigger": {
+        "type": "date",
+        "worksheet": "出库单",
+        "date_field": "出库日期",
+        "date_config": {
+          "offset_type": "after",
+          "offset_number": 3,
+          "offset_unit": "day",
+          "time": "09:00",
+          "repeat": "once"
+        }
+      },
+      "nodes": [
+        {
+          "nodeAlias": "chk",
+          "nodeType": "branch",
+          "name": "是否仍未完成出库",
+          "config": {
+            "paths": [
+              {
+                "name": "仍未出库",
+                "condition": {
+                  "items": [
+                    {
+                      "left": {
+                        "kind": "field",
+                        "node": {
+                          "nodeAlias": "trigger"
+                        },
+                        "fieldId": "出库单/单据状态"
+                      },
+                      "op": "in",
+                      "right": {
+                        "kind": "literal",
+                        "values": [
+                          "未提交",
+                          "审批中",
+                          "已审批",
+                          "待出库"
+                        ]
+                      }
+                    }
+                  ]
+                },
+                "nodes": [
+                  {
+                    "nodeAlias": "rem",
+                    "nodeType": "notice",
+                    "name": "催办出库",
+                    "config": {
+                      "content": "出库单「$trigger-出库单/出库单号$」预计出库日期已过 3 天仍未完成出库（当前状态：$trigger-出库单/单据状态$，出库类型：$trigger-出库单/出库类型$），请尽快安排出库或确认是否取消。",
+                      "accounts": [
+                        {
+                          "kind": "owner",
+                          "node": {
+                            "nodeAlias": "trigger"
+                          }
+                        },
+                        {
+                          "kind": "role",
+                          "role": "仓库主管"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "name": "已完成或已取消",
+                "nodes": []
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "入库审批",
+      "trigger": {
+        "type": "record_update",
+        "worksheet": "入库单",
+        "fields": [
+          "单据状态"
+        ],
+        "filter": {
+          "items": [
+            {
+              "left": {
+                "kind": "field",
+                "node": {
+                  "nodeAlias": "trigger"
+                },
+                "fieldId": "入库单/单据状态"
+              },
+              "op": "eq",
+              "right": {
+                "kind": "literal",
+                "value": "审批中"
+              }
+            }
+          ]
+        }
+      },
+      "nodes": [
         {
           "nodeAlias": "appr",
           "nodeType": "approval_block",
@@ -502,32 +620,33 @@
       ]
     },
     {
-      "name": "提交审批",
+      "name": "出库审批",
       "trigger": {
-        "type": "button"
-      },
-      "nodes": [
-        {
-          "nodeAlias": "u1",
-          "nodeType": "update_record",
-          "name": "置为审批中",
-          "config": {
-            "worksheet": "出库单",
-            "target": {
-              "kind": "record",
-              "node": {
-                "nodeAlias": "trigger"
-              }
-            },
-            "fields": [
-              {
-                "fieldId": "出库单/单据状态",
-                "type": 9,
+        "type": "record_update",
+        "worksheet": "出库单",
+        "fields": [
+          "单据状态"
+        ],
+        "filter": {
+          "items": [
+            {
+              "left": {
+                "kind": "field",
+                "node": {
+                  "nodeAlias": "trigger"
+                },
+                "fieldId": "出库单/单据状态"
+              },
+              "op": "eq",
+              "right": {
+                "kind": "literal",
                 "value": "审批中"
               }
-            ]
-          }
-        },
+            }
+          ]
+        }
+      },
+      "nodes": [
         {
           "nodeAlias": "appr",
           "nodeType": "approval_block",
@@ -788,6 +907,64 @@
                     }
                   }
                 ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "入库单送审",
+      "trigger": {
+        "type": "button"
+      },
+      "nodes": [
+        {
+          "nodeType": "update_record",
+          "name": "置为审批中",
+          "config": {
+            "worksheet": "入库单",
+            "target": {
+              "kind": "record",
+              "node": {
+                "nodeAlias": "trigger"
+              }
+            },
+            "fields": [
+              {
+                "fieldId": "入库单/单据状态",
+                "type": 9,
+                "value": "审批中"
+              }
+            ]
+          },
+          "nodeAlias": "u1"
+        }
+      ]
+    },
+    {
+      "name": "出库单送审",
+      "trigger": {
+        "type": "button"
+      },
+      "nodes": [
+        {
+          "nodeAlias": "u1",
+          "nodeType": "update_record",
+          "name": "置为审批中",
+          "config": {
+            "worksheet": "出库单",
+            "target": {
+              "kind": "record",
+              "node": {
+                "nodeAlias": "trigger"
+              }
+            },
+            "fields": [
+              {
+                "fieldId": "出库单/单据状态",
+                "type": 9,
+                "value": "审批中"
               }
             ]
           }
@@ -1170,7 +1347,7 @@
           "value": "待审批"
         }
       ],
-      "workflow": "提交入库审批"
+      "workflow": "入库单送审"
     },
     {
       "worksheet": "出库单",
@@ -1185,7 +1362,7 @@
           "value": "未提交"
         }
       ],
-      "workflow": "提交审批"
+      "workflow": "出库单送审"
     },
     {
       "worksheet": "出库单",

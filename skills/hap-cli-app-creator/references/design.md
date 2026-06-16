@@ -3,8 +3,8 @@
 ---
 
 设计文档是一份 **ID-free 的 JSON**：所有跨对象引用都用**逻辑名**（工作表名、字段名、角色名、分组名、页面名、视图名…），
-没有任何真实 id。`scripts/` 的执行器按依赖顺序建资源，把每个逻辑名解析成服务端返回的真实 id 并落盘到 store。
-权威契约是 `scripts/design/design.schema.json`（draft-07），生成后用 `python -m scripts validate <file>` 本地校验。
+没有任何真实 id。`hap app-creator build` 按依赖顺序建资源，把每个逻辑名解析成服务端返回的真实 id 并落盘到 store。
+权威契约是 [../design/design.schema.json](../design/design.schema.json)（draft-07），生成后用 `hap app-creator validate <file>` 本地校验。
 
 设计之前必须先阅读设计指南 [design_guide.md](design_guide.md)，了解总体设计原则以及各个模块如何选型与设计。
 
@@ -71,5 +71,5 @@ Custom actions → Views → Custom pages → Chatbots → Roles → Workflows�
 ## 生成→建出的完整循环
 
 1. 写 design.json（对照各 references）。
-2. `python -m scripts validate <file>` → 必须零错误。校验除结构外，还做**逻辑名引用完整性**检查：`worksheet/custom_page/chatbot` 的 `section` 必须在 `app.sections` 内；`Relation.worksheet`、`view.worksheet`、`custom_action.worksheet`、角色 `worksheet_permissions[].worksheet`、图表/内嵌视图组件的 `worksheet` 必须是已定义的工作表；`field.optionset` 必须是已定义的选项集；角色 `page_permissions[].page` 必须是已定义的自定义页面；`view.actions` 外露的动作必须是该视图所属工作表上已定义的 `custom_action`。拆分生成时务必让各片引用的名字与 `01-foundation` 锁定的命名契约（表名/字段名 + 自定义动作名 + 自定义页面名）完全一致（合并后整体校验兜底）。
-3. `python -m scripts build <file>` → 一次性整跑、拿 appId。build 永远从干净 design 整跑到底，**没有分阶段重跑/续跑**；中途某步失败会被记录、流程继续到底，失败项事后用 hap-cli-app-editor 按真实 id 在原位修复，绝不回头重跑某个 build 阶段（否则会堆出重复视图/工作流）。
+2. `hap app-creator validate <file>` → 必须零错误。校验除结构外，还做**逻辑名引用完整性**检查：`worksheet/custom_page/chatbot` 的 `section` 必须在 `app.sections` 内；`Relation.worksheet`、`view.worksheet`、`custom_action.worksheet`、角色 `worksheet_permissions[].worksheet`、图表/内嵌视图组件的 `worksheet` 必须是已定义的工作表；`field.optionset` 必须是已定义的选项集；角色 `page_permissions[].page` 必须是已定义的自定义页面；`view.actions` 外露的动作必须是该视图所属工作表上已定义的 `custom_action`。拆分生成时务必让各片引用的名字与 `01-foundation` 锁定的命名契约（表名/字段名 + 自定义动作名 + 自定义页面名）完全一致（合并后整体校验兜底）。
+3. `hap app-creator build <file>` → 一次性整跑、拿 appId。build 永远从干净 design 整跑到底，**没有分阶段重跑/续跑**；中途某步失败会被记录、流程继续到底，失败项事后用 hap-cli-app-editor 按真实 id 在原位修复，绝不回头重跑某个 build 阶段（否则会堆出重复视图/工作流）。
