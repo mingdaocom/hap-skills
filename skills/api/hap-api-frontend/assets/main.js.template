@@ -1,0 +1,197 @@
+/**
+ * 主应用逻辑
+ * 
+ * 依赖：config.js, api.js
+ */
+
+const App = {
+    /**
+     * 初始化应用
+     */
+    async init() {
+        // 等待 DOM 加载完成
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => this.start());
+        } else {
+            this.start();
+        }
+    },
+
+    /**
+     * 启动应用
+     */
+    async start() {
+        try {
+            // 加载数据
+            await this.loadData();
+        } catch (error) {
+            console.error('应用启动失败:', error);
+            this.showError('页面加载失败，请刷新重试');
+        }
+    },
+
+    /**
+     * 加载数据
+     */
+    async loadData() {
+        this.showLoading();
+
+        try {
+            // 并行加载多个数据源
+            const [products, news] = await Promise.all([
+                this.loadProducts(),
+                this.loadNews()
+            ]);
+
+            // 渲染数据
+            this.renderProducts(products);
+            this.renderNews(news);
+
+        } catch (error) {
+            console.error('数据加载失败:', error);
+            this.showError('数据加载失败，请刷新重试');
+        } finally {
+            this.hideLoading();
+        }
+    },
+
+    /**
+     * 加载产品数据
+     */
+    async loadProducts() {
+        const data = await API.getRows(CONFIG.WORKSHEETS.PRODUCTS, {
+            filter: {
+                type: 'group',
+                logic: 'AND',
+                children: [{
+                    type: 'condition',
+                    field: CONFIG.PRODUCT_FIELDS.PUBLISHED,
+                    operator: 'eq',
+                    value: ['1']
+                }]
+            },
+            sorts: [{
+                field: CONFIG.PRODUCT_FIELDS.SORT,
+                isAsc: true
+            }],
+            pageSize: 20
+        });
+
+        return data.rows || [];
+    },
+
+    /**
+     * 加载新闻数据
+     */
+    async loadNews() {
+        const data = await API.getRows(CONFIG.WORKSHEETS.NEWS, {
+            filter: {
+                type: 'group',
+                logic: 'AND',
+                children: [{
+                    type: 'condition',
+                    field: CONFIG.NEWS_FIELDS.IS_PUBLISHED,
+                    operator: 'eq',
+                    value: ['1']
+                }]
+            },
+            sorts: [{
+                field: CONFIG.NEWS_FIELDS.PUBLISH_DATE,
+                isAsc: false
+            }],
+            pageSize: 10
+        });
+
+        return data.rows || [];
+    },
+
+    /**
+     * 渲染产品列表
+     */
+    renderProducts(products) {
+        const container = document.getElementById('products-container');
+        if (!container) return;
+
+        if (products.length === 0) {
+            container.innerHTML = '<p class="empty-message">暂无产品数据</p>';
+            return;
+        }
+
+        container.innerHTML = products.map(product => {
+            const name = API.getFieldValue(product, CONFIG.PRODUCT_FIELDS.NAME);
+            const image = API.getImageUrl(product, CONFIG.PRODUCT_FIELDS.IMAGE, 300);
+            const price = API.getFieldValue(product, CONFIG.PRODUCT_FIELDS.PRICE);
+            const desc = API.getFieldValue(product, CONFIG.PRODUCT_FIELDS.DESC);
+
+            return `
+                <div class="product-card">
+                    <img src="${image}" alt="${name}" onerror="this.src='placeholder.png'">
+                    <h3>${name}</h3>
+                    <p class="price">¥${price}</p>
+                    <p class="desc">${desc}</p>
+                </div>
+            `;
+        }).join('');
+    },
+
+    /**
+     * 渲染新闻列表
+     */
+    renderNews(news) {
+        const container = document.getElementById('news-container');
+        if (!container) return;
+
+        if (news.length === 0) {
+            container.innerHTML = '<p class="empty-message">暂无新闻数据</p>';
+            return;
+        }
+
+        container.innerHTML = news.map(item => {
+            const title = API.getFieldValue(item, CONFIG.NEWS_FIELDS.TITLE);
+            const coverImage = API.getImageUrl(item, CONFIG.NEWS_FIELDS.COVER_IMAGE, 400);
+            const summary = API.getFieldValue(item, CONFIG.NEWS_FIELDS.SUMMARY);
+            const publishDate = API.getFieldValue(item, CONFIG.NEWS_FIELDS.PUBLISH_DATE);
+
+            return `
+                <article class="news-item">
+                    <img src="${coverImage}" alt="${title}" onerror="this.src='placeholder.png'">
+                    <div class="news-content">
+                        <h3>${title}</h3>
+                        <p class="summary">${summary}</p>
+                        <time>${publishDate}</time>
+                    </div>
+                </article>
+            `;
+        }).join('');
+    },
+
+    /**
+     * 显示加载状态
+     */
+    showLoading() {
+        const loading = document.getElementById('loading');
+        if (loading) loading.style.display = 'block';
+    },
+
+    /**
+     * 隐藏加载状态
+     */
+    hideLoading() {
+        const loading = document.getElementById('loading');
+        if (loading) loading.style.display = 'none';
+    },
+
+    /**
+     * 显示错误消息
+     */
+    showError(message) {
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'error-message';
+        errorDiv.textContent = message;
+        document.body.appendChild(errorDiv);
+        setTimeout(() => errorDiv.remove(), 5000);
+    }
+};
+
+// 启动应用
+App.init();

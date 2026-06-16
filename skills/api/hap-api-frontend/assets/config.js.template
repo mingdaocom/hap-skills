@@ -1,0 +1,49 @@
+/**
+ * HAP API 配置文件模板
+ * 
+ * 使用说明：
+ * 1. 将文件重命名为 config.js
+ * 2. 替换 HAP_APPKEY 和 HAP_SIGN 为您的实际 API 凭证
+ * 3. 替换 WORKSHEETS 中的工作表 ID
+ * 4. 替换字段 ID 映射
+ */
+
+const CONFIG = {
+    // HAP 应用公开 API V3 基础 URL
+    API_BASE_URL: 'https://api.mingdao.com',
+
+    // HAP 应用认证信息（从 HAP 后台获取）
+    // 获取方式：登录明道云 → 应用设置 → API 密钥
+    HAP_APPKEY: '你的HAP_APPKEY',
+    HAP_SIGN: '你的HAP_SIGN',
+
+    // 工作表 ID（从 HAP 后台或 MCP 获取）
+    WORKSHEETS: {
+        PRODUCTS: '你的产品表ID',
+        NEWS: '你的新闻表ID',
+        CASES: '你的案例表ID'
+    },
+
+    // 字段 ID 映射（从 HAP 后台或 MCP 获取）
+    PRODUCT_FIELDS: {
+        NAME: '产品名称字段ID',
+        IMAGE: '产品图片字段ID',
+        PRICE: '参考价格字段ID',
+        DESC: '产品描述字段ID',
+        CATEGORY: '产品分类字段ID',
+        PUBLISHED: '是否上架字段ID',
+        RECOMMENDED: '是否推荐字段ID',
+        SORT: '排序字段ID'
+    },
+
+    NEWS_FIELDS: {
+        TITLE: '标题字段ID',
+        SUMMARY: '摘要字段ID',
+        CONTENT: '内容字段ID',
+        COVER_IMAGE: '封面图字段ID',
+        PUBLISH_DATE: '发布时间字段ID',
+        CATEGORY: '分类字段ID',
+        IS_TOP: '是否置顶字段ID',
+        IS_PUBLISHED: '是否发布字段ID'
+    }
+};
