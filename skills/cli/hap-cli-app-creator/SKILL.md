@@ -49,7 +49,7 @@ description: 用 hap 命令行工具（CLI）从业务需求一站式建出完�
 命令总览：
 
 ```bash
-hap app-creator validate <design.json>      # 本地校验 schema + 核验所有 icon 真实存在（不需登录；icon 走本地图标库）
+hap app-creator validate <design.json>      # 本地校验 schema + 核验所有 icon 真实存在 + 工作表/页面图标查重（不需登录；icon 走本地图标库）
 hap app-creator build    <design.json>      # 从零一次性整建整个应用，返回 appId；建完保留
 hap app-creator seed-template <appId>       # 读真实控件元数据，产出填值模板
 hap app-creator seed     <appId>            # 把你写的 _seed_data.json 推进应用
