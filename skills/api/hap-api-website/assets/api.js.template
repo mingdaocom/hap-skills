@@ -1,0 +1,173 @@
+/**
+ * HAP API V3 封装
+ * 提供统一的数据获取接口
+ * 
+ * 依赖：config.js
+ */
+
+const API = {
+    /**
+     * 通用请求方法
+     */
+    async request(endpoint, options = {}) {
+        const url = `${CONFIG.API_BASE_URL}${endpoint}`;
+
+        const defaultHeaders = {
+            'Content-Type': 'application/json',
+            'HAP-Appkey': CONFIG.HAP_APPKEY,
+            'HAP-Sign': CONFIG.HAP_SIGN
+        };
+
+        try {
+            const response = await fetch(url, {
+                ...options,
+                headers: {
+                    ...defaultHeaders,
+                    ...options.headers
+                }
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('HTTP 错误:', response.status, errorText);
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+
+            if (!data.success) {
+                console.error('API 错误:', data.error_code, data.error_msg);
+                throw new Error(data.error_msg || 'API 请求失败');
+            }
+
+            return data;
+        } catch (error) {
+            console.error('API 请求失败:', error);
+            throw error;
+        }
+    },
+
+    /**
+     * 获取工作表记录列表
+     */
+    async getRows(worksheetId, params = {}) {
+        const {
+            pageIndex = 1,
+            pageSize = 20,
+            filter = null,
+            sorts = [],
+            fields = [],
+            search = '',
+            includeTotalCount = true,
+            useFieldIdAsKey = true
+        } = params;
+
+        const body = {
+            pageIndex,
+            pageSize,
+            includeTotalCount,
+            useFieldIdAsKey
+        };
+
+        if (filter) body.filter = filter;
+        if (sorts.length > 0) body.sorts = sorts;
+        if (fields.length > 0) body.fields = fields;
+        if (search) body.search = search;
+
+        const endpoint = `/v3/app/worksheets/${worksheetId}/rows/list`;
+        const response = await this.request(endpoint, {
+            method: 'POST',
+            body: JSON.stringify(body)
+        });
+
+        return response.data || { rows: [], total: 0 };
+    },
+
+    /**
+     * 获取单条记录详情
+     */
+    async getRecord(worksheetId, rowId) {
+        const endpoint = `/v3/app/worksheets/${worksheetId}/rows/${rowId}`;
+        const response = await this.request(endpoint, {
+            method: 'GET'
+        });
+
+        return response.data || null;
+    },
+
+    /**
+     * 通用字段值解析函数
+     * 支持所有 HAP 字段类型
+     */
+    getFieldValue(row, fieldId, options = {}) {
+        if (!row || !fieldId) return '';
+
+        const value = row[fieldId];
+        if (value === undefined || value === null) return '';
+
+        // 基本类型：字符串、数字、布尔值
+        if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+            return value;
+        }
+
+        // 数组类型
+        if (Array.isArray(value)) {
+            if (value.length === 0) return '';
+
+            const firstItem = value[0];
+            if (typeof firstItem !== 'object') {
+                return value.join(', ');
+            }
+
+            // 附件字段：使用 downloadUrl
+            if (firstItem.downloadUrl) {
+                const url = firstItem.downloadUrl;
+                if (options.imageWidth) {
+                    return `${url}?imageView2/2/w/${options.imageWidth}/q/${options.imageQuality || 90}`;
+                }
+                return url;
+            }
+
+            // 旧版附件字段：使用 url
+            if (firstItem.url) {
+                return firstItem.url;
+            }
+
+            // 选项字段：提取 value
+            if (firstItem.value !== undefined) {
+                const values = value.map(item => item.value);
+                return options.separator ? values.join(options.separator) : values.join(', ');
+            }
+
+            // 关联记录/成员字段：提取 name
+            if (firstItem.name || firstItem.fullname) {
+                const names = value.map(item => item.name || item.fullname);
+                return names.join(', ');
+            }
+
+            return value.join(', ');
+        }
+
+        // 对象类型
+        if (typeof value === 'object') {
+            if (value.name) return value.name;
+            if (value.value !== undefined) return value.value;
+        }
+
+        return String(value);
+    },
+
+    /**
+     * 获取图片 URL（带缩略图优化）
+     */
+    getImageUrl(row, fieldId, width = 800) {
+        return this.getFieldValue(row, fieldId, { imageWidth: width });
+    },
+
+    /**
+     * 检查框字段判断
+     */
+    isChecked(row, fieldId) {
+        return row[fieldId] === '1';
+    }
+};
