@@ -3,7 +3,7 @@
 一组面向 **HAP** 的 AI Agent 技能（Skill）集合，覆盖三种操作 HAP 的方式：
 
 - **CLI** — 基于 `hap` 命令行，让 Agent 在终端里直接建应用、改应用、查数据；
-- **MCP** — 基于 HAP MCP 服务，通过 MCP 工具接口搭建应用（当前为占位草稿）；
+- **MCP** — 基于 HAP MCP 服务，对话式全自动搭建应用（方案设计 → 确认 → 物理搭建）；
 - **API** — 基于 HAP REST API，对接前端 / 对外网站（当前为占位草稿）。
 
 技能按场景分目录存放（`skills/cli/`、`skills/mcp/`、`skills/api/`），可以整组安装，也可以单装。
@@ -19,7 +19,7 @@
 | CLI | **hap-cli-app-editor** | 对**已有应用**做精确的局部修改（字段/视图/工作表/角色权限/工作流/自定义动作/页面） |
 | CLI | **hap-cli-data-query** | 复杂查数：多条件 AND/OR 筛选、嵌套分组、透视聚合统计（求和/计数/平均/分组） |
 | CLI | **hap-cli-environments** | 多环境/多账号操作守则：授权了多个 HAP 环境或账号时，决定在哪个环境/账号上执行，破坏性操作前先确认 |
-| MCP | **hap-mcp-app-builder** | 通过 MCP 工具接口搭建 HAP 应用（占位草稿，工作流待补全） |
+| MCP | **hap-mcp-app-builder** | 全自动一站式应用构建器：方案设计（Plan）→ 确认 → 自动物理搭建（Build），支持中断后一键续建 |
 | API | **hap-api-website** | 基于 HAP REST API 搭建网站 / 对接前端（占位草稿，工作流待补全） |
 
 ## 前置依赖
@@ -34,7 +34,7 @@ hap auth login           # 浏览器授权登录
 hap auth whoami          # 确认已登录、查看当前用户与组织
 ```
 
-**MCP 场景** —— 在你的 Agent 客户端里配置 HAP MCP 服务（`api.mingdao.com/mcp`）后即可调用。
+**MCP 场景** —— 在你的 Agent 客户端里配置 HAP MCP 服务（`api1.mingdao.com/mcp` 或 `api2.mingdao.com/mcp`）后即可调用。
 
 **API 场景** —— 准备好目标 HAP 应用的 REST API 鉴权密钥（Appkey / Sign）。
 
@@ -116,9 +116,9 @@ Agent 会自动克隆仓库并把技能装到对应位置。
 
 ### MCP 场景（基于 MCP 服务）
 
-#### hap-mcp-app-builder — MCP 应用构建器（占位草稿）
+#### hap-mcp-app-builder — 全自动应用构建器
 
-适合「用 MCP server 工具而非命令行来建/改应用」：通过 MCP 工具接口搭建 HAP 应用，与 CLI 的 `hap-cli-app-creator` 解决同类问题，区别在于走 MCP 服务。**当前为占位骨架，正式工作流待补全。**
+适合「一句话全自动建应用」：从业务方案设计（Plan）开始，与你确认后自动进入物理搭建（Build）；若方案已存在，可直接一键续建/恢复。通过 `/hap-builder` 或直接用对话描述系统诉求（如「帮我搭建一个客户管理应用」）触发。与 CLI 的 `hap-cli-app-creator` 解决同类问题，区别在于它走 MCP 服务而非命令行。
 
 ### API 场景（基于 HAP REST API）
 
@@ -136,7 +136,7 @@ Agent 会自动克隆仓库并把技能装到对应位置。
 查一下某张表上个月各产品的销售额前 5        # → hap-cli-data-query
 切到我测试用的那个环境再操作                # → hap-cli-environments
 hap 命令行怎么登录、有哪些命令              # → hap-cli
-用 MCP 工具帮我搭建一个客户管理应用          # → hap-mcp-app-builder
+帮我全自动搭建一个客户管理应用              # → hap-mcp-app-builder
 用 HAP API 做一个对外网站                    # → hap-api-website
 ```
 
