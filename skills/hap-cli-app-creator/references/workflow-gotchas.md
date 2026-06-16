@@ -126,6 +126,7 @@
 
 - `compute`：`config.mode`∈`number`(数值公式) / `date`(日期公式) / `date_diff`(日期差) / `function`(函数)。
   数值/日期/函数用 `formula`(可含 `$alias-字段$` 模板)；date_diff 用 `start`/`end`/`out_unit`(minute/hour/day/month/year/week)。
+  > ⚠️ **`function` 模式返回文本或日期时，必须声明 `config.output_type`**（`text`/`number`/`date`/`datetime`，省略默认 `number`）。它决定下游引用该节点「结果」时用的字段 id（见下条）：写错或漏写会让消费节点引用到不存在的结果列，发布报 `warningType 200`。如 `CONCAT(...)` 拼字符串 → `"output_type":"text"`。`number`/`date`/`date_diff` 模式无需设置（数值/日期由 mode 决定）。
 - `rollup`：`config.mode`∈`worksheet`(按工作表汇总) / `object`(对象计数)。聚合项写在 **`aggregations[]`**，每项：
   - `alias`(必填，结果别名，下游用 `$别名-alias$` 引用)；
   - `aggregate`(**推荐小写**：sum/count/avg/max/min，与字段级 Rollup 一致；也接受大写 `func`，二者等价、执行期都归一化为大写)；
@@ -140,9 +141,10 @@
       "aggregations":[ { "alias":"cnt", "aggregate":"count" } ] } }
   ```
   > ⚠️ 易错点：① `aggregate` 用小写(或 `func` 大写)，**不要**写成裸 `aggregate:"COUNT"` 之外的拼写；② `data_source` 只属于 rollup/sub_process，**不要**把它放进别的节点；③ 别给 `aggregations[]` 项漏 `alias`。
-- **引用 rollup / compute 节点的「结果」**（在分支条件、通知/文本模板里用它）：统一写 **`$节点别名-结果$`**，执行器自动解析为该 formula 节点的结果列 `number_fx_id`。
-  - 分支条件比较结果：`{"left":{"kind":"field","node":{"nodeAlias":"统计"},"fieldId":"结果"},"op":"gt","right":{"kind":"literal","value":"0"}}`（fieldId 写 `结果`/`result`/聚合别名均可，执行器都转成 number_fx_id）。
-  - 通知/抄送/邮件内容引用结果：`"content":"本周共 $统计-结果$ 条，请复核。"`（执行器替换为 `$<节点id>-number_fx_id$` 的提及）。
+- **引用 rollup / compute 节点的「结果」**（分支条件、通知/文本模板、写入字段值里都可用）：统一写 **`$节点别名-结果$`**，执行器按该节点的结果数据类型自动解析为对应结果列（数值→`number_fx_id`、文本→`string_fx_id`、日期→`date_fx_id`、日期时间→`datetime_fx_id`）。`结果`这个名字只是显示名，真正的字段 id 由类型决定——所以 `function` 模式务必声明 `output_type`（见上条），否则按默认数值解析、文本结果就会引用错列。
+  - 分支条件比较结果：`{"left":{"kind":"field","node":{"nodeAlias":"统计"},"fieldId":"结果"},"op":"gt","right":{"kind":"literal","value":"0"}}`（fieldId 写 `结果`/`result`/聚合别名均可，执行器按类型转成对应 `*_fx_id`）。
+  - 通知/抄送/邮件内容引用结果：`"content":"本周共 $统计-结果$ 条，请复核。"`。
+  - 写入字段值引用结果（如把一个文本公式结果写进新建记录的文本字段）：字段项写 `{"fieldId":"表/字段","value":"$别名-结果$"}`（**用 `value` 模板，不要用 `valueRef{fieldId:"结果"}`**——valueRef 只用于引用 trigger/查询节点的真实列）。
   - ⚠️ **不要**在文本里用 `$别名-某聚合别名$`（如 `$统计-加油条数$`）去指代结果——统一用 `$别名-结果$` 最稳。
 - 聚合结果存到下游可引用的别名（`aggregations[]` 的 alias，引用用 `$alias-别名$`）。
 

@@ -200,11 +200,11 @@
                 "open_mode": "new_page"
               },
               {
-                "label": "明道云官网",
+                "label": "公司官网",
                 "color": "#4051B6",
                 "icon": "sys_16_5_globe_earth",
                 "action": "open_link",
-                "url": "https://www.mingdao.com",
+                "url": "https://www.example.com",
                 "open_mode": "dialog"
               }
             ]

@@ -12,8 +12,9 @@
 
 工作表键：`name`(逻辑名唯一)、`section`(分组逻辑名，省略放默认分组)、`icon`、`alias`、`fields[]`。
 
-> [!CAUTTON]
+> [!CAUTION]
 > `icon` 必须按照 [design_guide.md](design_guide.md) 中的指南，使用 `hap icon search` 加多个相关关键词（如 `hap icon search 会员 用户 成员 权益 皇冠 勋章`）搜索可用图标，从结果中选择一个。
+> **图标必须唯一**：同一应用里每张工作表的图标都要不一样，也不能和自定义页面图标重复。逐表搜索时换不同关键词，并维护一份「已用图标」清单避免撞车——`validate` 会跨工作表+页面强制查重，重复直接报错（exit 2），到 build 前才发现就得返工。
 
 ## 字段通用键
 

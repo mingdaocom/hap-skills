@@ -4,16 +4,16 @@
 
 ```bash
 # ① (机械) 读真实控件元数据，产出填值模板
-python -m scripts seed-template <appId>
+hap app-creator seed-template <appId>
 # ② (你)   读 _seed_template.json + 本文件 → 写一份 _seed_data.json
 # ③ (机械) 拓扑排序逐表写入，解析 @标签，回填真实 rowId
-python -m scripts seed <appId> <_seed_data.json>
+hap app-creator seed <appId> <_seed_data.json>
 ```
 
 **只读两份输入**：`_seed_template.json`（每表的可写字段 `fillableFields`、`validOptions`、`relationDeps`、`isTitle`、`isSelfRelation`、`dataSource`）和本文件。
 不要去翻 design 或源码——以模板的真实控件元数据为准。
 
-> 运行时 `seed-template` 也会打印 `scripts/seed/INSTRUCTIONS.md` 的路径，内容与本文件一致。
+> 运行时 `hap app-creator seed-template` 也会打印一份与本文件内容一致的填值说明的路径。
 
 ## 输出文件结构（`_seed_data.json`）
 
@@ -64,14 +64,14 @@ python -m scripts seed <appId> <_seed_data.json>
 
 ## 成员字段（Collaborator）
 
-**必须**用 `scripts/seed/resources/attachments.json` 里的虚拟账号 token（`virtualuser-cn-*` / `virtualuser-en-*`），
+**必须**用虚拟账号 token（`virtualuser-cn-*` / `virtualuser-en-*`，编号从 1 起递增），
 **不要 `@me`/当前用户**。服务端认这些虚拟账号（已 live 验证：`virtualuser-cn-1` → 真实姓名）。
 中文环境用 `cn` 那组；记录之间**打散**不同的人。单选成员传 1 个 token 的数组，多选可多个：`["virtualuser-cn-3"]`、`["virtualuser-cn-2","virtualuser-cn-7"]`。
 
 ## 附件字段（Attachment）
 
-值为 `[{"name":"显示名.ext","url":"直链"}]`（可多个）。执行器自动下载→上传→组装真实附件 cell。素材直链取自
-`scripts/seed/resources/attachments.json`(documents) 和 `sample_images.json`(按 product/asset/location/proof/issue/marketing/avatar 分类挑)。
+值为 `[{"name":"显示名.ext","url":"直链"}]`（可多个）。`hap app-creator seed` 会自动下载→上传→组装真实附件 cell。
+素材直链可用任意可公开访问的文档/图片直链（图片按 product/asset/location/proof/issue/marketing/avatar 等场景挑选）。
 **别永远用同一张**；附件字段尽量别全空。也支持本地文件 `[{"name":"x.pdf","path":"/abs/path/x.pdf"}]`。
 
 ## 子表（SubTable）

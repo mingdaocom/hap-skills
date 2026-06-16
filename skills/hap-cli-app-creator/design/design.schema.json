@@ -783,7 +783,7 @@
         },
         "icon": {
           "type": "string",
-          "description": "工作表图标标识。必须从 `hap icon search <多个相关关键词>` 的搜索结果中挑选一个，不可编造。"
+          "description": "工作表图标标识。必须从 `hap icon search <多个相关关键词>` 的搜索结果中挑选一个，不可编造。【唯一性硬约束】同一应用内每个工作表/自定义页面的图标必须互不相同——不允许两个工作表（或工作表与页面）共用同一图标，否则左侧导航视觉混淆。validate 会强制查重，重复即报错。生成时为每张表用不同关键词搜索、并维护一份已用图标清单避免撞车。"
         },
         "alias": {
           "type": "string",
@@ -1159,7 +1159,7 @@
         },
         "icon": {
           "type": "string",
-          "description": "页面图标标识。必须从 `hap icon search <多个相关关键词>` 的搜索结果中挑选一个，不可编造。"
+          "description": "页面图标标识。必须从 `hap icon search <多个相关关键词>` 的搜索结果中挑选一个，不可编造。【唯一性硬约束】同一应用内每个自定义页面/工作表的图标必须互不相同（与工作表 icon 一并查重）——不允许与别的页面或工作表共用同一图标。validate 会强制查重，重复即报错。"
         },
         "components": {
           "type": "array",
@@ -3339,6 +3339,16 @@
             "week"
           ],
           "description": "compute date_diff：时长输出单位。"
+        },
+        "output_type": {
+          "type": "string",
+          "enum": [
+            "text",
+            "number",
+            "date",
+            "datetime"
+          ],
+          "description": "compute function 模式的结果数据类型，决定下游引用该节点结果的字段 id（text→string_fx_id / number→number_fx_id / date→date_fx_id / datetime→datetime_fx_id）。函数公式返回文本/日期时必须声明；省略默认 number。其他模式无需设置（number/date_diff 为数值、date 为日期）。"
         },
         "field": {
           "type": "string",

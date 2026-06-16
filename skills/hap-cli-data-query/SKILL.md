@@ -1,11 +1,11 @@
 ---
 name: hap-cli-data-query
-description: 用 hap 命令行查询/筛选/统计明道云 HAP 工作表里的业务数据时用本 skill——尤其当筛选条件复杂、需要多条件 AND/OR、嵌套分组，或要做透视表聚合统计（求和/计数/平均/分组维度）。覆盖 `hap worksheet record list`（带筛选/排序/分页的记录查询）、`record pivot`（透视聚合）、`record bottom-stats`（底部汇总）、`worksheet chart`（图表）。只要用户说「查某张表里满足…条件的记录」「按状态/日期筛选数据」「这个筛选器怎么写」「统计每个月/每个分类的合计」「做个透视/汇总」「filter-json 报错/查不出来」，即使没明说工具名也应触发。不用于：写入数据（增删改记录用 record create/update）、建表建字段（用 hap-cli-app-creator / hap-cli-app-editor）。
+description: 用 hap 命令行查询/筛选/统计 HAP 工作表里的业务数据时用本 skill——尤其当筛选条件复杂、需要多条件 AND/OR、嵌套分组，或要做透视表聚合统计（求和/计数/平均/分组维度）。覆盖 `hap worksheet record list`（带筛选/排序/分页的记录查询）、`record pivot`（透视聚合）、`record bottom-stats`（底部汇总）、`worksheet chart`（图表）。只要用户说「查某张表里满足…条件的记录」「按状态/日期筛选数据」「这个筛选器怎么写」「统计每个月/每个分类的合计」「做个透视/汇总」「filter-json 报错/查不出来」，即使没明说工具名也应触发。不用于：写入数据（增删改记录用 record create/update）、建表建字段（用 hap-cli-app-creator / hap-cli-app-editor）。
 ---
 
 # HAP 数据查询助手（筛选 · 透视 · 统计）
 
-帮用户用 `hap` 命令行从明道云工作表里**把想要的数据查出来**。难点不在命令本身，而在**参数 JSON 怎么写对**——筛选器结构、运算符词表、透视的维度与聚合。本 skill 把这些易错点讲清楚，并给可直接套用的模板。
+帮用户用 `hap` 命令行从 HAP 工作表里**把想要的数据查出来**。难点不在命令本身，而在**参数 JSON 怎么写对**——筛选器结构、运算符词表、透视的维度与聚合。本 skill 把这些易错点讲清楚，并给可直接套用的模板。
 
 ## 覆盖的命令
 
@@ -50,7 +50,7 @@ hap worksheet fields WORKSHEET_ID        # 列出每个字段的 controlId / 名
 
 最外层通常是一个 `group`。要表达「(A 且 B) 或 (C 且 D)」就嵌套 group。
 
-### 运算符词表（权威，来自明道云 V3 筛选器指南）
+### 运算符词表（权威，来自 HAP V3 筛选器指南）
 
 **比较类**
 
