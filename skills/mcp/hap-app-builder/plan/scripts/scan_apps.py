@@ -110,6 +110,7 @@ def check_update():
         local_version = pkg.get("version")
         repo_url = pkg.get("repository")
         branch = pkg.get("branch", "main")
+        skill_path = pkg.get("skillPath", "")
     except Exception:
         return None
 
@@ -125,8 +126,11 @@ def check_update():
     if git_root:
         remote_file = os.path.relpath(plugin_path, git_root)
     else:
-        # 非 git 安装方式，用文件名本身作为 fallback
-        remote_file = os.path.basename(plugin_path)
+        # 非 git 安装方式，用 skillPath 拼接路径
+        if skill_path:
+            remote_file = f"{skill_path}/{os.path.basename(plugin_path)}"
+        else:
+            remote_file = os.path.basename(plugin_path)
 
     raw_url = f"https://raw.githubusercontent.com/{match.group(1)}/{branch}/{remote_file}"
 
@@ -141,6 +145,7 @@ def check_update():
                 "notes": remote.get("releaseNotes"),
                 "repository": repo_url,
                 "branch": branch,
+                "skillPath": skill_path,
             }
     except Exception:
         pass

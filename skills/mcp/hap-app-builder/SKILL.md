@@ -71,7 +71,7 @@ python3 {SKILL_DIR}/plan/scripts/scan_apps.py {PROJECT_ROOT}
     2. **如果找到 `.git`**：在该仓库根目录执行 `git pull`
     3. **如果未找到 `.git`**（仅复制 skills/ 的安装方式）：
        - 克隆仓库到临时目录：`git clone -b {update.branch} {update.repository} /tmp/hap-update`
-       - 将 `/tmp/hap-update/skills/mcp/hap-app-builder/` 下的文件覆盖复制到 `{SKILL_DIR}/`
+       - 将 `/tmp/hap-update/{update.skillPath}/` 下的文件覆盖复制到 `{SKILL_DIR}/`
        - 删除临时目录：`rm -rf /tmp/hap-update`
     4. 提示更新成功，然后正常继续
   - 用户拒绝或跳过 → 正常继续，不阻断流程
