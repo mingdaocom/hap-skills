@@ -4,7 +4,7 @@
 
 - **CLI** — 基于 `hap` 命令行，让 Agent 在终端里直接建应用、改应用、查数据；
 - **MCP** — 基于 HAP MCP 服务，对话式全自动搭建应用（方案设计 → 确认 → 物理搭建）；
-- **API** — 基于 HAP REST API，对接前端 / 对外网站（当前为占位草稿）。
+- **API** — 基于 HAP V3 HTTP 接口，做数据接口调用、用 HAP 当后端搭网站、开发自定义视图插件。
 
 技能按场景分目录存放（`skills/cli/`、`skills/mcp/`、`skills/api/`），可以整组安装，也可以单装。
 
@@ -20,7 +20,9 @@
 | CLI | **hap-cli-data-query** | 复杂查数：多条件 AND/OR 筛选、嵌套分组、透视聚合统计（求和/计数/平均/分组） |
 | CLI | **hap-cli-environments** | 多环境/多账号操作守则：授权了多个 HAP 环境或账号时，决定在哪个环境/账号上执行，破坏性操作前先确认 |
 | MCP | **hap-mcp-app-builder** | 全自动一站式应用构建器：方案设计（Plan）→ 确认 → 自动物理搭建（Build），支持中断后一键续建 |
-| API | **hap-api-website** | 基于 HAP REST API 搭建网站 / 对接前端（占位草稿，工作流待补全） |
+| API | **hap-apiv3-data** | HAP V3 接口实操：鉴权（Appkey/Sign/PAT/OAuth）、Filter 筛选、记录的查询与增删改 |
+| API | **hap-api-website** | HAP + 前端项目完整搭建指南：用 HAP 当后端，后台配置 → 前端项目结构 → API 集成与数据渲染 |
+| API | **hap-view-plugin** | 开发 HAP 自定义视图插件（mdye）：初始化项目、启动调试、开发工作流、V3 接口集成与最佳实践 |
 
 ## 前置依赖
 
@@ -36,7 +38,7 @@ hap auth whoami          # 确认已登录、查看当前用户与组织
 
 **MCP 场景** —— 在你的 Agent 客户端里配置 HAP MCP 服务（`api1.mingdao.com/mcp` 或 `api2.mingdao.com/mcp`）后即可调用。
 
-**API 场景** —— 准备好目标 HAP 应用的 REST API 鉴权密钥（Appkey / Sign）。
+**API 场景** —— 准备好目标 HAP 应用的 V3 接口鉴权密钥（Appkey / Sign，或 PAT / OAuth）。若已配置 HAP MCP，部分技能可自动从 MCP 配置中提取密钥。
 
 ## 安装
 
@@ -71,7 +73,9 @@ npx skills add mingdaocom/hap-skills --skill hap-cli-environments
 # MCP
 npx skills add mingdaocom/hap-skills --skill hap-mcp-app-builder
 # API
+npx skills add mingdaocom/hap-skills --skill hap-apiv3-data
 npx skills add mingdaocom/hap-skills --skill hap-api-website
+npx skills add mingdaocom/hap-skills --skill hap-view-plugin
 ```
 
 ### 方式二：在 AI Agent 对话里一句话安装
@@ -120,11 +124,19 @@ Agent 会自动克隆仓库并把技能装到对应位置。
 
 适合「一句话全自动建应用」：从业务方案设计（Plan）开始，与你确认后自动进入物理搭建（Build）；若方案已存在，可直接一键续建/恢复。通过 `/hap-builder` 或直接用对话描述系统诉求（如「帮我搭建一个客户管理应用」）触发。与 CLI 的 `hap-cli-app-creator` 解决同类问题，区别在于它走 MCP 服务而非命令行。
 
-### API 场景（基于 HAP REST API）
+### API 场景（基于 HAP V3 HTTP 接口）
 
-#### hap-api-website — API 建站助手（占位草稿）
+#### hap-apiv3-data — V3 接口实操
 
-适合「把对外网站或前端直接对接 HAP API」：在 HAP REST API 之上搭建网站。**当前为占位骨架，鉴权方式与建站工作流待补全。**
+适合「直接调 HAP 接口」：讲清鉴权配置（Appkey / Sign / PAT / OAuth）、接口调用、筛选器（Filter）用法、记录的查询与增删改等。若已配置 HAP MCP，可自动从 MCP 配置中提取鉴权密钥。是另外几个 API 技能的接口基础。
+
+#### hap-api-website — HAP + 前端项目搭建
+
+适合「用 HAP 当后端、前后端分离把网站搭起来」（企业官网 / 内容管理系统 / 数据展示平台）：提供从 HAP 后台配置、前端项目结构、API 集成到数据渲染的完整指南。
+
+#### hap-view-plugin — 自定义视图插件开发
+
+适合「开发 HAP 自定义视图插件（mdye）」：覆盖初始化视图项目、启动调试、视图开发工作流、V3 接口集成与最佳实践。
 
 ## 验证
 
@@ -137,7 +149,9 @@ Agent 会自动克隆仓库并把技能装到对应位置。
 切到我测试用的那个环境再操作                # → hap-cli-environments
 hap 命令行怎么登录、有哪些命令              # → hap-cli
 帮我全自动搭建一个客户管理应用              # → hap-mcp-app-builder
-用 HAP API 做一个对外网站                    # → hap-api-website
+用 HAP V3 接口查一下某张表的数据            # → hap-apiv3-data
+用 HAP 做一个企业官网、前后端分离           # → hap-api-website
+开发一个 HAP 自定义视图插件                 # → hap-view-plugin
 ```
 
 ## 目录结构
@@ -155,8 +169,10 @@ hap-skills/
     │   └── hap-cli-environments/
     ├── mcp/                     # MCP 场景：基于 MCP 服务
     │   └── hap-mcp-app-builder/
-    └── api/                     # API 场景：基于 HAP REST API
-        └── hap-api-website/
+    └── api/                     # API 场景：基于 HAP V3 HTTP 接口
+        ├── hap-apiv3-data/
+        ├── hap-api-website/
+        └── hap-view-plugin/
 ```
 
 每个技能目录下的 `SKILL.md` 是入口，Agent 会自动读取。
