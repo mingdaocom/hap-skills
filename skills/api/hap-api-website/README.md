@@ -77,7 +77,7 @@
 ## 文件结构
 
 ```
-hap-api-frontend/
+hap-api-website/
 ├── SKILL.md                          # 技能主文档
 ├── README.md                          # 本文件
 ├── references/
