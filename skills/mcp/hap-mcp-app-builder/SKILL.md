@@ -1,5 +1,5 @@
 ---
-name: hap-app-builder
+name: hap-mcp-app-builder
 description: 全自动一站式 HAP 应用构建器。从业务方案设计（Plan）开始，确认后自动物理搭建（Build）。若已存在方案，可直接一键继续/恢复物理搭建。用户输入 /hap-builder 或直接用对话描述您的系统诉求（如"帮我搭建一个客户管理应用"）触发。
 ---
 
