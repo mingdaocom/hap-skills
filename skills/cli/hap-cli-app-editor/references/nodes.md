@@ -1,6 +1,6 @@
 # 工作流节点深度配置 — 8 类高频节点逐键字典
 
-覆盖 8 类高频节点：ACTION(6)、SEARCH(7)、APPROVAL(4)、CC(5)、WEBHOOK(8)、EMAIL(11)、DELAY(12)、BRANCH(2)。
+覆盖 8 类高频节点：ACTION(6)、SEARCH(7)、APPROVAL(4)、CC(5)、WEBHOOK(8)、EMAIL(11)、DELAY(12)、BRANCH 网关(1) + 分支项(2)。
 流程级与节点增删见 [workflows.md](workflows.md)。
 
 **全局规则**：改节点配置前先 `hap --json workflow node get <process_id> <node_id>` 导出现状，在真实结构上改，再写回。**读出来的结构就是写回去的结构**——只改你理解的键，其余原样保留。
@@ -23,6 +23,7 @@
 - 字段写入项（fields）的动态值用 `$<nodeId>-<fieldId>$` 模板引用上游节点的字段，nodeId 来自 `node list`。完整结构 → [WorkflowFieldWrite](../scripts/types/workflow-field-write.schema.json)。
 - 数据类节点的目标工作表 `appId` 必须在 `node add` 时给定，save 阶段补传无效（见 workflows.md）。
 - **长尾节点类型的处理**：本文未覆盖的类型（公式、代码块、子流程、站内通知……）一律先 `hap --json workflow node get <pid> <nid> --type <typeId>` 读现状，照着返回结构的形状改写要改的键，再用 `node save` 整段写回。不要凭空构造配置。
+  - **站内通知(27)** 有两个易漏点：收件人写「触发者」用 `accounts:[{"type":6,"roleId":"triggeraid"}]`；且配置里**必须保留 `flowNodeMap["106"]` 推送子块**（read-modify-write 时原样带回，删了发布会报错）。无现成模板时可先 `node get` 一个同流程已有的 27 节点照形改写。
 
 ### ACTION(6) — 增 / 改 / 删记录
 
@@ -214,11 +215,59 @@ hap workflow node save <pid> <nid> --type 5 -c '{
 | `day` | 天数标记；`executeTimeType != 0` 时固定为 1 | ① int | 300 |
 | `numberFieldValue` / `hourFieldValue` / `minuteFieldValue` / `secondFieldValue` | 时长的天/时/分/秒，各自可静态或引用字段 | ② 每个都是 `{fieldValue, fieldNodeId, fieldControlId}` 形状 | 301 |
 
-### BRANCH_ITEM(2)
+### BRANCH 网关(1) + 分支项(2)
 
-分支条件挂在**分支项**（type 2）上，分支网关（type 1）本身无可配置项。
+分支由两层组成：**网关**（type 1，决定有哪些分支、求值顺序、互斥还是并行）和**分支项**（type 2，每个分支自己的进入条件）。两层都用同一个 `node save` 写回，但读法和键名各有坑，先看完再动手。
 
-| 键 | 含义 | 值形态 |
+**坑 A — 网关配置读不出，要从 `node list` 取。** `node get --type 1` 对网关返回的 `flowIds` / `gatewayType` 全是 `null`（网关不是「详情节点」）。网关的真实配置只在 `node list` 的 `flowNodeMap` 里：
+
+```bash
+hap --json workflow node list <pid> | jq '.flowNodeMap["<gatewayId>"] | {flowIds, gatewayType}'
+```
+
+| 网关键 | 含义 | 值形态 |
 |---|---|---|
-| `operateCondition` | 该分支的过滤条件组（外层 OR、内层 AND） | ③ → [OperateCondition](../scripts/types/operate-condition.schema.json) |
+| `flowIds` | 各分支项 ID 的**求值顺序**数组 | ② 分支项 ID 字符串数组 |
+| `gatewayType` | 求值方式 | ① 1=并行（所有满足条件的分支都进）；2=排他（按 `flowIds` 顺序逐个判，命中第一个就停） |
+
+写回网关（只传要改的键，走 `--type 1`）：
+
+```bash
+hap workflow node save <pid> <gatewayId> --type 1 -c '{"flowIds":["b3","b1","b2"],"gatewayType":2}'
+```
+
+**坑 B — 分支项条件「读键 ≠ 写键」，写错会静默丢弃。** 这是分支里最大的坑：
+
+- **读**：`node get --type 2` 把条件放在 `conditions` 字段里返回（不是 `operateCondition`！`jq .operateCondition` 会得到 `null`）。
+- **写**：`node save --type 2` 的**规范写键是 `operateCondition`**。值的二维数组结构两边完全相同（外层 OR、内层 AND，→ [OperateCondition](../scripts/types/operate-condition.schema.json)）。
+- 本 CLI 已对分支项（type 2）做兼容：`-c` 里用 `conditions` 也会自动映射成 `operateCondition`，所以**直接把读到的 `{conditions}` 原样写回也能生效**。但请优先用 `operateCondition` 作规范键。
+
+读分支项条件别整段打印——`node get --type 2` 会带上整张表的字段目录（`flowNodeList`/`flowNodeAppDtos`），输出可达上百 KB。只取要看的键：
+
+```bash
+hap --json workflow node get <pid> <branchItemId> --type 2 | jq '{name, conditions}'
+```
+
+save 配置只需 `{name, desc, operateCondition}`；`flowNodeList`/`flowNodeAppDtos` 是只读的字段目录，不必回传。
+
+| 分支项键 | 含义 | 值形态 |
+|---|---|---|
+| `operateCondition` | 该分支的进入条件组（写键；读时叫 `conditions`） | ③ → [OperateCondition](../scripts/types/operate-condition.schema.json) |
 | `resultTypeId` | 只读：系统结果分支标记（1=通过 2=否决 3=有数据 4=无数据），非 0 的分支项不可编辑、不要回传修改 | ① int（只读） |
+
+**给已有网关加一条并列分支（标准四步）。** `node add --type 2 --after <gatewayId>` 建的新分支项总是**追加到 `flowIds` 末尾**，排在「默认分支」（空条件那条）之后。排他网关（`gatewayType=2`）按 `flowIds` 顺序求值、**空 `operateCondition` 的分支项 = 默认兜底分支，必须排在最后**，所以新分支几乎总要手动前移：
+
+```bash
+# 1. 建分支项（自动入网关 flowIds 末尾）
+hap workflow node add <pid> --type 2 -n "高优先级" --after <gatewayId>
+# → 记下返回的新分支项 ID，设为 <newId>
+
+# 2. 回写网关，调整 flowIds 顺序（更具体的条件靠前、空条件默认分支放最后）
+hap workflow node save <pid> <gatewayId> --type 1 -c '{"flowIds":["<newId>","<existingId>","<defaultId>"]}'
+
+# 3. 写新分支项的进入条件
+hap workflow node save <pid> <newId> --type 2 -c '{"operateCondition":[[{"filedId":"<字段id>","filedTypeId":6,"conditionId":"9","conditionValues":[{"value":"0"}]}]]}'
+
+# 4. 在新分支项后接动作节点
+hap workflow node add <pid> --type 6 -n "处理" --after <newId> -a 1 --app-id <worksheet_id>
+```

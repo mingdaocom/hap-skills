@@ -30,3 +30,9 @@ AI 助手写在顶层 `chatbots[]`。仅在有智能问答 / 数据查询 / 辅�
 - 不在 prompt/greeting 里泄露内部实现（API、控件名、模块名）。
 
 > 强约束：chatbot **必须带 section、prompt、preset_questions** 才是一个完整可用的助手（name 之外都建议补全）。
+
+## 角色访问权限
+
+AI 助手默认对**所有角色**开放——建好助手后，每个角色都能访问，无需在角色里单独配置。
+只有当某个角色（如外部访客）**不应**使用某助手时，才在该角色的 `chatbot_permissions`
+里用白名单收紧（见 [roles.md](roles.md)）。

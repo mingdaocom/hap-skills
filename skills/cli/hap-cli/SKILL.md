@@ -1,6 +1,6 @@
 ---
 name: hap-cli
-description: 用 hap-cli 命令行工具操作 HAP 企业平台。覆盖通讯录/部门查询、聊天收发消息、发动态、管日程、群组管理，以及应用与数据操作（工作表记录增删改查、工作流、审批待办、自定义页面、角色权限、文件上传等）。只要用户想在 HAP 里查人、发消息、发动态、看/建日程、读写某张表的记录、处理审批，即使没明说工具名也应触发。需要从零搭一个完整应用时改用 hap-cli-app-creator；要改已有应用的某个元素时改用 hap-cli-app-editor；查工作表数据时筛选条件复杂、要多条件 AND/OR 或做透视聚合统计时改用 hap-cli-data-query；配了多个环境/账号、要在它们之间选或切（含让 AI 按场景自动切或反问）时改用 hap-cli-environments——本 skill 会指明何时切换过去。
+description: 用 hap-cli 命令行工具操作 HAP 企业平台，是 hap-cli skills 的主入口。覆盖通讯录、聊天消息、发动态、管日程，以及应用与数据操作（工作表记录增删改查、工作流、审批待办、自定义页面、角色权限、文件上传等）。只要用户想在 HAP 里查人、发消息、发动态、看/建日程、读写某张表的记录、处理审批，即使没明说工具名也应触发。
 ---
 
 # hap-cli 使用导航
@@ -94,9 +94,16 @@ hap app unselect                    # 清除默认应用
 
 ### 4. JSON 输出与 REPL
 
+`--json` 是**全局选项，必须紧跟在 `hap` 后面、子命令前面**，不能放到子命令末尾：
+
 ```bash
-hap --json worksheet record list WORKSHEET_ID   # 任何命令都支持 --json
+hap --json worksheet record list WORKSHEET_ID   # ✅ 正确：--json 在 hap 后
+hap --json chat list                            # ✅
+hap chat list --json                            # ❌ 报 "No such option: --json"
+hap worksheet record list WS_ID --json          # ❌ 同上
 ```
+
+> 同理，`--profile` 等其它全局选项也放在 `hap` 与子命令之间（如 `hap --profile onprem app list`）。子命令自己的选项（`--page-size`、`-f` 等）才跟在子命令后面。
 
 连续操作可进交互模式（去掉开头的 `hap`）：
 
@@ -134,6 +141,23 @@ hap post create --content "新版本已发布 🎉"
 hap calendar create --title "项目评审" --start "2026-06-10 15:00"
 ```
 
+#### 从一条消息/通知触达对应的应用记录
+
+未读消息里很多是「某人在某条记录下的讨论」「工作流抄送了一条记录」。要顺着消息找到那条记录，走这条固定链路，不要去翻工作表猜：
+
+1. `hap --json chat list` —— 每个会话都带 `category` 字段（`system/post/calendar/task/kc/hr/app/workflow`，或单聊 `user`/群聊 `group`）。**应用/工作表里的记录讨论归在 `app` 类**，工作流通知归在 `workflow` 类。
+2. 按这个 `category` 拉明细：`hap --json chat messages --category app`（或 `workflow` 等）。
+   - 记录讨论类的条目直接带齐 **`appId` + `worksheetId` + `rowId`**（外加 `viewId`、`comment.recordName`、`comment.entityName`）。这里的 `appId` 已是记录真实所属应用（不是消息中心那个、可能已删除的 app）。
+   - 工作流**抄送/参与者**类通知会把记录链接里的 `appId/worksheetId/rowId` 一并解析出来。
+   - 单聊/群聊不走 `--category`，用 `--with-user <accountId>` / `--group-id <groupId>`（id 取会话的 `value`）。
+3. 拿到三元组就能直接读这条记录及其完整讨论：
+   ```bash
+   hap worksheet record get <worksheetId> <rowId> -a <appId>
+   hap worksheet record discussions <worksheetId> <rowId> -a <appId>
+   ```
+
+> 关键点：触达记录用 `chat messages` 条目里的 `appId`（来自讨论的 `extendsId` / 链接），**不要用会话顶层那个 appId**——后者是消息中心的归属 app，常常是已删除的，拿去查记录会报「应用已删除」。
+
 ### 应用与数据
 
 | 命令 | 用途 |
@@ -154,10 +178,43 @@ hap worksheet record create WORKSHEET_ID -f "c001=值1" -f "c002=值2"
 hap approval todo --type 4                            # 我的待办
 hap approval approve INSTANCE_ID --opinion "同意"
 ```
+> 看工作表结构别猜命令：看字段用 `hap worksheet fields WS_ID`（**不是** get/structure），
+> 看表信息用 `hap worksheet info WS_ID`，看视图用 `hap worksheet view list WS_ID`。
+> `worksheet fields` 每个字段返回的 key 是：
+> `id / name / alias / type / subType / dataSource / sourceField / options`
+> （筛选、排序、更新里要用的字段标识取 `id`）。
+
+> 注意：`record list/get` 可带 `--app-id`，但 `record create/update/delete` **不接受 --app-id**，
+> 只走默认应用。改数据前先 `hap app select <appID>` 设一次默认应用即可，后续不必再传。
 
 > 操作工作流节点前，先 `hap workflow structure PROCESS_ID` 看清真实结构，不要凭空捏造节点/分支/审批块 ID。
 
-> 查记录时筛选条件复杂（多条件 AND/OR、嵌套分组），或要做透视/汇总统计（求和/计数/平均/分组）——别硬拼 `--filter-json` / `--values-json`，交给 **hap-cli-data-query** skill，它把筛选器运算符词表和透视参数都讲清楚了。
+#### 子表（SubTable）数据怎么读写
+
+SubTable 字段不在父记录里存数据，要绕一层：
+
+- 父记录 `record get` 对 SubTable 字段只返回**子行数量**（一个数字），不含子行内容。
+- 子行真实存储在该字段 `dataSource` 指向的**另一张独立工作表**里。
+- 子行通过**反向 Relation 字段**（父 SubTable 字段的 `sourceField`）挂回父行。
+
+定位关系（都用 `hap worksheet fields` 看）：
+
+| 要素 | 来源 |
+| --- | --- |
+| 子表所在工作表 ID | 父表里 SubTable 字段的 `dataSource` |
+| 子行→父行的关联字段 ID | 父表里 SubTable 字段的 `sourceField` |
+| 子表里的目标字段（如备注）ID | 子表 `worksheet fields` 里对应字段的 `id` |
+
+改子表两条路，按场景选：
+
+- **改某一行的某个值 → 直接改子行（推荐）**：对子表工作表 `record update <子行rowid> -f "<字段ID>=<值>"`。
+- **新增/删除子行、批量增删 → 改父记录的子表字段**：对父记录 `record update --fields-json`，子表字段值是子行数组——带 `rowid` 改、无 `rowid` 增、`{"_delete":true}` 删，未列出的行不动（详见 `record update --help`）。
+
+> `--filter-json` 用 builder DSL：
+> `{"type":"group","logic":"AND","children":[{"type":"condition","field":"<字段ID>","operator":"in","value":[...]}]}`，
+> **不是** `[{controlId,dataType,filterType,values}]` 那套主站 wire 格式（会报反序列化错误）。
+> 运算符是 `eq/ne/ge/le/in/notin/contains/isempty…`，复杂筛选、透视统计见 `hap-cli-data-query` skill。
+
 
 ### 平台资源与工具
 
@@ -187,6 +244,10 @@ hap approval approve INSTANCE_ID --opinion "同意"
 - **它做什么**：把 `record list` / `record pivot` 的 filter-json 结构与完整运算符词表、`--values-json`/`--rows-json` 的维度与聚合参数讲清楚，并给可直接套用的模板和排错清单。
 - **怎么用**：直接调用 `hap-cli-data-query` skill。
 - **边界**：只是简单按 ID 取一条记录、或不带筛选地翻页，直接用 `hap worksheet record list/get` 即可，不必动用它。
+
+一个典型的 HAP 工作表视图页面地址：`/app/<app_id>/<section_id>/<worksheet_id>/<view_id>`。一个典型的 HAP 工作表行记录页面地址：`/app/<app_id>/<worksheet_id>/<view_id>/row/<rowid>`。
+
+拿到 worksheetId + rowId 即可直接 `record get/update`，`sectionId/viewId` 改数据时用不到。
 
 ## 两个应用建设 skill（重点）
 

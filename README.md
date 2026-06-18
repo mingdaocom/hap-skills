@@ -14,7 +14,7 @@
 
 | 场景 | Skill | 作用 |
 | --- | --- | --- |
-| CLI | **hap-cli** | 总览与导航：介绍 `hap` 命令行能做什么、怎么登录，并在合适时把你引导到下面几个专门技能 |
+| CLI | **hap-cli** | 总览与导航：介绍 `hap` 命令行能做什么、怎么登录，以及 hap 待办、日程、动态、聊天、应用数据增删改 |
 | CLI | **hap-cli-app-creator** | 从一句业务需求一站式建出**真实可用、带示例数据**的 HAP 应用 |
 | CLI | **hap-cli-app-editor** | 对**已有应用**做精确的局部修改（字段/视图/工作表/角色权限/工作流/自定义动作/页面） |
 | CLI | **hap-cli-data-query** | 复杂查数：多条件 AND/OR 筛选、嵌套分组、透视聚合统计（求和/计数/平均/分组） |
@@ -36,7 +36,7 @@ hap auth login           # 浏览器授权登录
 hap auth whoami          # 确认已登录、查看当前用户与组织
 ```
 
-**MCP 场景** —— 在你的 Agent 客户端里配置 HAP MCP 服务（`api1.mingdao.com/mcp` 或 `api2.mingdao.com/mcp`）后即可调用。
+**MCP 场景** —— 在你的 Agent 客户端里配置 HAP MCP 服务（`api.mingdao.com/mcp` 或 `api2.mingdao.com/mcp`）后即可调用。
 
 **API 场景** —— 准备好目标 HAP 应用的 V3 接口鉴权密钥（Appkey / Sign，或 PAT / OAuth）。若已配置 HAP MCP，部分技能可自动从 MCP 配置中提取密钥。
 
@@ -122,7 +122,7 @@ Agent 会自动克隆仓库并把技能装到对应位置。
 
 #### hap-mcp-app-builder — 全自动应用构建器
 
-适合「一句话全自动建应用」：从业务方案设计（Plan）开始，与你确认后自动进入物理搭建（Build）；若方案已存在，可直接一键续建/恢复。通过 `/hap-builder` 或直接用对话描述系统诉求（如「帮我搭建一个客户管理应用」）触发。与 CLI 的 `hap-cli-app-creator` 解决同类问题，区别在于它走 MCP 服务而非命令行。
+适合「一句话全自动建应用」：从业务方案设计（Plan）开始，与你确认后自动进入物理搭建（Build）；若方案已存在，可直接一键续建/恢复。通过 `/hap-mcp-app-builder` 或直接用对话描述系统诉求（如「帮我搭建一个客户管理应用」）触发。与 CLI 的 `hap-cli-app-creator` 解决同类问题，区别在于它走 MCP 服务而非命令行。
 
 ### API 场景（基于 HAP V3 HTTP 接口）
 
@@ -144,14 +144,14 @@ Agent 会自动克隆仓库并把技能装到对应位置。
 
 ```text
 帮我用 HAP 建一个图书借阅管理应用          # → hap-cli-app-creator
-在某张表里加一个字段                        # → hap-cli-app-editor
+在某张表里加一个字段                      # → hap-cli-app-editor
 查一下某张表上个月各产品的销售额前 5        # → hap-cli-data-query
-切到我测试用的那个环境再操作                # → hap-cli-environments
-hap 命令行怎么登录、有哪些命令              # → hap-cli
-帮我全自动搭建一个客户管理应用              # → hap-mcp-app-builder
-用 HAP V3 接口查一下某张表的数据            # → hap-apiv3-data
-用 HAP 做一个企业官网、前后端分离           # → hap-api-website
-开发一个 HAP 自定义视图插件                 # → hap-view-plugin
+切到我测试用的那个环境再操作               # → hap-cli-environments
+帮我查一下待办和未读消息并总结要点          # → hap-cli
+帮我全自动搭建一个客户管理应用             # → hap-mcp-app-builder
+用 HAP V3 接口查一下某张表的数据          # → hap-apiv3-data
+用 HAP 做一个企业官网、前后端分离          # → hap-api-website
+开发一个 HAP 自定义视图插件               # → hap-view-plugin
 ```
 
 ## 目录结构
