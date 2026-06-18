@@ -14,8 +14,21 @@
       "record_actions":{ "add":false, "share":false },
       "fields":[ { "field":"成本价", "read":false } ],           // 只列要细控的字段，其余默认 true
       "views":[ { "view":"出库看板", "read":true, "edit":false, "delete":false } ] } ],
-  "page_permissions":[ { "page":"仓储看板", "enable":true } ] }
+  "page_permissions":[ { "page":"仓储看板", "enable":true } ],
+  "chatbot_permissions":[ { "chatbot":"仓储助手", "enable":true } ] }
 ```
+
+## AI 助手访问（`chatbot_permissions`）
+
+控制该角色能访问哪些 AI 助手（顶层 `chatbots[]` 里定义的助手，按逻辑名引用）。
+
+- **省略 `chatbot_permissions`（默认）**：该角色可访问应用内**全部** AI 助手。
+  绝大多数应用的助手就是给业务用户用的，默认开放即可——不写这一项就行。
+- **提供 `chatbot_permissions`**：转为白名单语义——只有列出且 `enable:true` 的助手
+  可访问，未列出的助手对该角色一律关闭。仅在需要**限制**某些角色（如外部访客）
+  不能用某个助手时才显式写。
+
+> 不写 `chatbot_permissions` 是常态。只有要收紧时才列。
 
 > 坑（执行器已自动处理）：服务端要求**发该工作表的全部字段+全部视图**权限才生效，handler 会自动补全你没列出的字段/视图为默认。
 > 你只需列出**要偏离默认**的字段/视图即可。

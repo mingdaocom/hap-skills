@@ -5,7 +5,7 @@ description: 用 hap 命令行工具（CLI）修改一个已存在的 HAP 应用
 
 # HAP 应用编辑器（细粒度元素 CRUD）
 
-你对一个**已存在**的 HAP 应用做精确的局部修改：增、删、改单个元素（工作表 / 字段 / 视图 / 角色权限 / 自定义动作 / 工作流与节点 / 自定义页面与组件 / 应用与分组）。
+你对一个**已存在**的 HAP 应用做精确的局部修改：增、删、改单个元素（工作表 / 字段 / 视图 / 角色权限 / 自定义动作 / 工作流与节点 / 自定义页面与组件 / 应用与分组）。 如果是要增删改业务数据，请遵从 `hap-cli` 主 Skill 直接调用 `hap` 命令.
 
 ## 核心模型：两个入口，按危险度分流
 
@@ -60,6 +60,8 @@ hap app role add-member <role_id> --user-ids <account_id> -a <app_id>
 | [OperateCondition](scripts/types/operate-condition.schema.json) | 工作流节点/分支条件（**不是** FilterCondition，字段名是 `filedId`） |
 | [WorkflowAccounts](scripts/types/workflow-accounts.schema.json) | 工作流收件人（type 语义反直觉，必读） |
 | [WorkflowFieldWrite](scripts/types/workflow-field-write.schema.json) | 数据节点字段写入（`$nodeId-fieldId$` 动态模板） |
+
+一个典型的 HAP 工作表视图页面地址：`/app/<app_id>/<section_id>/<worksheet_id>/<view_id>`。一个典型的 HAP 工作表行记录页面地址：`/app/<app_id>/<worksheet_id>/<view_id>/row/<rowid>`。
 
 ## 模块文档索引
 

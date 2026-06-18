@@ -1,6 +1,6 @@
 ---
 name: hap-cli-app-creator
-description: 用 hap 命令行工具（CLI）从业务需求一站式建出完整的 HAP 应用。只要用户描述了业务场景并说出类似「建一个应用 / 帮我把这个业务做成 HAP 应用 / 搭一个 CRM·库存·报修·借阅系统 / 生成 HAP 应用」之类的话，即使没有明说 HAP ，也应触发。如果当前没有终端环境，则优先使用 hap-mcp-app-builder (如果有) 创建应用。
+description: 用 hap 命令行工具（CLI）从业务需求一站式建出完整的 HAP 应用。只要用户描述了业务场景并说出类似「建一个应用 / 帮我把这个业务做成 HAP 应用 / 搭一个 CRM·库存·报修·借阅系统 / 生成 HAP 应用」之类的话，即使没有明说 HAP ，也应触发。
 ---
 
 # HAP 应用创建器（通过 HAP CLI）
@@ -124,7 +124,7 @@ design.json 全程用**逻辑名**互引、无 id，所以可以拆成几份分�
    > 命名契约和表名/字段名是同一回事——都是「地基先定、各分片照着引用」。契约里的名字一旦锁定，产出方分片（04 建动作、05 建页面）必须**原样**产出这些名称，引用方分片（02 引动作、03 引页面）按名引用；合并后整体校验会兜底（页面名、视图外露的动作名都做存在性检查），名字对不上会在 build 前的 `validate` 阶段就报出来。
 2. **必须用多个 subAgent 并行生成其余几块**：地基锁定后，**同时派出多个子代理（一次性发起多个 Agent 调用，并行运行）**。每个子代理负责一块、各自只放自己那部分顶层键、**不要重复 `app`**，把表名/字段名严格对齐地基：
    - `02-views.design.json` → `views`（`view.actions` 外露的按钮**只能**用「自定义动作清单」里的名字）
-   - `03-roles.design.json` → `roles`（`page_permissions` 的页面**只能**用「自定义页面清单」里的名字）
+   - `03-roles.design.json` → `roles`（`page_permissions` 的页面**只能**用「自定义页面清单」里的名字；AI 助手默认对所有角色开放，无需在角色里配置，**只有要限制**某角色时才用 `chatbot_permissions` 按「AI 助手清单」里的名字引用）
    - `04-workflows.design.json` → `workflows` + `custom_actions`（这块最重，单独一个子代理；`custom_actions` 必须**原样产出**契约里列的动作名）
    - `05-pages.design.json` → `custom_pages` + `chatbots`（`custom_pages` 必须**原样产出**契约里列的页面名）
    > 子代理任务要自包含：把**地基里的表名/字段名/选项清单 + 上面那份全局命名契约**连同对应 `references/` 一并交给它，让它无需回头读地基文件即可生成。各块在「名字」上已由契约对齐，所以可真正并行。**这几块各算一项任务**，子代理回来一块就标记 `completed` 并告知用户进度。
@@ -219,5 +219,5 @@ hap app-creator seed <appId> {PROJECT_ROOT}/apps/{appName}-{ts}/_seed_data.json
 
 ## 何时**不**用这个 skill
 
-- 用户只是问「在 HAP 中看一下待办事项 / 某个应用的业务数据」——那是查询，不是建应用。
+- 用户只是问「在 HAP 中看一下待办事项 / 某个应用的业务数据」—— 走 `hap-cli` 主 Skill。
 - 已经有应用、只想改一两个字段——用 hap-cli-app-editor skill 或直接用 `hap` 命令，不必走完整建应用流程。

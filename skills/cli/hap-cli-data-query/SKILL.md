@@ -1,11 +1,15 @@
 ---
 name: hap-cli-data-query
-description: 用 hap 命令行查询/筛选/统计 HAP 工作表里的业务数据时用本 skill——尤其当筛选条件复杂、需要多条件 AND/OR、嵌套分组，或要做透视表聚合统计（求和/计数/平均/分组维度）。覆盖 `hap worksheet record list`（带筛选/排序/分页的记录查询）、`record pivot`（透视聚合）、`record bottom-stats`（底部汇总）、`worksheet chart`（图表）。只要用户说「查某张表里满足…条件的记录」「按状态/日期筛选数据」「这个筛选器怎么写」「统计每个月/每个分类的合计」「做个透视/汇总」「filter-json 报错/查不出来」，即使没明说工具名也应触发。不用于：写入数据（增删改记录用 record create/update）、建表建字段（用 hap-cli-app-creator / hap-cli-app-editor）。
+description: 用 hap 命令行查询/筛选/统计 HAP 工作表里的业务数据时用本 skill——尤其当筛选条件复杂、需要多条件 AND/OR、嵌套分组，或要做透视表聚合统计（求和/计数/平均/分组维度）。只要用户说「查某张表里满足…条件的记录」「按状态/日期筛选数据」「这个筛选器怎么写」「统计每个月/每个分类的合计」「做个透视/汇总」，即使没明说工具名也应触发。不用于：写入数据（增删改记录用 record 命令）。
 ---
 
 # HAP 数据查询助手（筛选 · 透视 · 统计）
 
 帮用户用 `hap` 命令行从 HAP 工作表里**把想要的数据查出来**。难点不在命令本身，而在**参数 JSON 怎么写对**——筛选器结构、运算符词表、透视的维度与聚合。本 skill 把这些易错点讲清楚，并给可直接套用的模板。
+
+> 本 skill 只管"查/筛/统计"（只读）。定位到目标行后要**写回数据**（改备注、改状态等）用
+> `hap worksheet record update`——注意它不接受 `--app-id`，先 `hap app select <appID>`，
+> 写操作细节见 `hap-cli` 主 skill。增删改记录也直接用 `hap worksheet record` 相关命令。
 
 ## 覆盖的命令
 
@@ -81,7 +85,7 @@ hap worksheet fields WORKSHEET_ID        # 列出每个字段的 controlId / 名
 ### value 怎么填（按字段类型）
 
 - **选项 / 单选 / 多选字段**：value 用选项的 **key**，不是显示文本。key 可从 `worksheet fields` 的字段 options 里查到。
-- **关联表字段（Relation）**：value 用关联记录的 **rowid 数组**，配 `in` 或 `eq`。⚠️ 必须用 rowid，**不能用关联显示的标题文本**（如版本名）去匹配。怎么拿这个 rowid 见下方「关联字段筛选」。
+- **关联表字段（Relation）**：value 用关联记录的 **rowid 数组**，配 `in` 或 `eq`。⚠️ 必须用 rowid，**不能用关联显示的标题文本**（如版本名）去匹配。怎么拿这个 rowid 见下方「关联字段筛选」。子表的反向关联字段同理：value 填**父记录的 rowid**，即可筛出该父记录的全部子行。
 - **成员字段（Collaborator）**：value 用成员的 **accountId 数组**，配 `in`/`eq`。
 - **部门字段**：value 用部门 **ID 数组**，配 `belongsto` / `notbelongsto`。
 - **文本字段**：`contains` / `startswith` / `eq` 等，value 直接给文本。
@@ -108,6 +112,25 @@ hap worksheet record list TASK_WS_ID --filter-json '{
   "children":[{"type":"condition","field":"<版本字段ID>","operator":"in","value":["ITERATION_ROW_ID"]}]
 }' -p 1 -n 100
 ```
+
+#### 子表（SubTable）：查"某条父记录下的所有子行"
+
+子表数据不在父记录里，存在一张独立工作表（父 SubTable 字段的 `dataSource`），
+子行通过**反向 Relation 字段**（父 SubTable 字段的 `sourceField`）挂回父行。
+所以查某父记录的子行 = 在子表工作表上，按这个反向关联字段筛 = 父记录 rowid：
+
+```bash
+hap worksheet record list <子表WS_ID> --use-field-id-as-key -p 1 -n 100 \
+  --filter-json '{"type":"group","logic":"AND","children":[
+    {"type":"condition","field":"<反向关联字段ID>","operator":"in","value":["<父记录rowid>"]}]}' \
+  --sorts-json '[{"field":"<明细编号等排序字段ID>","isAsc":true}]'
+```
+
+- `<反向关联字段ID>`：在父表 `worksheet fields` 里，找 SubTable 字段的 `sourceField`。
+- value 是**父记录的 rowid**（不是父记录标题文本），用 `in`。
+- 子表行的"第几行"由排序决定，通常按 AutoNumber 明细编号升序，与表单里看到的顺序一致；
+  务必带 `--sorts-json`，否则默认顺序不保证稳定，"数第 N 行"会数错。
+
 
 ### 完整示例
 

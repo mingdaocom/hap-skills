@@ -3485,6 +3485,28 @@
           },
           "description": "permission_scope=0 时的自定义页面权限明细（页面按逻辑名）。"
         },
+        "chatbot_permissions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "chatbot"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "chatbot": {
+                "type": "string",
+                "description": "AI 助手逻辑名 -> id。"
+              },
+              "enable": {
+                "type": "boolean",
+                "default": true,
+                "description": "是否可访问该 AI 助手。"
+              }
+            }
+          },
+          "description": "可访问的 AI 助手（chatbot）明细，按 chatbot 逻辑名引用。省略该键 = 该角色可访问应用内全部 AI 助手（默认开放）。一旦提供本数组，则只有列出且 enable=true 的助手可访问，其余助手一律不可访问。"
+        },
         "members": {
           "type": "object",
           "additionalProperties": false,
