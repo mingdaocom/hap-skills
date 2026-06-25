@@ -9,7 +9,7 @@ description: 全自动一站式 HAP 应用构建器。从业务方案设计（Pl
 
 ## 前置依赖
 
-- **MCP Server**：本构建器需要连接到明道云 MCP 服务（`api1.mingdao.com/mcp` 或 `api2.mingdao.com/mcp`）。
+- **MCP Server**：本构建器需要连接到明道云 MCP 服务（`api.mingdao.com/mcp`）。
 
 ## 前置检查
 

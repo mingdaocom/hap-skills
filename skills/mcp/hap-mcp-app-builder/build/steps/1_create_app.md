@@ -82,8 +82,10 @@
 
 | MCP 服务地址 | 前端域名 |
 |---|---|
-| `api1.mingdao.com/mcp` | `www.mingdao.com` |
-| `api2.mingdao.com/mcp` | `meihua.mingdao.com` |
+| `api.mingdao.com/mcp` | `www.mingdao.com` |
+| `<非*.mingdao.com的host>/mcp` | `<非*.mingdao.com的host>` |
+
+> 不是 *.mingdao.com 的MCP服务地址，就使用该域名作为前端域名
 
 拼接应用链接 `https://{前端域名}/app/{appId}`，在 `{PROJECT_ROOT}/apps/{appName}/overview.md` 文件的最顶端（第 1 行）追加写入链接卡片：
 
