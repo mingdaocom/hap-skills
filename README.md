@@ -15,7 +15,6 @@
 | 场景 | Skill | 作用 |
 | --- | --- | --- |
 | CLI | **hap-cli** | 总览与导航：介绍 `hap` 命令行能做什么、怎么登录，以及 hap 待办、日程、动态、聊天、应用数据增删改 |
-| CLI | **hap-cli-app-creator** | 从一句业务需求一站式建出**真实可用、带示例数据**的 HAP 应用 |
 | CLI | **hap-cli-app-editor** | 对**已有应用**做精确的局部修改（字段/视图/工作表/角色权限/工作流/自定义动作/页面） |
 | CLI | **hap-cli-data-query** | 复杂查数：多条件 AND/OR 筛选、嵌套分组、透视聚合统计（求和/计数/平均/分组） |
 | CLI | **hap-cli-environments** | 多环境/多账号操作守则：授权了多个 HAP 环境或账号时，决定在哪个环境/账号上执行，破坏性操作前先确认 |
@@ -66,7 +65,6 @@ npx skills add https://github.com/mingdaocom/hap-skills/tree/main/skills/api
 ```bash
 # CLI
 npx skills add mingdaocom/hap-skills --skill hap-cli
-npx skills add mingdaocom/hap-skills --skill hap-cli-app-creator
 npx skills add mingdaocom/hap-skills --skill hap-cli-app-editor
 npx skills add mingdaocom/hap-skills --skill hap-cli-data-query
 npx skills add mingdaocom/hap-skills --skill hap-cli-environments
@@ -102,10 +100,6 @@ Agent 会自动克隆仓库并把技能装到对应位置。
 
 带你把工具装好、登录、选好组织与应用，并梳理 `hap` 的一级命令地图（通讯录、聊天、动态、日程、工作表记录、工作流、审批等）。当你的需求需要整体建/改应用或复杂查数时，它会指明该切到下面哪个专门技能。
 
-#### hap-cli-app-creator — 创建应用
-
-适合「从零搭一个完整应用」：描述业务场景（如 CRM / 库存 / 报修 / 借阅系统），它先与你确认方案（工作表、字段、角色），产出设计文档并校验，再用 `hap` 命令一次性物理搭建，最后生成并填充示例数据。
-
 #### hap-cli-app-editor — 修改应用
 
 适合「改已有应用的某个元素」：加/改/删字段、视图重命名、停用工作流、给角色加权限、加自定义动作按钮、删表等。每次操作前读取应用实时结构，破坏性操作需显式确认。
@@ -122,7 +116,7 @@ Agent 会自动克隆仓库并把技能装到对应位置。
 
 #### hap-mcp-app-builder — 全自动应用构建器
 
-适合「一句话全自动建应用」：从业务方案设计（Plan）开始，与你确认后自动进入物理搭建（Build）；若方案已存在，可直接一键续建/恢复。通过 `/hap-mcp-app-builder` 或直接用对话描述系统诉求（如「帮我搭建一个客户管理应用」）触发。与 CLI 的 `hap-cli-app-creator` 解决同类问题，区别在于它走 MCP 服务而非命令行。
+适合「一句话全自动建应用」：从业务方案设计（Plan）开始，与你确认后自动进入物理搭建（Build）；若方案已存在，可直接一键续建/恢复。通过 `/hap-mcp-app-builder` 或直接用对话描述系统诉求（如「帮我搭建一个客户管理应用」）触发。是从零搭建完整 HAP 应用的推荐方式（走 MCP 服务而非命令行）。
 
 ### API 场景（基于 HAP V3 HTTP 接口）
 
@@ -143,12 +137,11 @@ Agent 会自动克隆仓库并把技能装到对应位置。
 安装完成后，在对话中输入下面任意一句，看 Agent 是否进入对应技能：
 
 ```text
-帮我用 HAP 建一个图书借阅管理应用          # → hap-cli-app-creator
+帮我查一下待办和未读消息并总结要点          # → hap-cli
 在某张表里加一个字段                      # → hap-cli-app-editor
 查一下某张表上个月各产品的销售额前 5        # → hap-cli-data-query
 切到我测试用的那个环境再操作               # → hap-cli-environments
-帮我查一下待办和未读消息并总结要点          # → hap-cli
-帮我全自动搭建一个客户管理应用             # → hap-mcp-app-builder
+帮我搭建一个客户管理应用                  # → hap-mcp-app-builder
 用 HAP V3 接口查一下某张表的数据          # → hap-apiv3-data
 用 HAP 做一个企业官网、前后端分离          # → hap-api-website
 开发一个 HAP 自定义视图插件               # → hap-view-plugin
@@ -162,17 +155,8 @@ hap-skills/
 ├── .gitignore
 └── skills/
     ├── cli/                     # CLI 场景：基于 hap 命令行
-    │   ├── hap-cli/
-    │   ├── hap-cli-app-creator/
-    │   ├── hap-cli-app-editor/
-    │   ├── hap-cli-data-query/
-    │   └── hap-cli-environments/
     ├── mcp/                     # MCP 场景：基于 MCP 服务
-    │   └── hap-mcp-app-builder/
     └── api/                     # API 场景：基于 HAP V3 HTTP 接口
-        ├── hap-apiv3-data/
-        ├── hap-api-website/
-        └── hap-view-plugin/
 ```
 
 每个技能目录下的 `SKILL.md` 是入口，Agent 会自动读取。

@@ -33,7 +33,7 @@ hap app chatbot delete <chatbotId> -a <appId> -y
 - **新建分组会排到侧边栏最前面**，连建多个后顺序是反的；建完用 `sort-sections` 传**完整** section id 列表一次性修正顺序。
 - `app info` 返回的分组条目里 `type` 区分成员类型：0=工作表，1=自定义页面，2=子分组。按名找元素时先看这个字段。
 - 改 `--pc-nav-style` 时图标显示默认随样式联动；要精确控制用 `--display-icon`（3 位开关串，如 `011`）。
-- 整应用从零创建不在本 skill 范围（那是创建型工作流的职责）；这里只编辑已存在的应用。
+- 整应用从零创建不在本 skill 范围（用 hap-mcp-app-builder）；这里只编辑已存在的应用。
 - chatbot 的 `--preset-question` 可重复传，`update-config` 时是**整组替换**而非追加。
 - 想让 AI 起草助手配置，先 `hap app chatbot generate <appId> "<一句话描述>"` 拿到建议的名字/图标/开场白/提示词，再喂给 `create`。
 

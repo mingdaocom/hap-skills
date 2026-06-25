@@ -40,6 +40,9 @@
 - `edit`：0=无权编辑, 20=只编辑自己, 100=编辑全部
 - `delete`：0=无权删除, 20=只删除自己, 100=删除全部
 
+#### recordPermissionInViews（视图数据权限，必传且极端重要）
+- 角色可访问的视图权限。**如果不传此参数或传空数组，角色将无法在应用界面中看到该表的任何记录，等于完全没有工作表的数据权限！** 必须从 `worksheetContext` 提取相应视图的 `viewId` 传入并开启权限。如果业务要求该角色能访问所有视图，则必须把该表**所有的 `viewId`** 都一一传进来。
+
 #### worksheetActions（工作表操作）
 - `shareView`：是否可分享视图（通常只有管理角色开启）
 - `import`：是否可导入数据
@@ -58,10 +61,10 @@
 #### paymentActions
 - `pay`：是否有支付权限（默认 false）
 
-#### 其他级联权限（仅在特定场景使用）
-- `recordPermissionInViews`：角色可访问的视图权限。只有添加的视图才允许被访问。从 `worksheetContext` 提取相应视图的 `viewId`。如果所有视图都允许访问，则必须传所有视图。
+#### 其他级联权限（按需使用）
 - `fieldPermissions`：字段级权限。仅在需要隐藏或保护某几个字段时传入（例如只读 `edit: false`、隐藏 `read: false`），字段 ID 从 `worksheetContext` 中读取。
-- `pagePermissions`：自定义页面权限。从 `customPageIdByName` 中获取对应 ID，开启 `enable: true`。
+- `pagePermissions`：自定义页面权限。从 `customPageContext` 按名称反查 `pageId`，开启 `enable: true`。
+- `chatbotPermissions`：AI 助手权限。从 `chatbotContext` 按名称反查 `id`，开启 `enable: true`。
 
 ---
 
@@ -81,3 +84,4 @@
 
 - 每个角色创建完成后，简洁说明已配置的权限概要（1~2 句话）
 - 全部完成后输出汇总
+

@@ -1,45 +1,26 @@
-# Step 7：创建自定义页面与 AI 助手
+# Step 7：配置自定义页面组件
 
-你是 HAP 自定义页面配置专家，根据应用方案为每个自定义页面（仪表盘 dashboard 或工作台 workspace）配置对应的组件，并创建 AI 助手。
+你是 HAP 自定义页面配置专家，根据应用方案为每个自定义页面（仪表盘 dashboard 或工作台 workspace）配置对应的组件。
+
+> 页面空壳和 AI 助手已在 Step 5b 中创建完成，本步骤只负责配置页面组件内容。
 
 ## 输入数据
 
 - `appId`：应用 ID
-- `sectionIdByName`：导航分组名称 → sectionId 映射（来自 `hap-context.json`）
-- `customPageIdByName`：自定义页面名称 → 页面 ID 的映射
+- `customPageIdByName`：自定义页面名称 → 页面 ID 的映射（来自 `hap-context.json`，由 Step 5b 写入）
 - `worksheetContext`：工作表结构列表，每项含 `id`、`alias`、`fields`，来自 `worksheetContext.json`（只读）
 - `viewIdByName`：视图名称 → ID 映射（来自 `hap-context.json`）
 - `customPages`：页面规划列表（来自 `hap-plan.json`）
-- `aiAssistants`：AI 助手规划列表（来自 `hap-plan.json`，可能为空数组）
 
 ## 执行流程
 
-### 阶段 A：创建自定义页面
+对每个自定义页面，调用 `update_custom_page` 配置其组件（页面 ID 从 `customPageIdByName` 获取）。
 
-1. 对每个自定义页面，先调用 `create_app_items` 创建空白自定义页面项（挂在指定导航分组下），获得页面 ID
-   - `icon`：根据 `pageType` 设定——`dashboard` 传 `"sys_control-panel_traffic"`，`workspace` 传 `"2_3_statistics"`
-2. 再调用 `update_custom_page` 配置其组件
-3. 记录 `customPageIdByName`
-
-**⛔ 验证断言**：`customPageIdByName` 条目数 = plan 中自定义页面数量。
-
-### 阶段 B：创建 AI 助手
-
-1. 读取 `hap-plan.json` 中的 `aiAssistants` 数组
-   - 若为空数组或不存在 → 跳过此阶段
-2. 对每个 AI 助手，调用 `create_chatbot` 创建：
-   - 必填参数：`appId`、`name`、`prompt`、`welcomeMessage`、`presetQuestions`
-   - `prompt`：基于助手描述生成简练的系统提示词
-   - `presetQuestions`：根据业务场景生成高频预设问题，**必须少于 5 个**
-   - `icon`：固定使用 `17_6_reddit`
-   - `sectionId`：从 `sectionIdByName` 查找所在导航分组 ID
-3. 记录 `chatbotIdByName`（格式：`"助手名称" → chatbotId`）
-
-**⛔ 验证断言**：若 plan 有 AI 助手，则 `chatbotIdByName` 条目数匹配。若 plan 无 AI 助手，直接跳过。
+**⛔ 验证断言**：所有自定义页面均已配置组件（调用 `update_custom_page` 的次数 = plan 中自定义页面数量）。
 
 ### 完成
 
-更新 `hap-context.json`：写入 `customPageIdByName` 和 `chatbotIdByName`（若有）。不写 `progress`（由调度器统一管理）。
+本步骤无需写入 `hap-context.json`（`customPageIdByName` 和 `chatbotIdByName` 已由 Step 5b 写入）。不写 `progress`（由调度器统一管理）。
 
 ---
 
@@ -187,9 +168,11 @@ view × 1～3                     ← 列表视图区
 
 **必须包含的样式**：
 - 外层容器：`background`、`border-radius: 12px`、`padding: 20px 24px`
-- 标题行：使用 `<h4>` 或加粗 `<span>`，字号稍大、颜色醒目
-- 正文：行高 `line-height: 1.8`，条目间距清晰
-- 可选装饰：标题前加 emoji 图标、关键词用 `<span>` 高亮色强调
+- 文本颜色与字号：**为防止全局 CSS 覆盖，无论是深色还是浅色方案，都必须在内部所有文本标签（如 `h4`, `p`, `ul`, `li`, `strong` 等）上显式添加内联颜色样式和强制字号（例如 `style="color: #f1f5f9; font-size: 14px;"`），切勿只写在最外层 div 上。**
+- 标题行：使用 `<h4>`，**显式写入内联字号及字重（ `font-size: 17px; font-weight: 600;`）**，字号稍大、颜色醒目。
+- 正文：**显式写入内联字号（例如 `font-size: 14px;`）**，且行高 `line-height: 1.8`，条目间距清晰。
+- 可选装饰：标题前加 emoji 图标、关键词用 `<span>` 高亮色强调。
+
 
 ### 七、可读性要求
 

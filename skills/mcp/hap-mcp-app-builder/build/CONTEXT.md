@@ -11,6 +11,8 @@
   "org_id": "string",
   "progress": "string (见 PROGRESS.md)",
 
+  "cliAvailable": "boolean (CLI 自检写入：本机 hap 是否已安装且已登录；未登录会在自检阶段自动浏览器登录。组织校正与设当前应用由 Step 12 处理)",
+
   "sectionIdByName": {
     "分组名称": "sectionId"
   },

@@ -29,12 +29,14 @@ description: HAP 应用物理搭建调度器。读取 hap-plan.json，逐步调�
 | 5 | 自定义动作已创建 | `actionIdByName` 条目数 = plan 中动作数 | `actionIdByName` |
 | 6 | 视图已创建 | `viewIdByName` 条目数 = plan 中视图总数 | `viewIdByName` |
 | 7 | 示例数据已写入 | 各表均有记录 | `progress >= sample_data_created` |
-| 8 | 自定义页面已创建 | `customPageIdByName` 条目数匹配 plan | `customPageIdByName` |
+| 8 | 页面空壳已创建 | `customPageIdByName` 条目数匹配 plan | `customPageIdByName` |
 | 9 | AI 助手已创建（若有） | `chatbotIdByName` 条目数匹配 plan（或 plan 无则跳过） | `chatbotIdByName` |
-| 10 | 角色已创建 | `roleContext` 条目数 = plan 中角色数 | `roleContext` |
-| 10.5 | 工作流已设计 | `hap-plan.json` 中每条 workflow 和 customActionWorkflow 的 `nodes[]` 非空 | `hap-plan.json` |
-| 11 | 系统工作流已发布 | 每个系统工作流 processId 已 publish | Step 10 完成 |
-| 12 | 自定义动作工作流已发布 | `customActionWorkflows[]` 每条均已 publish | Step 11 完成 |
+| 10 | 页面组件已配置 | 所有页面均已调用 `update_custom_page` | Step 7 完成 |
+| 11 | 角色已创建 | `roleContext` 条目数 = plan 中角色数 | `roleContext` |
+| 12 | 工作流已设计 | `hap-plan.json` 中每条 workflow 和 customActionWorkflow 的 `nodes[]` 非空 | `hap-plan.json` |
+| 13 | 系统工作流已发布 | 每个系统工作流 processId 已 publish | Step 10 完成 |
+| 14 | 自定义动作工作流已发布 | `customActionWorkflows[]` 每条均已 publish | Step 11 完成 |
+| 15 | CLI 建后精修已对账 | CLI 可用→已校正组织+设当前应用+回填 `cliGaps[]`；hap 未安装→已输出待补清单且未中断 | Step 12 完成 |
 
 ---
 
@@ -47,6 +49,33 @@ description: HAP 应用物理搭建调度器。读取 hap-plan.json，逐步调�
 3. 如果进度 >= `fields_refreshed`，读取 `{PROJECT_ROOT}/apps/{appName}/worksheetContext.json` 加载字段结构
 
 > 详细的 context 结构见 `build/CONTEXT.md`，progress 状态定义见 `build/PROGRESS.md`。
+
+---
+
+## CLI 自检（非阻断）
+
+> 本步在断点恢复读出 `org_id` 之后、进入执行循环之前运行一次。
+> 目的：把本机 `hap` 命令行工具**准备到「已安装且已登录」**，供最后的 Step 12 用 CLI
+> 回填 MCP 盖不到的硬缺口。
+>
+> [!IMPORTANT]
+> **本步不阻断搭建主体**——纯 MCP 已能独立把应用建好。**唯一会让 Step 12 跳过回填的情况是
+> 「hap 未安装」**；「未登录」在本步自动登录解决，「组织不一致」留到 Step 12 自动切换解决。
+
+1. **探测 hap 是否安装**：运行 `hap auth whoami`
+   - **命令不存在 / 未安装** → `cliAvailable = false`（唯一的跳过情形）。不中断，继续搭建。
+   - **命令存在但提示未登录** → 进入第 2 步自动登录。
+   - **命令存在且已登录** → `cliAvailable = true`，跳到第 3 步。
+2. **自动登录**（仅「已安装、未登录」时）：运行 `hap auth login`，走**浏览器授权**并等待授权完成。
+   - **严禁使用 PAT / token 登录**，必须浏览器发起授权并等待其自动授权成功。
+   - 登录成功 → `cliAvailable = true`。
+   - 无图形环境等导致浏览器授权无法完成 → 提示用户手动执行 `hap auth login` 完成授权
+     （这**不是**「未安装」，不要据此把 `cliAvailable` 记为 false；在用户完成授权前 Step 12 无法回填）。
+3. **写入 context**：把 `cliAvailable` 写入 `hap-context.json`（不写 `progress`）。
+
+> **组织一致性与「设为当前应用」不在本步处理**——它们需要 appId（Step 1 之后才有），由 Step 12 完成：
+> `cliAvailable = true` 时，Step 12 会先自动把当前组织切到本应用所在组织、并把在建应用设为当前应用，再回填。
+> 详见 `build/steps/12_cli_refinement.md`。
 
 ---
 
@@ -86,49 +115,91 @@ description: HAP 应用物理搭建调度器。读取 hap-plan.json，逐步调�
 
 ## 执行循环
 
-**按路由表串行推进**，根据每步标注的执行方式选择内联或 subagent。其中 Step 4 与 Step 6 并行派发，Step 10 与 Step 11 并行派发（详见下方说明）。**所有 `progress` 写入由调度器在验证通过后统一完成，各 step 不写 progress。**
+**按路由表推进**，根据每步标注的执行方式选择内联或 subagent。本流程包含三组并行派发点（详见下方说明）。**所有 `progress` 写入由调度器在验证通过后统一完成，各 step 不写 progress。**
 
 ---
 
-### 阶段 1：基础搭建（Step 1~3，内联执行）
+### 阶段 1：应用创建（Step 1，内联执行）
 
-Step 1~3 是简单的创建流水线和脚本调用，此时上下文最干净，**不需要子 agent 隔离**。
-
-依次完整读取每个步骤文件并在主 agent 内执行：
+Step 1 是轻量的应用和导航分组创建，在主 agent 内执行：
 
 1. 读取 `build/steps/1_create_app.md` → 执行 → 调度器写入 `progress=app_created`
-2. 读取 `build/steps/2_create_worksheets.md` → 执行 → 调度器写入 `progress=worksheets_created`
-3. 读取 `build/steps/3_refresh_fields.md` → 执行脚本（一条命令） → 调度器写入 `progress=fields_refreshed`
-
-> **播报**：阶段 1 全部完成后向用户输出：`✅ 基础搭建完成：应用已创建，{N} 张工作表，字段结构已刷新`
 
 ---
 
-### 阶段 2：配置与工作流（Step 4~11，子 agent 执行）
+### 阶段 1.5：工作表创建与字段刷新（Step 2~3）
 
-Step 4 起数据量和复杂度上升，**必须使用子 agent 隔离执行**。
+Step 2 是整个搭建流程中规则最重的步骤（~400 行规则），**必须使用子 agent 隔离执行**，避免大量 MCP 调用和字段配置数据污染主调度器上下文，确保规则遵守率。
+
+1. 将 Step 2 委派给子 agent → 等待完成 → 调度器写入 `progress=worksheets_created`
+2. 读取 `build/steps/3_refresh_fields.md` → 内联执行脚本（一条命令） → 调度器写入 `progress=fields_refreshed`
+
+> **播报**：Step 3 完成后向用户输出：`✅ 基础搭建完成：应用已创建，{N} 张工作表，字段结构已刷新`
+
+---
+
+### 阶段 2：动作、视图与数据（Step 4~6，子 agent 执行）
 
 > [!CAUTION]
-> **Step 4~11 的每一步都必须将任务委派给子 agent。**
+> **Step 2、Step 4~11 都必须将任务委派给子 agent。**
 
-#### 并行派发策略
+#### 并行派发 ①：Step 4 + Step 6（fields_refreshed 后触发）
 
-本流程有两组并行派发点：
-
-**① Step 4 + Step 6（fields_refreshed 后触发）**
-
-Step 6（示例数据）仅依赖 `worksheetContext.json` 和 `worksheetIdByName`（Step 3 的产出），与 Step 4/5/7/8 无数据依赖。因此：
+Step 6（示例数据）仅依赖 `worksheetContext.json` 和 `worksheetIdByName`（Step 3 的产出），与 Step 4/5 无数据依赖。因此：
 - Step 3 完成后，同时派发 Step 4 和 Step 6
-- Step 4 → Step 5 → Step 7 → Step 8 串行推进，**不等待 Step 6**
-- Step 6 作为后台任务运行，在最终完成前确认完成即可
+- Step 4 → Step 5 串行推进，**不等待 Step 6**
+- Step 6 作为后台任务运行，在 Step 5 完成前确认完成即可
 
-**② Step 10 + Step 11（workflows_designed 后触发）**
+Step 5 和 Step 6 都完成后，调度器写入 `progress=sample_data_created`。
+
+---
+
+### 阶段 2.5：页面空壳创建（Step 5b，内联执行）
+
+Step 5b 是轻量操作（创建空白页面导航项 + chatbot），为后续三路并行提供 ID 依赖。
+
+读取 `build/steps/5b_create_page_shells.md` → 执行 → 调度器写入 `progress=page_shells_created`
+
+---
+
+### 阶段 3：配置并行（Step 7 + Step 8 + Step 9，子 agent 执行）
+
+#### 并行派发 ②：Step 7 + Step 8 + Step 9（page_shells_created 后触发）
+
+Step 5b 完成后，三者的输入已全部就绪：
+- **Step 7**（配置页面组件）：需要 `customPageIdByName`（Step 5b）+ `worksheetContext` + `viewIdByName`
+- **Step 8**（创建角色）：需要 `customPageIdByName` + `chatbotIdByName`（Step 5b）+ `worksheetContext` + `viewIdByName`
+- **Step 9**（设计工作流）：需要 `worksheetContext` + `viewIdByName` + `roles[]`（来自 hap-plan.json，不依赖 roleContext）
+
+因此：
+- Step 5b 完成后，同时派发 Step 7、Step 8、Step 9
+- 三者都完成后，调度器写入 `progress=config_completed`
+
+---
+
+### 阶段 4：工作流部署（Step 10 + Step 11，子 agent 执行）
+
+#### 并行派发 ③：Step 10 + Step 11（config_completed 后触发）
 
 Step 10（系统工作流）和 Step 11（自定义动作工作流）均依赖 Step 9 的设计产出，彼此无依赖。因此：
-- Step 9 完成后，同时派发 Step 10 和 Step 11
-- 两者都完成后，调度器写入 `progress="completed"`
+- `config_completed` 后，同时派发 Step 10 和 Step 11
+- 两者都完成后，调度器写入 `progress="workflows_deployed"`
 
-#### 子 agent 执行流程
+---
+
+### 阶段 5：CLI 建后精修（Step 12，内联执行）
+
+Step 12 用 `hap` 命令行工具补 MCP 盖不到的硬缺口。**永不阻断**：CLI 不可用/组织不一致时降级为
+「待补清单」，应用仍算搭建成功。
+
+读取 `build/steps/12_cli_refinement.md` → 内联执行 → 调度器写入 `progress="completed"`。
+
+> 本步内联执行（非 subagent）：它依赖构建入口「CLI 自检」写入的 `cliAvailable`，
+> 且以对账+少量 CLI 命令为主，上下文开销小。
+
+---
+
+### 子 agent 执行流程
 
 对 Step 4~11 的每一步：
 
@@ -187,12 +258,14 @@ Step 9 的产出是写入 `hap-plan.json` 而非 `hap-context.json`。调度器�
 **播报节点**（非播报节点静默）：
 
 | 时机 | 输出模板 |
-|------|---------|
+|------|---------| 
 | 搭建开始 | `🚀 开始搭建应用【{appName}】…` |
 | 阶段 1 完成 | `✅ 基础搭建完成：应用已创建，{N} 张工作表` |
-| Step 5 完成 | `✅ 视图已创建（{N} 个）` |
-| Step 8 完成 | `✅ 角色已创建（{N} 个），开始设计工作流…` |
-| Step 9 完成 | `✅ 工作流方案已设计（{N} 条），开始创建并发布…` |
+| Step 5b 完成 | `✅ 页面空壳与 AI 助手已创建，开始并行配置…` |
+| 阶段 3 完成 | `✅ 页面组件、角色、工作流设计全部完成` |
+| 阶段 4 完成 | `✅ 工作流已全部发布，开始建后精修…` |
+| Step 12 完成（已回填） | `✅ 建后精修完成：已用 CLI 补齐 {N} 项 MCP 未覆盖的配置` |
+| Step 12 完成（降级，hap 未安装） | `ℹ️ 应用已建好；安装并登录 hap-cli 后可补齐 {M} 项增强配置（见摘要）` |
 | 全部完成 | 输出完整摘要（见下方「完成」章节） |
 
 ---
@@ -202,15 +275,14 @@ Step 9 的产出是写入 `hap-plan.json` 而非 `hap-context.json`。调度器�
 | progress 值 | 下一步 | 步骤文件 | 执行方式 | 引用规则文件 |
 |---|---|---|:---:|---|
 | （无/新建） | Step 1：创建应用与导航 | `build/steps/1_create_app.md` | 🔵 内联 | — |
-| `app_created` | Step 2：创建工作表 | `build/steps/2_create_worksheets.md` | 🔵 内联 | — |
+| `app_created` | Step 2：创建工作表 | `build/steps/2_create_worksheets.md` | 🟢 subagent | — |
 | `worksheets_created` | Step 3：刷新字段结构 | `build/steps/3_refresh_fields.md` | 🔵 内联 | — |
 | `fields_refreshed` | Step 4 + **⚡ Step 6**：并行派发 | `4_create_actions.md` + `6_create_sample_data.md` | 🟢 subagent | — |
 | `actions_created` | Step 5：创建视图 | `build/steps/5_create_views.md` | 🟢 subagent | — |
-| `views_created` | Step 7：创建自定义页面与 AI 助手 | `build/steps/7_create_pages.md` | 🟢 subagent | — |
-| `pages_created` | Step 8：创建角色 | `build/steps/8_create_roles.md` | 🟢 subagent | — |
-| `roles_created` | Step 9：设计工作流 | `build/steps/9_design_workflows.md` | 🟢 subagent | — |
-| `workflows_designed` | **⚡ 并行派发** Step 10：创建并发布系统工作流 | `build/steps/10_create_workflows.md` | 🟢 subagent | `build/steps/workflow_rules.md` |
-| `workflows_designed` | **⚡ 并行派发** Step 11：创建并发布自定义动作工作流 | `build/steps/11_create_action_workflows.md` | 🟢 subagent | `build/steps/workflow_rules.md` |
+| `sample_data_created` | Step 5b：创建页面空壳与 AI 助手 | `build/steps/5b_create_page_shells.md` | 🔵 内联 | — |
+| `page_shells_created` | **⚡ 三路并行** Step 7 + Step 8 + Step 9 | `7_create_pages.md` + `8_create_roles.md` + `9_design_workflows.md` | 🟢 subagent | Step 9 无引用 |
+| `config_completed` | **⚡ 并行派发** Step 10 + Step 11 | `10_create_workflows.md` + `11_create_action_workflows.md` | 🟢 subagent | `build/steps/workflow_rules.md` |
+| `workflows_deployed` | Step 12：CLI 建后精修对账与回填 | `build/steps/12_cli_refinement.md` | 🔵 内联 | `build/CAPABILITY_MATRIX.md` |
 
 ---
 
@@ -218,7 +290,7 @@ Step 9 的产出是写入 `hap-plan.json` 而非 `hap-context.json`。调度器�
 
 在标记 `progress="completed"` 之前，**必须回到顶部的「🔒 全局执行清单」逐项核对**。并行派发的步骤须等待全部完成后再推进（详见上方「并行派发策略」）。
 
-确认全部 12 项均已完成后，输出成功摘要：
+确认全部 15 项均已完成后，输出成功摘要：
 
 - 应用名称和链接
 - 已创建的工作表数量
@@ -226,6 +298,7 @@ Step 9 的产出是写入 `hap-plan.json` 而非 `hap-context.json`。调度器�
 - 已创建并发布的工作流数量（系统工作流 + 自定义动作工作流）
 - 已创建的角色数量
 - 已创建的 AI 助手数量（若有）
+- CLI 建后精修结果：已回填 N 项 /（或）待补清单 M 项（CLI 未安装或组织不一致时）
 
 ---
 

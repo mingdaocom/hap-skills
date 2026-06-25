@@ -29,9 +29,12 @@
 
 > ⚠️ **禁止自行编造 ID**。如果方案中提到的名称在 `worksheetContext` 中找不到，跳过该节点并说明。
 
+> ⚠️ **所有 ID 必须原样复制**。从 worksheetContext / roleContext / viewContext 中取到的 ID（包括 24 位 hex fieldId 和 GUID 格式的 roleId），必须**逐字符原样复制**到工具参数中，严禁手动重新输入或凭记忆拼写——GUID 类 ID 长达 36 字符，手写极易多字符或少字符导致引用无效。
+
 ### 降级策略
 
 - **角色找不到**：从 `roleContext` 中选择语义最接近的角色替代；若为空，改用 `{ kind: "triggerUser" }`
+- **roleId 导致 API 报错**（如 `batch_create_process_nodes` 返回角色相关错误）：从 recipients 中去掉该角色引用后重试；若该角色是唯一接收者（去掉后 recipients 为空），改用 `{ kind: "triggerUser" }` 兜底，确保工作流可发布
 - **视图找不到**：使用该工作表的第一个视图
 
 ## 易错规则
@@ -96,7 +99,7 @@ Condition 结构为 `{ left, op, right }`。其中 `left` 属于 `FieldValueRef`
 
 - **`get_multiple` 结果分支判空**：**绝对严禁**直接判断 `get_multiple` 节点的 `rowid`。必须采用以下二阶段链式逻辑：
   1. **步骤一**：先紧随其后创建一个 `rollup`（汇总统计）节点，对 `get_multiple` 节点的记录进行 `COUNT` 聚合。
-  2. **步骤二**：在 downstream 的 `branch` 条件分支中，判断该 `rollup` 节点输出的 `total_count` 字段是否大于 0。
+  2. **步骤二**：在 downstream 的 `branch` 条件分支中，判断该 `rollup` 节点输出的 `number_fx_id` 字段是否大于 0。
   
   *完整串联示例*：
   ```json
@@ -178,8 +181,9 @@ HAP `NodeSpec` 基础模式上**完全没有 `sourceNode` 属性**。凡是需�
 
 | 节点类型 | 参数配置类型 | 必填 config 字段 | 物理输出字段 ID | 下游引用占位符示例 |
 | :--- | :--- | :--- | :--- | :--- |
-| **`rollup`** | `method: "count"` | `target`（引用 get_multiple 节点），**不传** worksheetId/fieldId | **`number_fx_id`** | `$nodeAlias-number_fx_id$` |
-| **`rollup`** | `method: "sum/avg/min/max"` | `worksheetId` + `fieldId`，**不传** target | **`number_fx_id`** | `$nodeAlias-number_fx_id$` |
+| **`rollup`** | `method: "count"`（统计上游多条记录） | `target`（引用 get_multiple 节点），**不传** worksheetId/fieldId | **`number_fx_id`** | `$nodeAlias-number_fx_id$` |
+| **`rollup`** | `method: "count"`（直接统计工作表记录，支持 `filter`） | `worksheetId`，**不传** fieldId 或 target | **`number_fx_id`** | `$nodeAlias-number_fx_id$` |
+| **`rollup`** | `method: "sum/avg/average/min/max/filled/not_filled"`（支持 `filter`） | `worksheetId` + `fieldId`，**不传** target | **`number_fx_id`** | `$nodeAlias-number_fx_id$` |
 | **`compute`** | `computeType = "number"` | `expression` | **`number_fx_id`** | `$nodeAlias-number_fx_id$` |
 | **`compute`** | `computeType = "dateDiff"` | `startTime` + `endTime` + `outputUnit` | **`number_fx_id`** | `$nodeAlias-number_fx_id$` |
 | **`compute`** | `computeType = "dateOffset"` | `inputTime` + `offsetExpression` | **`date_fx_id`** | `$nodeAlias-date_fx_id$` |
@@ -264,14 +268,51 @@ HAP `NodeSpec` 基础模式上**完全没有 `sourceNode` 属性**。凡是需�
 
 子流程使用 `nodeType: "sub_process"`，**分两步创建**（与审批块相同）：
 
-**第一步：创建空子流程**（`config.process` 只传 `mode` 和 `name`，**不传 `nodes`**）
+**第一步：创建空子流程**（`config.process` 只传 `mode`、`name` 和可选的 `start.inputFields`，**不传 `nodes`**）
+
+如果设计方案中子流程的内部节点通过「外层」前缀引用了外部主流程的数据（如："外层触发记录.客户名称"），你必须自己归纳这些外部引用，在第一步的 `config.process.start.inputFields` 中自动为其声明对应的输入参数：
+
+```json
+{
+  "config": {
+    "process": {
+      "mode": 1,
+      "name": "逐条处理XX",
+      "start": {
+        "inputFields": [
+          {
+            "fieldId": "child_message",
+            "name": "通知内容",
+            "type": "text",
+            "required": true,
+            "description": "从父流程传入的通知文本"
+          }
+        ]
+      }
+    },
+    "input": [
+      {
+        "fieldId": "child_message",
+        "op": "set",
+        "value": { "kind": "field", "node": { "nodeAlias": "start" }, "fieldId": "674...a1" }
+      }
+    ]
+  }
+}
+```
+
+- `inputFields[].fieldId`：参数稳定 ID，父流程赋值 + 子流程内部引用用
+- `inputFields[].type`：`text`/`number`/`datetime`/`user`/`department`/`orgRole`/`array`/`objectArray`
+- `config.input[].fieldId`：必须与 `inputFields[].fieldId` 一一对应
+- `config.input[].value`：标准 ValueRef（`literal`/`field`/`systemField`/`template`）
 
 **第二步：创建内部节点**——从第一步 `batch_create_process_nodes` 返回值的 `createdNodes` 中，找到该子流程节点，提取其内部 `processId`，再调一次 `batch_create_process_nodes`（传内部 `processId`）创建子流程内部节点。
 
 > ⚠️ **子流程内部数据作用域**：
 > - 子流程开始节点固定别名 `sub_trigger`，代表当前正在处理的那条记录
 > - 子流程内部节点引用当前记录时，使用 `{ nodeAlias: "sub_trigger" }`
-> - **子流程无法跨作用域引用主流程节点**
+> - 子流程参数在内部用 `$process_variable-fieldId$`（template kind）引用，**不要用 `$sub_trigger-fieldId$` 引用参数**；`sub_trigger` 只代表记录数据源
+> - 不使用 `inputFields` 时，**子流程无法跨作用域引用主流程节点**
 > - 子流程内部可以有自己的查询节点，后续节点可引用内部查询节点的 alias
 
 > 分支、审批块和子流程可以任意嵌套。

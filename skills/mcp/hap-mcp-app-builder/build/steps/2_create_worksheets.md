@@ -13,7 +13,8 @@
 按依赖顺序逐张创建工作表：
 
 1. 先建被引用表（无关联依赖的主数据表），再建引用方（含 Relation 字段的业务表）
-2. 每张表调用 `create_worksheet`，传入对应的 `sectionId`、`icon`，以及 `remark`、`desc`、`importantNote` 等参数（参数规则见下方）
+2. 每张表调用 `create_worksheet`，传入对应的 `sectionId`、`icon`、`color`，以及 `remark`、`desc`、`importantNote` 等参数（参数规则见下方）
+   - **`icon` 和 `color` 必须原样使用 plan 中该工作表的值，严禁自行替换或编造**
 3. 固定设置 `createDefaultView: false`（默认视图在后续步骤单独创建）
 4. 记录返回的 `worksheetId`，存入 `worksheetIdByName[表名]`
 5. 更新 `hap-context.json`：写入 `worksheetIdByName`（不写 `progress`，由调度器统一管理）
@@ -21,6 +22,19 @@
 **⛔ 验证断言**：`worksheetIdByName` 条目数 = plan 中工作表数量，每个值均为 24 位物理 ID。
 
 ---
+
+## 字段控制属性
+
+| 属性 | 适用类型 | 说明 |
+|---|---|---|
+| `isTitle` | Text / AutoNumber | 每张表**仅一个**字段可设为 true（标题字段），其他控件不支持作标题，否则建表失败 |
+| `required` | 大多数 | 必填。**注意**：AutoNumber / Formula / Collaborator / Divider **不可设为 true**，否则建表失败 |
+| `isReadOnly` | 大多数 | 只读 |
+| `isUnique` | Text / Number / Email / PhoneNumber 等 | 唯一约束 |
+| `isHiddenOnCreate` | 任意 | 新建记录时是否隐藏（如系统自动写入的字段）|
+| `precision` | Number / Currency / Formula | 小数位（0-14）|
+| `max` | Rating | 最大评分值（1-10）|
+
 
 ## 工作表参数规则
 
@@ -54,9 +68,12 @@
 
 ## 字段设计规范
 
+> [!CAUTION]
+> **Plan 字段属性不可变原则**：plan 中已明确定义的字段属性——**名称、类型、选项值、关联目标表**——是不可修改的，执行器必须原样使用。执行器只能在此基础上**补充** plan 未定义的配置（Divider 分段、layout 布局、alias、placeholder、remark、defaultValue、config 等），以及**追加** plan 中遗漏的字段。严禁篡改已有字段的名称、类型或选项值。
+
 ### 一、建表前的业务思考
 
-不要只建规划里的字段，主动扩展上下游与治理字段：
+在保留 plan 中所有字段的前提下，主动扩展上下游与治理字段：
 
 | 字段类别 | 典型字段 |
 |---|---|

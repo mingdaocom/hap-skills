@@ -31,7 +31,7 @@
 ### 步骤 1：获取触发节点引用
 
 1. **绝对禁止**调用 `create_process`（外壳已由系统自动创建）。
-2. **必须且首先**物理调用 `get_workflow_structure`，传入参数 `processId`。
+2. **必须且首先**物理调用 `get_workflow_structure`，传入参数 `workflow_id`（即 `processId`）**以及 `appId`（必传，否则可能报 401 账号失效错误）**。
 3. 从 API 返回的流程树形结构中，解析并提取其**触发节点的真实物理 `nodeId`**。
 4. 后续所有节点中：
    - `prevNode`（紧随触发器的第一个节点）使用 `{ "nodeId": "<实际nodeId>" }`

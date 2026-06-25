@@ -104,8 +104,15 @@
 > [!CAUTION]
 > **同一字段匹配多个值 = 单个 `in` condition + value 数组。严禁拆成多个 condition 用 AND 组合（逻辑上永远不成立）。**
 
-日期字段动态值：`today`, `yesterday`, `tomorrow`, `last7Day`, `last30Day`,  `thisMonth`, `lastMonth`, `nextMonth`, `thisYear`, `lastYear`, `nextYear`
-Collaborator 字段动态值：`user-self`，表示当前用户
+日期字段动态值（使用 `eq` 运算符 + 直传字符串）：`today`, `yesterday`, `tomorrow`, `last7Day`, `last30Day`, `thisMonth`, `lastMonth`, `nextMonth`, `thisYear`, `lastYear`, `nextYear`
+Collaborator 字段动态值（使用 `eq` 运算符 + 直传字符串）：`user-self`，表示当前用户
+
+```json
+// 示例 — 筛选本月数据：
+{ "type": "condition", "field": "date_field_alias", "operator": "eq", "value": "thisMonth" }
+// 示例 — 筛选当前用户的数据：
+{ "type": "condition", "field": "owner_field_alias", "operator": "eq", "value": "user-self" }
+```
 
 ### quickFilters / filterList / group（字段互斥）
 

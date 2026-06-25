@@ -50,7 +50,7 @@
 1. 每个字段用紧凑格式：`"字段名(Type)"`，如 `"任务标题(Text)"`、`"负责人(Collaborator)"`
 2. 关联字段：`"字段名(Relation:目标工作表名)"`，如 `"关联图书(Relation:图书)"`
 3. 自关联：`"字段名(selfRelation)"`，如 `"上级分类(selfRelation)"`
-4. **SingleSelect / MultipleSelect 必须携带选项值**，用 `/` 分隔：`"状态(SingleSelect:待处理/处理中/已完成/已逾期)"`。禁止只写 `"状态(SingleSelect)"` 而不列选项
+4. **SingleSelect / MultipleSelect / Dropdown 必须携带选项值**，用 `/` 分隔：`"状态(SingleSelect:待处理/处理中/已完成/已逾期)"`。禁止只写 `"状态(SingleSelect)"` 而不列选项
 5. 必须充分利用专属字段类型：坐标/定位 → `Location`，行政区划 → `Region`，流水号 → `AutoNumber`，人员 → `Collaborator`，部门 → `Department`，手机号 → `PhoneNumber`，邮箱 → `Email`，金额/价格 → `Currency`，日期计算 → `DateFormula`（如"应还日期(DateFormula)"）。**严禁将这些字段降级为 `Text` 或 `Number`**
 
 ### 字段丰富度要求（核心）
