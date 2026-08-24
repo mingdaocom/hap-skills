@@ -1,6 +1,6 @@
 ---
 name: hap-apiv3-data
-description: 使用明道云 HAP V3 接口搭建页面和操作数据的专业技能。**立即触发条件**：用户提到"HAP V3"、"HAP API"、"接口调用"、"数据接口"、"Appkey"、"Sign"、"接口鉴权"、"PAT"、"OAuth"、"Bearer"、"Filter 筛选"、"查询数据"、"创建记录"。提供完整的 API 使用指南：鉴权配置、接口调用、筛选器使用、数据操作等。如果用户已配置 HAP MCP，AI 应该自动从 MCP 配置中提取鉴权密钥。
+description: 使用明道云 HAP V3 接口搭建页面和操作数据的专业技能。立即触发条件：用户提到"HAP V3"、"HAP API"、"接口调用"、"数据接口"、"Appkey"、"Sign"、"接口鉴权"、"PAT"、"OAuth"、"Bearer"、"Filter 筛选"、"查询数据"、"创建记录"。提供完整的 API 使用指南：鉴权配置、接口调用、筛选器使用、数据操作等。如果用户已配置 HAP MCP，AI 应该自动从 MCP 配置中提取鉴权密钥。
 license: MIT
 ---
 
