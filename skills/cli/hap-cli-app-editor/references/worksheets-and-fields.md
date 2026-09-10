@@ -124,13 +124,12 @@ hap app-editor apply    edit.json   # 逐 op 执行（--continue 失败不中断
 要点：
 
 - `field.add` 走增量追加；`field` 里 `type` 接 CODE（Text/Number/Relation…）、
-  类型名（TEXT/RELATE_SHEET…）或整数。
-  **它只认 `type` / `name` / `required` / `unique` / `options` / `control` 六个键**，其余键
-  （`dataSource`、`config`、`hint`、`defaultValue`、`advanced_setting`…）会被**静默丢弃**且
-  `validate` 不报错。**连 schema 明写支持的 `relation` / `lookup` / `rollup` / `formula` 四个块
-  也一样被丢弃**——实测用 `relation` 块建关联字段，`validate` OK、`apply` OK，建出来的是一列
-  `dataSource` 为空的坏关联列。要带这些设置，全部塞进 `control:{<WireControl 原始键>}` 逃生口，
-  或改用 `hap worksheet add-fields --controls`。
+  类型名（TEXT/RELATE_SHEET…）或整数。字段词汇是
+  `name` / `type` / `required` / `unique` / `options` / `relation` / `lookup` / `rollup` /
+  `formula` / `control`——跨表类型必须带自己那个块，写法见
+  [edit-spec.md](edit-spec.md) 的「field 的跨表块」。词表以外的键、块放错类型、块内未知键
+  一律**校验报错**，不会静默建出指向为空的坏列。这份词汇没建模的形状走
+  `control:{<WireControl 原始键>}` 逃生口（最后合并、优先生效）。
 - `field.update` 的 `set` 直接写 WireControl 原始键（见 §2/§3）。
 - `field.reorder` 按 `order` 重排显示顺序（顺序由控件 `row` 决定）；未列出的字段接在后面。
 - 元素可用名称或 id 引用，spec 内后面的 op 可引用前面刚建的元素。
@@ -194,19 +193,19 @@ hap worksheet add-fields <订单表ID> --controls '[
  "config":{"bidirectional": true, "reverseName": "订单", "displayMode": "card"}}
 ```
 
-> 🚨 **不要用 edit-spec 的 `field.add` 建关联字段。** 它的字段降级只认
-> `type` / `name` / `required` / `unique` / `options` / `control` 六个键，
-> **`dataSource`、`config`、`hint`、`defaultValue`、`advanced_setting` 一律被静默丢弃**
-> （实测：带 `hint` 和 `config` 建出来的列，`hint` 是空串、advancedSetting 只有类型默认值，
-> 而且 `validate` 照样报 OK）。edit-spec 里确实要建复杂字段时，把整个原始控件塞进
-> `control` 逃生口：
->
-> ```json
-> { "type": "field.add", "worksheet": "订单",
->   "field": { "name": "客户", "type": "RELATE_SHEET",
->              "control": { "dataSource": "<客户表工作表ID>",
->                           "advancedSetting": {"bidirectional": "1"} } } }
-> ```
+走 edit-spec 时用 `relation` 块，目标表和展示列都可以写名字：
+
+```json
+{ "type": "field.add", "worksheet": "订单",
+  "field": { "name": "客户", "type": "RELATE_SHEET",
+             "relation": { "worksheet": "客户", "multiple": false,
+                           "showFields": ["客户名称", "等级"] } } }
+```
+
+> `relation` 块本身**不含 `bidirectional`**（块内未知键会被校验拒绝）。edit-spec 里要双向，
+> 先用 `relation` 块把关联建出来，再 `hap worksheet pair-relation` 补反向端；或者把
+> `advancedSetting` 塞进 `control` 逃生口。词汇与校验规则见
+> [edit-spec.md](edit-spec.md) 的「field 的跨表块」。
 
 - 这会在客户表上**真的建出一列**「订单」。`reverseName` 是对方表上那列的名字，不给就用本表名。
 - `displayMode` 取 `dropdown` / `card` / `inlineTable` / `tabTable`。
@@ -393,25 +392,18 @@ hap worksheet pair-relation <工作表ID> 客户 --repair       # 覆盖对方�
 只读输出键（`id`、`alias`、`subType`、`precision`、`max`、`unit`、`desc`、`remark`、
 `isReadOnly`、`isHidden`、`isHiddenOnCreate`、`sourceType`、`relation`）在写入时会被自动忽略。
 
-> 🚨 **但 `worksheet fields` 的默认输出目前【不能】原样回传 `--fields`**（实测于 0.8.31）。
-> 有三处键名/空值对不上，会被 `--check` 逐个退回：
->
-> | 症状 | 原因 | 处理 |
-> |---|---|---|
-> | `DROP_DOWN does not take data_source` | 读输出对每个字段都给 `"dataSource": ""`，写侧只允许桥接类字段带这个键 | 删掉**空的** `dataSource` |
-> | `... does not take source_control_id` | 同理，读输出给 `"sourceField": ""` | 删掉**空的** `sourceField` |
-> | `option has unsupported field(s) ['isDelete']` | 读侧把选项标记拼成 `isDelete`，写侧只认 `isDeleted` | 把选项里的 `isDelete` 改名成 `isDeleted` |
->
-> **整表读改写请改走 `--raw` + `--controls`**，这条路实测干净往返、无需清洗：
->
-> ```bash
-> hap --json worksheet fields <工作表ID> --raw > controls.json
-> # 编辑 controls.json
-> hap worksheet update-fields <工作表ID> --controls @controls.json --check
-> hap worksheet update-fields <工作表ID> --controls @controls.json
-> ```
->
-> 一定要用 `--fields` 时，先把上面三处修掉再传。
+`worksheet fields` 的默认输出**可以原样回传 `--fields`**，不需要任何手工清洗：空的
+`dataSource` / `sourceField` 会被忽略，选项键统一是 `isDeleted`，颜色和分值原样保留。
+
+```bash
+hap --json worksheet fields <工作表ID> > layout.json
+# 编辑 layout.json
+hap worksheet update-fields <工作表ID> --fields @layout.json --check
+hap worksheet update-fields <工作表ID> --fields @layout.json
+```
+
+要字节级控制 `advancedSetting` 时改走 `--raw` + `--controls`（原样下发，不做任何翻译）。
+注意**非空**的 `dataSource` 放在不接受它的类型上仍会报错——那是真的用错了，不是往返问题。
 
 其中 `isReadOnly` / `isHidden` / `isHiddenOnCreate` 是**算出来的真实值**（由
 `fieldPermission` 与 `controlPermissions` 按位与得出，见 §2），可以据此判断某个字段在表单里

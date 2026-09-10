@@ -66,6 +66,65 @@ hap app-editor inspect  <appId|名称> [--org-id <org>]    # 打印实时 名→
 
 `--app` 覆盖 spec 里写的目标应用；`--continue` 让某个 op 失败后继续跑剩下的（默认停）。
 
+## field 的跨表块（`field.add` 的字段词汇）
+
+`field` 接受这些键：`name`、`type`、`required`、`unique`、`options`，加下面四个跨表块，
+再加 `control` 逃生口。**跨表类型必须带自己那个块**——少了会校验报错，不会建出一列指向为空的坏列。
+
+| 块 | 用在哪种类型 | 形状 |
+|---|---|---|
+| `relation` | 关联记录（RELATE_SHEET / 29） | `{worksheet, multiple?, showFields?}` |
+| `lookup` | 他表字段（SHEET_FIELD / 30） | `{via, field}` |
+| `rollup` | 汇总（SUBTOTAL / 37） | `{via, field}` |
+| `formula` | 数值公式（FORMULA_NUMBER / 31）、日期公式（FORMULA_DATE / 38） | 字符串表达式，**不是对象** |
+
+```json
+{ "type": "field.add", "worksheet": "订单",
+  "field": { "name": "客户", "type": "RELATE_SHEET",
+             "relation": { "worksheet": "客户", "multiple": true,
+                           "showFields": ["客户名称", "等级"] } } }
+
+{ "type": "field.add", "worksheet": "订单",
+  "field": { "name": "客户等级", "type": "SHEET_FIELD",
+             "lookup": { "via": "客户", "field": "等级" } } }
+
+{ "type": "field.add", "worksheet": "客户",
+  "field": { "name": "订单总额", "type": "SUBTOTAL",
+             "rollup": { "via": "订单", "field": "金额" } } }
+
+{ "type": "field.add", "worksheet": "订单",
+  "field": { "name": "含税金额", "type": "FORMULA_NUMBER",
+             "formula": "$<金额字段id>$ * 1.06" } }
+```
+
+### 名字都能写，由引擎解析成 id
+
+- `relation.worksheet` 写目标表的**名字或 id**；`relation.showFields` 写目标表上那些列的
+  **名字或 id**。
+- `relation.multiple`：`true` 多条、`false` 单条（默认单条）。
+- `lookup` / `rollup` 的 `via` 是**本表**上那根桥——关联列或子表列，名字或 id 都行；
+  `field` 是**远端表**上要镜像 / 要聚合的那一列。`via` 会被自动包成 `$<id>$` 的形态，
+  不用自己写美元号。
+- **一个例外**：远端表不在本应用里（或不在导航里、读不到）时，`field` **只能写 id**——
+  引擎读不到那张表就没法把名字翻成 id，这时写名字会报错。
+- `formula` 的表达式里引用列一律用 `$<列id>$`（列 id 用 `hap worksheet fields` 取）。
+
+### 校验会挡住什么
+
+- **块放错类型**：`Field 'x' is a Number, so it cannot carry a 'relation' block.`
+- **块内未知键**：`ops[0].field.relation.bidirectional: unexpected property` ——
+  `relation` 块只有 `worksheet` / `multiple` / `showFields` 三个键，**没有 `bidirectional`**。
+  要双向，先用 `relation` 块建出来再 `hap worksheet pair-relation` 补反向端。
+- **跨表类型缺块**：`Field 'x' needs a 'relation' block saying what it points at.`
+- **公式类型缺表达式** / **表达式放在非公式类型上**：都会明确报错。
+- `lookup` / `rollup` 的 `via` 指向的列**不通向另一张表**时，会告诉你「没有东西可读」。
+
+带了 `control` 逃生口的字段不受「缺块」这条拦阻（假定你自己在原始键里写全了），
+且 `control` **最后合并、优先生效**。
+
+> 已知未覆盖：**子表（SUB_LIST / 34）还没有自己的块**，仍然只能用 `control` 逃生口
+> 写裸控件。
+
 ## 这个引擎继承哪些修复
 
 `app-editor` 直接调用 CLI 的核心层，**不经过命令层**。所以命令层的行为（选项翻译、参数推导、
