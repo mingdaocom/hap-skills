@@ -51,6 +51,8 @@ HAP 实时读取结构来解析。
 写了不在表里的 `type`（比如 `view.update`、`node.add`），`validate` 会直接报错并给出应该改用的 `hap` 命令。
 
 > op 的字段级 schema 在 `scripts/editspec/`（envelope + field + component + custom-action 各一份）。
+> 这四份是 **hap-cli 同名文件的副本**，放在这里只为方便离线查阅；真正做校验的是 CLI 内置的那份，
+> 两者不一致时**以 CLI 内置的为准**（`hap app-editor validate` 的结果就是权威答案）。
 
 ## 命令
 
