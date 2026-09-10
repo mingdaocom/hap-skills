@@ -77,6 +77,7 @@ hap app-editor inspect  <appId|名称> [--org-id <org>]    # 打印实时 名→
 | `lookup` | 他表字段（SHEET_FIELD / 30） | `{via, field}` |
 | `rollup` | 汇总（SUBTOTAL / 37） | `{via, field}` |
 | `formula` | 数值公式（FORMULA_NUMBER / 31）、日期公式（FORMULA_DATE / 38） | 字符串表达式，**不是对象** |
+| `subtable` | 子表（SUB_LIST / 34） | `{fields: [...]}` 新建，或 `{worksheet, showFields?}` 挂载——二选一 |
 
 ```json
 { "type": "field.add", "worksheet": "订单",
@@ -118,12 +119,53 @@ hap app-editor inspect  <appId|名称> [--org-id <org>]    # 打印实时 名→
 - **跨表类型缺块**：`Field 'x' needs a 'relation' block saying what it points at.`
 - **公式类型缺表达式** / **表达式放在非公式类型上**：都会明确报错。
 - `lookup` / `rollup` 的 `via` 指向的列**不通向另一张表**时，会告诉你「没有东西可读」。
+- **子表两种模式都不给**：`The sub-table on field 'x' needs either 'fields' … or 'worksheet' …`
+- **内联模式带了 `showFields`**：明确拒绝，并说明 `showFields` 是给挂载模式挑列用的。
+- **`SUB_LIST` 完全没有 `subtable` 块**：`Field 'x' is a sub-table, so it needs a 'subtable' block
+  saying what it holds.`
 
 带了 `control` 逃生口的字段不受「缺块」这条拦阻（假定你自己在原始键里写全了），
 且 `control` **最后合并、优先生效**。
 
-> 已知未覆盖：**子表（SUB_LIST / 34）还没有自己的块**，仍然只能用 `control` 逃生口
-> 写裸控件。
+### 子表有两种模式，必须二选一
+
+```json
+// 模式一：新建一张子表，直接写它的列
+{ "type": "field.add", "worksheet": "订单",
+  "field": { "name": "订单明细", "type": "SUB_LIST",
+             "subtable": { "fields": [
+               { "name": "商品", "type": "Text", "required": true },
+               { "name": "数量", "type": "Number" },
+               { "name": "所属客户", "type": "RELATE_SHEET",
+                 "relation": { "worksheet": "客户" } }
+             ] } } }
+
+// 模式二：把一张已存在的表挂成子表
+{ "type": "field.add", "worksheet": "订单",
+  "field": { "name": "维修记录", "type": "SUB_LIST",
+             "subtable": { "worksheet": "维修单",
+                           "showFields": ["故障描述", "处理人"] } } }
+```
+
+- **子字段用与顶层 field 完全相同的 clean 形**——`name` / `type` / `required` / `unique` /
+  `options`，而且**子字段里还能再写 `relation` / `lookup` / `rollup` / `formula` 块**，名字解析
+  照样生效（上例里子字段的 `relation.worksheet: "客户"` 会被解析成客户表的 id）。不必学第二套词汇。
+- **`showFields` 只能用在挂载模式**：内联模式下那些列还不存在，内联列表显示的就是你正在建的这些列。
+  写在内联模式里会被明确拒绝。挂载模式下 `showFields` 写子表上那些列的名字或 id，不给就是全部可见列。
+- `subtable.worksheet` 同样接名字或 id。
+
+两种模式走的是不同的写入路径，值得知道：
+
+| 模式 | 怎么落地 |
+|---|---|
+| 内联 `fields` | **整表写回**（和 `field.update` / `field.delete` 同一条路）：读出父表全部控件，把新的子表列接在后面，整份存回。同时建出一张承载子行的子表工作表。 |
+| 挂载 `worksheet` | 与 `hap worksheet mount-subtable` **同一个两步握手**：先建 SUB_LIST 列，再在子表侧配好回指父表的反向关联列。少了第二步，子表行就不会按父记录过滤显示。 |
+
+挂载完两侧都能读到：父表的 SUB_LIST 列 `dataSource` 指向子表、`sourceControlId` 是子表侧那根反向列；
+子表上多出一列指回父表的关联。子表工作表**不能单独读**，要 `hap worksheet fields <子表ID> --parent <父表ID>`。
+
+> ⚠️ **`fields` 和 `worksheet` 同时给时不会报错**——引擎在检查冲突之前就先按「挂载」分支执行了，
+> 你写的那份 `fields` 被静默忽略。二选一要靠自己把住；两者都不给才会明确报错。
 
 ## 这个引擎继承哪些修复
 

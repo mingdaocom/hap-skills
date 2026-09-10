@@ -88,6 +88,10 @@ hap worksheet add-fields 6845f0a1b2c3d4e5f6a7b8c9 --controls @new-controls.json
 
 `--controls` 接 WireControl 原始形态（与 `fields --raw` 输出同构，见数据字典 §2）。
 
+子表既可以这样手写裸控件，也可以走 edit-spec 的 `field.add` + `subtable` 块（新建子表写它的列，
+或把已有表挂上来），后者会连子表侧的反向关联一起配好——见
+[edit-spec.md](edit-spec.md) 的「子表有两种模式」。
+
 > 🚨 **不要自己造 `controlId`。** 省略它，列 id 由服务端铸。自己填一个（从别处抄来的、
 > 或随手生成的 UUID）会被原样存下，**那样的列在表格和关联控件里读不出来，永远是空白**。
 
@@ -126,7 +130,7 @@ hap app-editor apply    edit.json   # 逐 op 执行（--continue 失败不中断
 - `field.add` 走增量追加；`field` 里 `type` 接 CODE（Text/Number/Relation…）、
   类型名（TEXT/RELATE_SHEET…）或整数。字段词汇是
   `name` / `type` / `required` / `unique` / `options` / `relation` / `lookup` / `rollup` /
-  `formula` / `control`——跨表类型必须带自己那个块，写法见
+  `formula` / `subtable` / `control`——跨表类型必须带自己那个块，写法见
   [edit-spec.md](edit-spec.md) 的「field 的跨表块」。词表以外的键、块放错类型、块内未知键
   一律**校验报错**，不会静默建出指向为空的坏列。这份词汇没建模的形状走
   `control:{<WireControl 原始键>}` 逃生口（最后合并、优先生效）。
