@@ -5,7 +5,54 @@
 
 **全局规则**：改节点配置前先 `hap --json workflow node get <process_id> <node_id>` 导出现状，在真实结构上改，再写回。**读出来的结构就是写回去的结构**——只改你理解的键，其余原样保留。
 
-## 调用范式
+## 两层写法：先分清 batch-add 高层 与 node save wire 层
+
+- **高层**：`hap workflow node batch-add --nodes '[{"nodeAlias":…, "nodeType":…, "config":{…}}]'`
+  一次建好整条流程，`nodeType` 用**名字**（`create_record` / `approve` / `fill_in` / `notice`…），
+  收件人用 `{"kind": …}` 形状（见下）。**建新流程优先用它。**
+- **wire 层**：`node add` / `node save` 是单节点底层操作，`--type` 用**数字**类型号，收件人是
+  `{"type":1|2|6|7, entityId, roleId}` 形状。**本文 §ACTION 以下的逐键字典都是 wire 层**，
+  用于改一个已经存在的节点。
+
+数字类型号和数据节点的动作号不用猜：`hap workflow node list-types`（类型名 → 数字）、
+`hap workflow node types`（连动作号一起列）。
+
+### 高层收件人：`config.accounts` 的 kind 形状
+
+`batch-add --nodes` 里，通知、抄送、邮件、审批、填写这些节点的收件人都写在 `config.accounts`，
+每项是 `{"kind": …, 这个 kind 需要的键}`：
+
+| kind | 还要给什么 | 指谁 |
+| --- | --- | --- |
+| `user` | `userId` | 指定的人 |
+| `role` | `appId` + `roleId` | 应用角色 |
+| `department` | `departmentId` | 一个部门 |
+| `job` | `jobId` | 一个职位 |
+| `orgRole` | `orgRoleId` | 组织角色 |
+| `field` | `fieldId`（可选 `node`） | 某条记录上的成员 / 部门字段 |
+| `owner` / `triggerUser` | 无（可选 `node`） | 触发这条流程的人 |
+| `supervisor` | 无（可选 `node`） | 触发者的直属上级 |
+| `email` | `email` | 一个外部邮箱地址（邮件节点用） |
+
+> 🚨 **键名必须和 kind 对得上，写错会当场被拒绝**并告诉你缺哪个键。把指定成员写成
+> `{"kind":"user","id":"…"}`（最自然的猜法，也是 CLI 别处的写法）会直接得到「kind 为 user 的
+> 收件人需要 userId」，而不是建出一个看着没问题、到发布才出事的节点。`role` 少给 `appId`、
+> `field` 把字段 ID 放到别的键上，同样当场报错。
+
+### 高层保留别名
+
+**四个别名是保留字，不能用作 `nodeAlias`**：`trigger`、`sub_trigger`、`approval_trigger`、
+`approval_start`——它们分别指触发记录、子流程当前遍历到的那条记录、审批区块内部的发起记录。
+占用了它们，后面所有引用都会指到错的节点上；CLI 在动手建之前就会拒绝，不会留半截流程。
+
+`nodeAlias` 是你给节点起的短名，后面的节点用它引用前面的节点；触发记录本身固定用 `trigger` 引用。
+
+### 填写节点发布不过去
+
+`fill_in` 的 `config.formProperties` 逐字段给权限，取值 `editable`、`required`、`readonly`、
+`hidden`。**一个可编辑字段都没有（全是只读或隐藏）就发布不了**，而这只有发布才会告诉你。
+
+## 调用范式（wire 层）
 
 写回配置走三条路，按节点类型选：
 
@@ -21,9 +68,33 @@
 - **accounts 收件人编码是头号坑**：`type` 字段反直觉——`1`=固定用户（accountId 放在 `roleId` 里，不是 entityId！）、`2`=应用角色（`entityId`=应用 ID、`roleId`=角色 ID）、`6`=动态引用（触发者 `roleId:"uaid"`；成员字段引用放该字段的 controlId）、`7`=邮箱字面量（放 `entityId`）。编码错会让收件人显示为「已删除」、流程无法发布。完整结构 → [WorkflowAccounts](../scripts/types/workflow-accounts.schema.json)。
 - **条件里的字段键拼写是 `filedId`**（历史拼写，不是 `fieldId`——写成 `fieldId` 会被静默忽略，条件永远不命中）。条件是二维数组：外层 OR、内层 AND。完整结构 → [OperateCondition](../scripts/types/operate-condition.schema.json)。
 - 字段写入项（fields）的动态值用 `$<nodeId>-<fieldId>$` 模板引用上游节点的字段，nodeId 来自 `node list`。完整结构 → [WorkflowFieldWrite](../scripts/types/workflow-field-write.schema.json)。
-- 数据类节点的目标工作表 `appId` 必须在 `node add` 时给定，save 阶段补传无效（见 workflows.md）。
+- 数据 / 查询 / 获取多条记录节点的目标工作表用 `node add --app-id` 给定，**也可以稍后在配置节点时再设置**。
+- `node add` 还有几个位置与搬运选项：`--gateway parallel|exclusive`（分支节点走每条路还是只走第一条
+  符合条件的）、`--result-branch`（哪条是结果分支）、`--place left|right|withdraw`（新节点相对它
+  跟随的那个节点放哪）、`--copy`（把若干节点一并复制到新节点旁，配 `--move` 是移动、配
+  `--copy-whole-branch` 整条分支一起带走）。
+- 数据节点的动作号（`-a/--action-id`）不用记：`hap workflow node types` 会连类型号一起列出来。
 - **长尾节点类型的处理**：本文未覆盖的类型（公式、代码块、子流程、站内通知……）一律先 `hap --json workflow node get <pid> <nid> --type <typeId>` 读现状，照着返回结构的形状改写要改的键，再用 `node save` 整段写回。不要凭空构造配置。
+  - **代码块节点(14)**：`node save --type 14 --config '{"code":"return { ok: 1 };"}'` —— **直接传源码，
+    不要自己做任何编码转换**（不要 base64）。源码里的 Tab 会统一成 4 个空格，与界面里保存的效果一致；
+    `node get` 读出来的 `code` 是明文，改完原样传回。试跑用 `node test-code <pid> <nid> -c "…"`，
+    `--language` 指定按哪种语言跑（不传就用节点自己的设置）。可复用片段用 `node create-code-template`
+    存、`node code-templates` 找，**按语言和归属两项找**（`--scope mine` / 不加 `--scope` 是内置示例）。
+  - **AI 节点**：`node test-ai` 试跑，`--kind` 说明它做什么（`text` 写文本 / `object` 填结构化结果，
+    这时必须配 `--outputs` 描述要填哪些字段 / `agent` 运行助手）。`--model` 要的是本组织已配置的
+    **某个模型的 ID**，不是 `gpt-4` 这样的名称——用 `node get` 读节点能看到它当前用哪一个。
   - **站内通知(27)** 有两个易漏点：收件人写「触发者」用 `accounts:[{"type":6,"roleId":"triggeraid"}]`；且配置里**必须保留 `flowNodeMap["106"]` 推送子块**（read-modify-write 时原样带回，删了发布会报错）。无现成模板时可先 `node get` 一个同流程已有的 27 节点照形改写。
+
+### 辅助命令（读结构、查可选项）
+
+```bash
+hap workflow node controls <pid> <nid>       # 可用于节点配置的工作表字段
+hap workflow node form-property <pid> <nid>  # 节点表单属性
+hap workflow node sub-processes <pid>        # 子流程节点可选的子流程
+hap workflow node json-to-controls ...       # 把 JSON 转成工作流字段
+hap workflow node desc <pid> <nid> ...       # 设置节点说明与别名
+hap workflow node test-webhook <pid> <nid>   # 「发送自定义请求」节点的测试 API
+```
 
 ### ACTION(6) — 增 / 改 / 删记录
 

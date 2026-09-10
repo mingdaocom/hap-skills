@@ -28,7 +28,20 @@ hap app role remove-member <roleId> -a <appId> --user-ids <accountId>
 
 # 删除角色
 hap app role delete <roleId> -a <appId> -y
+
+# 角色可访问的 AI 助手
+hap app role set-chatbots <appId> <roleId> ...
+
+# 加入申请：待处理列表 / 通过并分配角色 / 拒绝；把人从本应用所有角色里移除
+hap app role pending <appId>
+hap app role approve ...
+hap app role reject ...
+hap app role leave-all ...
 ```
+
+> **失败不再被当成功。** 改名、改权限这类操作以前遇到重名等情况服务端返回的是裸状态码，CLI 会
+> 照样报成功；现在会按状态码判定并报错退出。看到成功就是真的成功了，但**破坏性操作后仍建议
+> `hap app role permissions <roleId> -a <appId>` 回读确认**。
 
 坑位提示：
 

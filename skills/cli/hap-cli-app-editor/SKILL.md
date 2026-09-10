@@ -40,10 +40,23 @@ hap app role add-member <role_id> --user-ids <account_id> -a <app_id>
    - 视图：`hap --json worksheet view info <ws_id> <view_id>`
    - 节点：`hap --json workflow node get <process_id> <node_id>`
    - 字段：`hap --json worksheet fields <ws_id> --raw`
-   - 页面：`hap --json custom-page info <app_id> <page_id>`
+   - 页面：`hap --json custom-page info <page_id>`（参数是页面 id）
    字典没覆盖的键，以读到的实际结构为准——照形改写永远是安全的。
 3. **Edit**：按模块文档的调用范式执行命令；或对三类 edit-spec 编辑：写 spec → `hap app-editor validate <spec.json>`（纯本地）→ `plan`（dry-run 预演）→ `apply`。
 4. **Verify**：用对应读命令确认改动生效。
+
+## 🚨 六个「返回成功但其实没做对」的坑
+
+HAP 的写接口大量存在「照样返回成功、数据却是错的」，所以第 4 步 Verify 不是可选项：
+
+1. **`update-fields` 是整表替换**——没传的列连同数据一起删掉；条目不带 `id` 会被当成新列重建。
+   给已有表加列一律用 `add-fields` 或 `field.add`。保存前先 `--check`，保存后看自动回读的报告。
+2. **自造 `controlId`** 会建出在表格和关联控件里永远读不出值的空白列。新建字段一律省略它。
+3. **选项/地区传了不存在的值**不会报错，会写进一个无效值，界面显示空白（详见 `hap guide record`）。
+4. **`--view-id` 撤动作按钮**只对「限定了显示视图」的按钮有效；全视图按钮会明确报错，不会假装撤下。
+5. **工作流建完不等于建好**——触发器没绑、`fill_in` 没有可编辑字段，只有 `workflow publish` 会告诉你。
+   加完节点顺手发一次。
+6. **复制工作表**时没被 `--keep-relation` 点名的关联/子表/级联列会变成纯文本，且没有任何提示。
 
 ## 值形态约定（读字典表时）
 
@@ -75,6 +88,7 @@ hap app role add-member <role_id> --user-ids <account_id> -a <app_id>
 - [references/custom-actions.md](references/custom-actions.md) — 动作按钮（action_spec / wire 两种写法）
 - [references/custom-pages.md](references/custom-pages.md) — 自定义页面与组件（含 component edit-spec 写法）
 - [references/application.md](references/application.md) — 应用本身与导航分组
+- [references/charts.md](references/charts.md) — 统计图（改已有的图；规格本体见 `hap guide chart`）
 - [references/edit-spec.md](references/edit-spec.md) — edit-spec 信封与三类 op 的完整语义
 
 **多元素联动场景**（一个目标要串多条命令）见 [references/scenarios/](references/scenarios/)，每个场景一份文档，含命令顺序与 id 传递。三类 edit-spec 的可直接套用样例在 [examples/](examples/)（field / component / custom-action 各一份）。
@@ -84,5 +98,8 @@ hap app role add-member <role_id> --user-ids <account_id> -a <app_id>
 - 只改用户明确要求的元素。
 - 破坏性操作：edit-spec 的删除类 op 必须带 `"confirm": true`；裸命令的删除类一律带 `--yes/-y` 二次确认，不传 `-y` 时会交互式询问（非交互环境下直接中止）。`-y` 只是跳过提示，不等于授权——任何删除动手前都先取得用户明确同意。
 - 不猜参数：字典 + 读命令导出的现状是唯一依据；两者冲突时以读到的为准。
-- 字典生成于 2026-06-10；服务端新增的键不会自动出现在字典里，照「先读后写」规则即可安全覆盖。
+- **`hap-cli` 会自动升级，命令和选项会变。** 本 skill 的字典核对于 0.8.31，只是加速器，不是权威：
+  动手前用 `hap <命令> --help` 核准确参数，用 `hap guide worksheet` / `hap guide workflow` /
+  `hap guide chart` / `hap guide record` 核值形态与陷阱——它们随本机装的那一版走，永远不会过期。
+  与本 skill 冲突时以它们为准。
 - 整应用从零生成不属于本 skill —— 用 hap-mcp-app-builder。

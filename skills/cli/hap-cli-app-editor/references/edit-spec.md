@@ -25,7 +25,14 @@
 
 ## 引用元素的方式
 
-元素一律用**逻辑名**（工作表名、字段名、组件名…）或**真实 id** 引用——两者都行。命令每步执行前从 HAP 实时读取结构来解析。
+元素一律用**逻辑名**（工作表名、字段名、组件名…）或**真实 id** 引用——两者都行。命令每步执行前从
+HAP 实时读取结构来解析。
+
+**二级分组里的工作表现在也解析得到。** 应用的分组树会被整棵拍平（子分组一并纳入），所以
+`"worksheet": "<放在子分组里的表名>"` 不会再答「worksheet not found」，`inspect` 也会把它列出来。
+
+- 工作表：`"worksheet"` 可以写表名，也可以写 **worksheetId**——名字在两个分组里重名时用 id 最稳。
+- 分组：除了名字和 id，还可以写**路径** `"组/子组"` 来区分同名分组。
 
 ## op 总表
 
@@ -53,6 +60,21 @@ hap app-editor plan     <edit-spec.json> [--app <id>]    # dry-run 预演
 hap app-editor apply    <edit-spec.json> [--app <id>] [--continue]  # 执行
 hap app-editor inspect  <appId|名称> [--org-id <org>]    # 打印实时 名→id 结构
 ```
+
+`inspect` 返回 `app_id` / `org_id` / `name` / `sections` / `worksheets` / `pages_and_chatbots` /
+`roles` / `workflows`；每张工作表带着它所属的 `section`，**含二级分组里的表**。
+
+`--app` 覆盖 spec 里写的目标应用；`--continue` 让某个 op 失败后继续跑剩下的（默认停）。
+
+## 这个引擎继承哪些修复
+
+`app-editor` 直接调用 CLI 的核心层，**不经过命令层**。所以命令层的行为（选项翻译、参数推导、
+确认提示）与它无关：命令行上加的新选项，不会自动出现在 edit-spec 里。反过来，核心层的写入规则
+（整表写回保反向控件、选项值校验、按钮填写模式推导）它都拿得到。
+
+一处例外要记住：`custom-action.create` / `custom-action.update` 里**给 `config` 是原始逃生口，
+不经适配器**——填写模式推导、门控、二次确认一概不生效。详见
+[custom-actions.md](custom-actions.md) 末节。
 
 ## 示例
 

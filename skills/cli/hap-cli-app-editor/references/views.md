@@ -12,6 +12,9 @@
 # 列出工作表下的所有视图（拿 viewId / viewType / 名称）
 hap --json worksheet view list 6845f0a1b2c3d4e5f6a7b8c9
 
+# 找回删掉的视图（带删除时间）
+hap --json worksheet view list 6845f0a1b2c3d4e5f6a7b8c9 --deleted
+
 # 单个视图完整配置：filters、排序、显示字段、advancedSetting 全在这里
 hap --json worksheet view info 6845f0a1b2c3d4e5f6a7b8c9 64a1b2c3d4e5f60123456789
 ```
@@ -45,8 +48,8 @@ hap worksheet view create 6845f0a1b2c3d4e5f6a7b8c9 "任务树" \
 hap worksheet view create 6845f0a1b2c3d4e5f6a7b8c9 "进行中" \
   --view-type sheet --filter-json '[{"controlId":"ctrl_status_24hex","dataType":11,"spliceType":1,"filterType":2,"values":["opt_key_1"]}]'
 
-# 一次成型整视图（分组/封面/过滤/快筛/筛选列表/行色/按钮）用 --view-spec
-hap worksheet view create 6845f0a1b2c3d4e5f6a7b8c9 "总览" --view-spec '{...}'
+# 一次成型整视图（分组/封面/过滤/快筛/筛选列表/行色/按钮）用 --view-spec，见 §0
+hap worksheet view create 6845f0a1b2c3d4e5f6a7b8c9 "总览" --view-spec @view.json
 
 # 其它创建期参数（advancedSetting 等）走逃生口
 hap worksheet view create 6845f0a1b2c3d4e5f6a7b8c9 "紧凑表" \
@@ -109,7 +112,89 @@ hap worksheet view sort 6845f0a1b2c3d4e5f6a7b8c9 \
 
 ## 数据字典
 
-字典生成于 2026-06-10；未覆盖的键以读命令（`hap --json worksheet view info`）返回的实际结构为准。
+字典核对于 hap-cli 0.8.31
+
+### 0. `--view-spec` 高层方言
+
+`view create --view-spec` / `view update --view-spec` 用的是一份**高层 JSON**，与下面 §2/§3 的
+wire 层键名不是一回事：高层方言由 CLI 翻译成 `editAttrs` + `advancedSetting`。要一次描述完整
+视图就用它，要字节级控制某个设置项才下沉到 §2/§3。`view update --view-spec` 里写到的都会更新，
+没写的保持原样。字段一律用 controlId 引用。
+
+```jsonc
+{
+  "viewType": "gallery",
+  "config": {"mode": "all"},                 // 详情视图：all 常规多条 / first 只看第一条
+  "card": {
+    "titleField": "<字段ID>",
+    "coverField": "<附件字段ID>",
+    "coverDirection": "top",                 // top | left | right
+    "coverDisplayMode": "rectangle"          // rectangle | circle | full（square 是 rectangle 的旧写法）
+  },
+  "sort": [{"fieldId": "<字段ID>", "sortType": 1}],   // 1 升序 / 2 降序
+  "quickFilters": ["<字段ID>"],
+  "filterList": ["<字段ID>"],                 // 左侧导航分类，只能给一个字段
+  "color": "<单选字段ID>",
+  "tableFields": ["<字段ID>", "..."],
+  "rowHeight": 0,                             // 0 紧凑 / 1 中等 / 2 高 / 3 超高
+  "filter": {"type":"group", "logic":"AND", "children":[
+    {"type":"condition", "field":"<状态字段ID>", "operator":"eq", "value":["<选项key>"]}
+  ]}
+}
+```
+
+#### 🚨 两种「分组」是完全不同的两件事
+
+写错位置会被直接拒绝：
+
+- **看板 / 层级 / 地图 / 资源**：分组是**维度**（按哪个字段分成列），写在 `config.groupField`
+  （`view create --group-control` 就是它）。
+- **表格 / 画廊**：分组是**显示方式**（把行按某字段收拢成一段段），写在**顶层 `groupBy`**。
+
+```jsonc
+{"viewType": "kanban", "config": {"groupField": "<状态字段ID>"}}                      // 看板
+{"viewType": "sheet", "groupBy": {"fieldId": "<负责人字段ID>", "ascending": true}}    // 表格
+```
+
+`groupBy` 只能用在表格和画廊上，用在看板上会报错让你改用它自己的分组字段。
+
+#### 几个取值不要猜
+
+| 键 | 取值 |
+|---|---|
+| `card.coverDirection` 封面位置 | `top`（上）、`left`（左）、`right`（右） |
+| `card.coverDisplayMode` 封面样式 | `rectangle`（矩形）、`circle`（圆形）、`full`（覆盖） |
+| `sort[].sortType` 排序方向 | `1` 升序、`2` 降序 |
+| `config.mode` 详情视图 | `all` 常规多条、`first` 只看第一条 |
+| `rowHeight` 行高 | `0` 紧凑、`1` 中等、`2` 高、`3` 超高 |
+
+- **`tableFields` 对表格视图是真的限制列**：列出哪几列就只显示哪几列，顺序也照给的来。其它视图
+  类型上它表示卡片上显示哪些字段。
+- **`filterList`（左侧分类）只能给一个字段**，给两个及以上会被拒绝——界面上本来也只能选一个。
+- **`quickFilters` 只写字段 ID 就行**，每项的类型按字段自动定，不必自己猜配哪种比较方式。
+- **相对时间窗口**：筛选条件里用 `dateRange` 表示「最近 N 天」这类相对窗口（`0` = 用绝对值），
+  粒度用 `dateRangeType`。这两个键**只在日期字段上有意义**。
+- `filter` / `enableWhen` 里 `operator` 的完整取值见 `hap guide record` 的「筛选记录」一节，
+  和写记录时筛选用的是同一套词汇。
+
+#### 插件视图与多表层级
+
+```jsonc
+{"viewType": "plugin", "plugin": {"id": "<插件ID>", "name": "甘特增强"}}
+
+{"viewType": "hierarchy", "config": {"childType": 2},
+ "viewControls": [{"worksheetId": "<表ID>", "worksheetName": "..."}]}
+```
+
+`plugin` 只写一个字符串时当作插件 id。多表层级要 `config.childType: 2`，每层的表写在
+`viewControls` 里；单表层级（自关联）仍是 `childType: 1` 加 `config.relationField`。
+
+同一层还可以给 `layersName`、`customDisplay`、`unRead`、`alias`，都按原样送出。
+
+---
+
+下面 §1–§3 是 **wire 层**：`view update --edit-attrs` / `--edit-ad-keys` 直接写的键。
+未覆盖的键以读命令（`hap --json worksheet view info`）返回的实际结构为准。
 
 ### 1. viewType 枚举
 

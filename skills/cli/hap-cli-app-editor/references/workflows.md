@@ -20,16 +20,22 @@ hap workflow list <app_id> [-k 关键字] [--enabled|--disabled] [-n 50] [-p 1]
 hap --json workflow get <process_id>
 hap workflow structure <process_id>
 
-# 新建流程（-c 是组织 ID，不是应用 ID；--type 见数据字典「触发类型」，
-# 支持名称值：worksheet / scheduled / date / webhook / pbp）
-hap workflow create -c <org_id> -n "流程名" -a <app_id> --type worksheet
+# 新建流程。--company-id 可以不传，组织由流程所属的应用决定
+hap workflow create -n "流程名" -a <app_id> --type worksheet
 
-# 改名 / 描述 / 图标色
+# 改名 / 描述 / 图标；--version-name 给当前已发布版本起名（版本列表里就不是日期编号了）
 hap workflow update <process_id> -n "新名" -d "描述" --icon-color "#2196F3"
+hap workflow update <process_id> --icon-name <图标名>          # 图标名见 hap icon list
+hap workflow update <process_id> --version-name "上线版"
 
-# 复制 / 删除
-hap workflow copy <process_id> -n "副本名" [--sub-process]
-hap workflow delete <process_id> -y
+# 复制。⚠️ -n 传的是【后缀】，不是副本全名
+hap workflow copy <process_id> -n "-2026版"       # 副本名 = 原名 + "-2026版"
+hap workflow copy <process_id> --sub-process      # 把副本转成子流程
+
+# 删除是三步，不是一步
+hap workflow delete <process_id> -y     # 进回收站：停止运行但还在，可恢复
+hap workflow restore <process_id>       # 从回收站恢复
+hap workflow purge <process_id> -y      # 彻底删除，无法恢复
 
 # 发布（启用）/ 停用
 hap workflow publish <process_id>
@@ -37,13 +43,41 @@ hap workflow publish <process_id> --disable
 
 # 手动触发一次（-s 传源记录 rowId）
 hap workflow trigger <process_id> [-s <row_id>]
+hap workflow trigger <process_id> --fields '[...]'   # 「启动时要求填写」的流程
+hap workflow trigger <process_id> --debug '[...]'    # 待办/短信/邮件都改发给自己，验流程不惊动别人
+
+# 版本与全局配置
+hap workflow history <process_id>                       # 每行的 id 就是版本 id
+hap workflow rollback <process_id> --version-id <版本ID> # 回到该版本
+hap workflow rollback <process_id>                      # ⚠️ 不带版本 id = 丢弃未发布的草稿
+hap workflow config-get <process_id>
+hap workflow config-set <process_id> -c '{"allowRevoke": true}'
+
+# 分组（流程列表左边那一层）与跨应用移动
+hap workflow groups <app_id>
+hap workflow create-group <app_id> -n "订单相关"
+hap workflow sort-groups <分组ID> <分组ID> <分组ID>
+hap workflow delete-group <分组ID> -y      # 分组里的流程不会被删
+hap workflow move <process_id> ...         # 移到别的应用，参数以 --help 为准
 ```
 
 坑位提示：
 
-- `hap workflow list <app_id>` 的应用 ID 是**位置参数**。新建的 `--type 1`（工作表触发）流程在触发器绑定工作表之前**不会出现在该列表里**——拿好 `create` 返回的 `id`，别靠列表反查。
-- `publish` 失败时会打印校验诊断并以非零码退出。最常见的两个原因：触发器没配置（见下文「触发器配置」）、人员类节点的收件人编码错误导致显示为「已删除」（见 [nodes.md](nodes.md) 的 accounts 坑位）。
-- `delete` / `node delete` 都需要 `-y` 跳过确认；删除流程不可恢复。
+- `hap workflow list <app_id>` 的应用 ID 既能当位置参数也能用 `-a`。新建的工作表触发流程在触发器
+  绑定工作表之前**不会出现在该列表里**——拿好 `create` 返回的 `id`，别靠列表反查。
+  `--kind` / `-k` / `--enabled|--disabled` 都是**取回列表后在本地筛**的，不影响分页。
+- **建完不等于建好，只有发布会告诉你哪里还差。** 节点一个个加都会成功，触发器没绑、填写节点没有
+  可填字段这类问题只在发布时才暴露。加完节点顺手 `publish` 一次。
+- `publish` 只在流程真的启用了才报成功，被拒时以非零状态退出并指出是哪个节点不完整。最常见两因：
+  触发器没绑（见下文「触发器配置」）、`fill_in` 节点一个可编辑字段都没有（`config.formProperties`
+  全是 `readonly`/`hidden`）。收件人写错则是当场报错，见 [nodes.md](nodes.md) 的 accounts 一节。
+- **三处和字面意思不同**：`copy --name` 是追加在原名后的**后缀**；`copy --sub-process` 是把副本
+  **变成**子流程（不是连同子流程一起复制）；`rollback` 不带 `--version-id` 是**丢弃当前草稿**，
+  不是回到上一个版本。
+- `delete` 是**可撤销**的（进回收站，用 `restore` 拿回来），只有 `purge` 是真的删掉。
+- `config-set` **只需要写要改的项**，没提到的设置保持原样。注意 `triggerView` 是布尔（触发流程的人
+  能不能看到这条流程记录），不是视图 ID。有几处联动不用自己管：关掉撤回时「哪些节点之后不允许撤回」
+  会一并清掉；把「只能触发指定工作流」改成别的模式时那份白名单也会一并清掉。
 
 ### 节点基础（增 / 删 / 改名 / 读配置）
 
@@ -63,7 +97,8 @@ hap workflow node rename <process_id> <node_id> -n "新名"
 hap workflow node delete <process_id> <node_id> -y
 
 # 节点类型枚举速查
-hap workflow node list-types
+hap workflow node list-types    # 类型名 → 数字，就是 node add --type 认的值
+hap workflow node types         # 连同数据节点的动作号一起列
 ```
 
 坑位提示：
@@ -126,7 +161,26 @@ hap workflow node batch-add <process_id> --nodes '[]' \
 | `scheduled`（5） | 定时（周期）触发 | `batch-add --trigger-schedule` |
 | `date`（6） | 按日期字段触发 | `batch-add --trigger-date` |
 | `webhook`（7） | Webhook 触发（外部 HTTP 请求） | `batch-add --trigger-webhook` |
-| `pbp`（17） | **封装业务流程（PBP）**，供其他流程/页面按钮调用 | `batch-add --trigger-pbp`；手动触发用 `workflow trigger-pbp` |
+| `pbp`（17） | **封装业务流程（PBP）**，供其他流程/页面按钮调用；它不是 Webhook | `batch-add --trigger-pbp`；手动触发用 `workflow trigger-pbp` |
+| `staff` | 组织人员入职 / 离职 | 见 `batch-add --help` |
+| `portal_user` | 外部用户注册、登录、被移除 | 见 `batch-add --help` |
+
+也接受同义词：`worksheet_event`、`schedule`、`date_field`、`staff_event`、`external_user`。
+`workflow list --kind` 用的是同一套名字。
+
+#### 触发 PBP：先问它要什么，再传
+
+```bash
+hap workflow pbp-parameters <process_id>     # 这条流程要传哪些入参；每行给出的字段 ID 就是 controlId
+hap workflow trigger-pbp <process_id> -a <app_id> --controls '[
+  {"controlId": "<入参ID>", "value": "华东一区"},
+  {"alias": "owner", "value": ["<成员accountId>"]}
+]'
+```
+
+每一项用 `controlId`、参数别名（`alias`）或参数名认定一个入参。**参数名写错会当场报错**并列出这条
+流程实际接受哪些参数——不会静默地带着一串空参数把流程跑一遍。取值直接写自然 JSON（数组、数字、
+布尔都行），需要转成文本时 CLI 会代劳。
 
 ### 发布 / 启用语义
 
@@ -134,7 +188,8 @@ hap workflow node batch-add <process_id> --nodes '[]' \
 |---|---|---|
 | `enabled` | 流程是否已启用（`workflow list` / `get` 返回） | bool；`publish` 置 true，`publish --disable` 置 false |
 | `publish` 结果 | 启用成功与否 + 校验诊断 | 失败时输出告警明细并非零退出；阻断级告警必须修复后重发 |
-| `workflow rollback / history` | 回滚到历史版本 / 查看发布历史 | `hap workflow history <pid>`、`hap workflow rollback <pid> -y` |
+| `workflow history` | 查看发布历史 | `hap workflow history <pid>`，每行的 id 就是版本 id |
+| `workflow rollback` | 回到某个版本 / 丢弃草稿 | 带 `--version-id` 回到该版本；**不带就是丢弃未发布的草稿** |
 
 ### 节点类型 ID（`hap workflow node list-types` 完整枚举）
 

@@ -26,6 +26,15 @@ hap app chatbot rename <appId> <chatbotId> --section-id <sectionId> --name "售�
 hap app chatbot update-config <chatbotId> --welcome-text "欢迎咨询" \
   --preset-question "新问题一" --preset-question "新问题二"
 hap app chatbot delete <chatbotId> -a <appId> -y
+
+# 分组内工作表排序（按顺序传完整 ID 列表）
+hap app sort-worksheets <appId> <sectionId> <wsId1> <wsId2> <wsId3>
+
+# 操作日志：定位「这个改动是谁什么时候做的」
+hap app logs <appId> --kind app --start "2026-09-01 00:00:00"
+hap app logs <appId> --kind record --ip <地址> --source-id <集成ID>
+hap app log-archives                      # 超出近期窗口的按时段归档
+hap app logs <appId> --archived-id <归档ID>
 ```
 
 坑位提示：
@@ -36,6 +45,10 @@ hap app chatbot delete <chatbotId> -a <appId> -y
 - 整应用从零创建不在本 skill 范围（用 hap-mcp-app-builder）；这里只编辑已存在的应用。
 - chatbot 的 `--preset-question` 可重复传，`update-config` 时是**整组替换**而非追加。
 - 想让 AI 起草助手配置，先 `hap app chatbot generate <appId> "<一句话描述>"` 拿到建议的名字/图标/开场白/提示词，再喂给 `create`。
+- `app logs` 不指定 `--start/--end` 时默认**最近 30 天**；更早的要先 `app log-archives` 拿归档 id
+  再用 `--archived-id` 查。`--kind` 取 `all|app|record|user`。
+- **备份、角色改名这类操作失败不再被当成功**：以前服务端用裸状态码表示「超限额」「重名」，CLI 照样
+  报成功；现在会按状态码判定并非零退出。
 
 ## 数据字典
 
