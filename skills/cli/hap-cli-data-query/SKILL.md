@@ -58,42 +58,43 @@ hap worksheet fields WORKSHEET_ID        # 列出每个字段的 controlId / 名
 
 最外层通常是一个 `group`。要表达「(A 且 B) 或 (C 且 D)」就嵌套 group。
 
-### 运算符词表（权威，来自 HAP V3 筛选器指南）
+### 运算符：两套词表，别拿错
 
-**比较类**
+**`record list` / `record pivot` 用的是「记录查询」这套**，共 21 个：
 
-| operator | 含义 | value |
-| --- | --- | --- |
-| `eq` / `ne` | 等于 / 不等于 | 标量或数组 |
-| `gt` / `ge` / `lt` / `le` | `>` / `>=` / `<` / `<=` | 数值或时间戳 |
-| `in` / `notin` | 是其中一个 / 不是任意一个 | 数组 |
-| `contains` / `notcontains` | 包含 / 不包含 | 标量或数组 |
-| `concurrent` | 同时包含（多选/关联同时含多个值） | 数组 |
-| `belongsto` / `notbelongsto` | 属于 / 不属于（部门） | 部门 ID 数组 |
-| `startswith` / `notstartswith` | 开头是 / 开头不是 | 标量 |
-| `endswith` / `notendswith` | 结尾是 / 结尾不是 | 标量 |
-| `between` / `notbetween` | 在范围内 / 不在范围内 | `[起, 止]` 数组 |
+```
+eq ne  in notin  contains notcontains  concurrent
+startswith notstartswith  endswith notendswith
+gt ge lt le  between notbetween  belongsto notbelongsto
+isempty isnotempty
+```
 
-**为空类**（**不要带 `value` 字段**）
+**视图的 `filter` 与快速筛选、按钮的 `enableWhen`、图表的 `filter.items`、业务规则的 `filters`
+用的是另一套更长的**，那套里才有 `date_*`、`self`、`contains_all`、`array_eq`、`rc_eq` 这些。
+**它们在 `record list` / `record pivot` 上不存在。** 两套词表的完整对照见 **`hap guide record`
+的「筛选记录」一节**——那是随 CLI 版本走的权威表，别照本 skill 的记忆写。
 
-| operator | 含义 |
-| --- | --- |
-| `isempty` | 为空 |
-| `isnotempty` | 不为空 |
+要点：
 
-> ⚠️ **易错点**：这是 V3 的运算符拼写，和工作流/视图里那套（`gte`/`lte`/`empty`/`not_contains`…）**不一样**。写 filter-json 一律以上表为准。
-> - 大于等于是 `ge`、`le`（不是 `gte`/`lte`）
-> - 否定式无下划线：`notin` / `notcontains` / `notbetween`（不是 `not_in`）
-> - 为空是 `isempty` / `isnotempty`（不是 `empty`）
+- **日期在这条路上也用 `between`**（配 `["2026-02-01","2026-03-31"]`），不是 `date_between`。
+- 大于等于是 `ge` / `le`（不是 `gte` / `lte`）；否定式无下划线（`notin` / `notcontains` / `notbetween`）；
+  为空是 `isempty` / `isnotempty`（不是 `empty`），且**不要带 `value` 字段**。
+- 写错名字 `hap` 会当场报错并列出可用取值；名字在另一条路合法时还会明确告诉你「那是视图/图表/规则
+  筛选的词，不是记录查询的」。
+
+> 🚨 **服务端对不认识的 operator 不报错——它把整个条件丢掉，返回全表，并且报成功。**
+> 用 `date_between` 去查十二条逾期订单，拿回来的是全部订单，没有任何迹象说明筛选没生效。
+> 你能看到报错，靠的是 `hap` 在发出去之前的本地拦截。所以**只要不是用 `hap` 发的筛选请求
+> （自己拼 HTTP、别的客户端），看结果要看条数，别只看 `success`。**
 
 ### value 怎么填（按字段类型）
 
 - **选项 / 单选 / 多选字段**：value 用选项的 **key**，不是显示文本。key 可从 `worksheet fields` 的字段 options 里查到。
 - **关联表字段（Relation）**：value 用关联记录的 **rowid 数组**，配 `in` 或 `eq`。⚠️ 必须用 rowid，**不能用关联显示的标题文本**（如版本名）去匹配。怎么拿这个 rowid 见下方「关联字段筛选」。子表的反向关联字段同理：value 填**父记录的 rowid**，即可筛出该父记录的全部子行。
 - **成员字段（Collaborator）**：value 用成员的 **accountId 数组**，配 `in`/`eq`。
-- **部门字段**：value 用部门 **ID 数组**，配 `belongsto` / `notbelongsto`。
+- **部门字段**：value 用部门 **ID 数组**，配 `belongsto` / `notbelongsto`（在 `record pivot` 上这两个只对**地区**字段可用，见下方 pivot 一节）。
 - **文本字段**：`contains` / `startswith` / `eq` 等，value 直接给文本。
-- **日期字段**：`between` 给 `["2025-01-01","2025-01-31"]`，或 `gt`/`lt` 给单个日期/时间戳。
+- **日期字段**：`between` 给 `["2025-01-01","2025-01-31"]`，或 `gt`/`lt` 给单个日期/时间戳（**不是** `date_between`，那是视图/图表那套的词）。
 
 ### 关联字段筛选：先拿到关联记录的 rowid
 
@@ -201,7 +202,8 @@ hap worksheet record list WORKSHEET_ID \
 
 任何「按 X 分组，算 Y 的合计/计数/平均」都用它。**只有 `--values-json` 是必填**；`--view-id` 可选
 （给了就套用该视图的筛选/排序，视图 id 用 `hap worksheet view list WORKSHEET_ID` 查），
-`-p`/`-n` 不传走默认值。
+`-p`/`-n` 不传走默认值。`-a` 也可以不传——命令会按工作表反查它属于哪个应用；传错了会明确告诉你
+「这张表不属于该应用，请用它真正所属的应用」。
 
 ```bash
 hap worksheet record pivot WORKSHEET_ID \
@@ -222,6 +224,29 @@ hap worksheet record pivot WORKSHEET_ID \
 ```
 
 解析时按字段 ID 从 `rows`/`values` 里取值；要排名就把 `pivot` 数组按某个 value 排序后取前 N（透视本身不保证按值排序）。
+
+### 🚨 pivot 能用的筛选比 list 少
+
+同一份 filter-json，`record list` 收、`pivot` 未必收——**pivot 认哪些比较，取决于字段装的是什么**：
+
+| operator | 在 pivot 上 |
+| --- | --- |
+| `eq` / `ne`、`isempty` / `isnotempty` | 都行 |
+| `contains` / `notcontains` | **一律不行**，任何字段类型都拒。`hap` 本地就拦下并提示改用 `startswith` / `endswith`，或干脆换 `record list` |
+| `in` / `notin` | 只在**单选、地区**上行；文本 / 数值 / 日期会被拒 |
+| `gt` / `ge` / `lt` / `le`、`between` / `notbetween` | 只在**数值、日期**上行 |
+| `belongsto` / `notbelongsto` | 只在**地区**上行 |
+| `concurrent` | 只在**文本**上行 |
+| `startswith` / `endswith` 及其否定式 | 只在**文本**上行 |
+
+除 `contains` 外，其余按类型的限制 `hap` 拦不住（它不知道字段类型），由服务端拒绝并把你这次发的
+条件补回错误信息里，形如「A pivot accepts fewer comparisons than `record list` does…」。
+
+> ⚠️ **`gt` / `ge` / `lt` / `le` 在 pivot 上要传标量，不能传数组**——`"value": 0` 可以，
+> `"value": [0]` 会被拒，而同一条件在 `record list` 上数组是好用的。`between` / `notbetween`
+> 仍然是两元素数组，`in` / `notin` 仍然是数组，`eq` 两种都收。
+>
+> 筛不动就退回 `record list` 拿明细，再在本地聚合——比跟 pivot 的类型限制较劲快。
 
 ### 维度（rows / columns）
 
