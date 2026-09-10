@@ -119,8 +119,10 @@ hap app-editor inspect  <appId|名称> [--org-id <org>]    # 打印实时 名→
 - **跨表类型缺块**：`Field 'x' needs a 'relation' block saying what it points at.`
 - **公式类型缺表达式** / **表达式放在非公式类型上**：都会明确报错。
 - `lookup` / `rollup` 的 `via` 指向的列**不通向另一张表**时，会告诉你「没有东西可读」。
-- **子表 `fields` 与 `worksheet` 都给 / 都不给**：`ops[0].field.subtable: matched 2 (或 0) of
-  oneOf branches (expected exactly 1)` —— **在 `validate` 阶段就被拒**。
+- **子表 `fields` 与 `worksheet` 都给**：`ops[0].field.subtable: 'fields' and 'worksheet' cannot
+  both be given; give exactly one` —— **在 `validate` 阶段就被拒**。
+- **子表两者都不给**：`ops[0].field.subtable: give exactly one of: 'fields', 'worksheet'` —— 同样
+  在 `validate` 阶段。
 - **内联模式带了 `showFields`**：`The sub-table on field 'x' lists 'showFields' alongside new
   columns. The inline list shows the columns you are creating; 'showFields' is for picking among
   the columns an existing worksheet already has.`
@@ -182,11 +184,11 @@ hap app-editor inspect  <appId|名称> [--org-id <org>]    # 打印实时 名→
 子表上多出一列指回父表的关联。子表工作表**不能单独读**，要 `hap worksheet fields <子表ID> --parent <父表ID>`。
 
 **「恰好一个」是 schema 硬约束**：`fields` 和 `worksheet` 同时给、或两个都不给，
-`hap app-editor validate` 阶段（零网络）就会拒绝，报的是 `oneOf` 文案：
+`hap app-editor validate` 阶段（零网络）就会拒绝：
 
 ```
-两者都给 → ops[0].field.subtable: matched 2 of oneOf branches (expected exactly 1)
-都不给   → ops[0].field.subtable: matched 0 of oneOf branches (expected exactly 1)
+两者都给 → ops[0].field.subtable: 'fields' and 'worksheet' cannot both be given; give exactly one
+都不给   → ops[0].field.subtable: give exactly one of: 'fields', 'worksheet'
 ```
 
 ## 这个引擎继承哪些修复
