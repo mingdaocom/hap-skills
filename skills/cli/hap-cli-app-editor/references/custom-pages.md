@@ -148,7 +148,7 @@ hap custom-page save <pageId> --version <N> --components '[ ...全量组件... ]
 | --remark | 描述 | string | create |
 | --create-type | 创建类型，1=外链页面 | int | create |
 | --url-template | 外链地址模板 | string | create/rename |
-| --permanently | 彻底删除（默认进回收站） | flag | delete |
+| --permanently | 彻底删除；不加就进应用回收站，用 `hap app trash` 能看到也能还原 | flag | delete |
 | --version | 布局版本号（info 可得） | int | save 必填 |
 | --adjust-screen | 适配屏幕 | flag 对 | save/update-config |
 | --url-params | URL 参数描述符 | JSON array | save/update-config |
