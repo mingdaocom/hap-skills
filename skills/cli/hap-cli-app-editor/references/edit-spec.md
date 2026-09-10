@@ -119,10 +119,27 @@ hap app-editor inspect  <appId|名称> [--org-id <org>]    # 打印实时 名→
 - **跨表类型缺块**：`Field 'x' needs a 'relation' block saying what it points at.`
 - **公式类型缺表达式** / **表达式放在非公式类型上**：都会明确报错。
 - `lookup` / `rollup` 的 `via` 指向的列**不通向另一张表**时，会告诉你「没有东西可读」。
-- **子表两种模式都不给**：`The sub-table on field 'x' needs either 'fields' … or 'worksheet' …`
-- **内联模式带了 `showFields`**：明确拒绝，并说明 `showFields` 是给挂载模式挑列用的。
+- **子表 `fields` 与 `worksheet` 都给 / 都不给**：`ops[0].field.subtable: matched 2 (或 0) of
+  oneOf branches (expected exactly 1)` —— **在 `validate` 阶段就被拒**。
+- **内联模式带了 `showFields`**：`The sub-table on field 'x' lists 'showFields' alongside new
+  columns. The inline list shows the columns you are creating; 'showFields' is for picking among
+  the columns an existing worksheet already has.`
 - **`SUB_LIST` 完全没有 `subtable` 块**：`Field 'x' is a sub-table, so it needs a 'subtable' block
   saying what it holds.`
+
+#### 哪些在 `validate` 就拒，哪些要等 `plan`
+
+`validate` 只跑 schema（零网络），能挡住形状问题；类型与块的搭配要等 `plan`/`apply` 时的降级才发现。
+所以**看到 `edit-spec OK` 不等于这份 spec 能跑**，动手前多跑一次 `plan`。
+
+| 问题 | 谁拦下的 |
+|---|---|
+| 块内未知键（如 `relation.bidirectional`、`subtable.allowadd`） | `validate` |
+| 子表两种模式都给 / 都不给 | `validate` |
+| 块放错类型（Number 带 `relation` / `subtable`） | `plan`（validate 报 OK） |
+| 跨表类型缺块、公式类型缺表达式 | `plan`（validate 报 OK） |
+| 内联子表带 `showFields` | `plan`（validate 报 OK） |
+| `via` 不通向另一张表、远端列名解析不了 | `plan`（要读线上结构） |
 
 带了 `control` 逃生口的字段不受「缺块」这条拦阻（假定你自己在原始键里写全了），
 且 `control` **最后合并、优先生效**。
@@ -164,8 +181,13 @@ hap app-editor inspect  <appId|名称> [--org-id <org>]    # 打印实时 名→
 挂载完两侧都能读到：父表的 SUB_LIST 列 `dataSource` 指向子表、`sourceControlId` 是子表侧那根反向列；
 子表上多出一列指回父表的关联。子表工作表**不能单独读**，要 `hap worksheet fields <子表ID> --parent <父表ID>`。
 
-> ⚠️ **`fields` 和 `worksheet` 同时给时不会报错**——引擎在检查冲突之前就先按「挂载」分支执行了，
-> 你写的那份 `fields` 被静默忽略。二选一要靠自己把住；两者都不给才会明确报错。
+**「恰好一个」是 schema 硬约束**：`fields` 和 `worksheet` 同时给、或两个都不给，
+`hap app-editor validate` 阶段（零网络）就会拒绝，报的是 `oneOf` 文案：
+
+```
+两者都给 → ops[0].field.subtable: matched 2 of oneOf branches (expected exactly 1)
+都不给   → ops[0].field.subtable: matched 0 of oneOf branches (expected exactly 1)
+```
 
 ## 这个引擎继承哪些修复
 
