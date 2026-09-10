@@ -42,7 +42,9 @@ hap worksheet delete-custom-action <worksheetId> <btnId> --view-id <viewId> --pl
   在按钮表单上也必填，其余是选填，本来就不能填写的类型（附件、公式、备注…）只读展示。不需要、
   也不应该自己去指定档位。
 - **`enableWhen` 一给，按钮就自动变成「满足条件才可用」**，不用再手工设别的开关。筛选门槛二选一：
-  `enableWhen` 给高层筛选组结构（推荐），或 `filters` 直接给 wire 形态数组。
+  `enableWhen` 给高层筛选组结构（推荐），或 `filters` 直接给 wire 形态数组。`operator` 用
+  `hap guide record`「筛选记录」一节里**「视图 / 规则 / 按钮 / 图表筛选」那张词表**，
+  不是 `record list` / `record pivot` 那张——两套不通用。
 - **`confirm` 一给，按钮就真的弹二次确认框**；`confirmMsg` 是框里的文案，不给用默认文案（按当前
   CLI 语言写入按钮）。任何 type 都能叠加。
 - **`--view-id` 撤下按钮只对「限定了显示视图」的按钮有效**。按钮设成「所有视图都显示」时没有

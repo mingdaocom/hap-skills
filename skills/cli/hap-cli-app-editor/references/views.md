@@ -175,7 +175,10 @@ wire 层键名不是一回事：高层方言由 CLI 翻译成 `editAttrs` + `adv
 - **相对时间窗口**：筛选条件里用 `dateRange` 表示「最近 N 天」这类相对窗口（`0` = 用绝对值），
   粒度用 `dateRangeType`。这两个键**只在日期字段上有意义**。
 - `filter` / `enableWhen` 里 `operator` 的完整取值见 `hap guide record` 的「筛选记录」一节，
-  和写记录时筛选用的是同一套词汇。
+  认准**「视图 / 规则 / 按钮 / 图表筛选的词表」那张**——视图筛选、按钮 `enableWhen`、图表
+  `filter.items`、业务规则的 `filters` 都用它。**不要拿那节里另一张「`record list` / `record pivot`
+  的词表」**：两套不通用，视图这边才有 `date_*`（日期专用比较）、`self`、`contains_all`、
+  `array_eq`、`rc_eq` 这些，而记录查询那套没有。
 
 #### 插件视图与多表层级
 
