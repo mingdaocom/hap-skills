@@ -242,11 +242,18 @@ hap worksheet record pivot WORKSHEET_ID \
 除 `contains` 外，其余按类型的限制 `hap` 拦不住（它不知道字段类型），由服务端拒绝并把你这次发的
 条件补回错误信息里，形如「A pivot accepts fewer comparisons than `record list` does…」。
 
-> ⚠️ **`gt` / `ge` / `lt` / `le` 在 pivot 上要传标量，不能传数组**——`"value": 0` 可以，
-> `"value": [0]` 会被拒，而同一条件在 `record list` 上数组是好用的。`between` / `notbetween`
-> 仍然是两元素数组，`in` / `notin` 仍然是数组，`eq` 两种都收。
->
-> 筛不动就退回 `record list` 拿明细，再在本地聚合——比跟 pivot 的类型限制较劲快。
+**pivot 还挑 `value` 的形态**（`record list` 不挑，两种写法都收）：
+
+| operator | pivot 要什么 |
+| --- | --- |
+| `gt` / `ge` / `lt` / `le` | **裸值**。写成数组会被拒——`"value": 0` 行，`[0]` 和 `["0"]` 都不行 |
+| `between` / `notbetween` | **两个元素的数组**。写成裸值、或只给一个元素，都会被拒 |
+| `eq` / `ne` / `in` / `notin` | 两种都收，不用管 |
+
+同一条件在 `record list` 上无论哪种写法都能跑，**所以这类报错只会在换成 pivot 时冒出来**。
+这张表以 `hap guide record` 的 pivot 段为准。
+
+> 筛不动就退回 `record list` 拿明细，再在本地聚合——比跟 pivot 的类型和形态限制较劲快。
 
 ### 维度（rows / columns）
 
