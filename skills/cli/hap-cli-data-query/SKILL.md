@@ -8,8 +8,10 @@ description: 用 hap 命令行查询/筛选/统计 HAP 工作表里的业务数�
 帮用户用 `hap` 命令行从 HAP 工作表里**把想要的数据查出来**。难点不在命令本身，而在**参数 JSON 怎么写对**——筛选器结构、运算符词表、透视的维度与聚合。本 skill 把这些易错点讲清楚，并给可直接套用的模板。
 
 > 本 skill 只管"查/筛/统计"（只读）。定位到目标行后要**写回数据**（改备注、改状态等）用
-> `hap worksheet record update`——注意它不接受 `--app-id`，先 `hap app select <appID>`，
-> 写操作细节见 `hap-cli` 主 skill。增删改记录也直接用 `hap worksheet record` 相关命令。
+> `hap worksheet record update`——**写记录不依赖默认应用**，有 `WORKSHEET_ID` 就能定位，
+> `-a/--app-id` 可传可不传（传了只是限定字段查找范围），写入失败时别往「是不是没 select
+> 对应用」上想。各字段类型该传什么值见 `hap guide record`，写完读回确认。
+> 增删改记录也直接用 `hap worksheet record` 相关命令。
 
 ## 覆盖的命令
 
@@ -18,7 +20,9 @@ description: 用 hap 命令行查询/筛选/统计 HAP 工作表里的业务数�
 | `worksheet record list` | 按条件查记录（筛选/排序/分页） | **filter-json（builder DSL）** |
 | `worksheet record pivot` | 透视聚合（分组维度 + 求和/计数等） | **filter-json（同上）** |
 | `worksheet record bottom-stats` | 视图底部那条汇总（单行统计） | filter-controls（主站 wire，**不同**） |
-| `worksheet chart` | 在工作表上建统计图表 | spec-json |
+| `worksheet record relations` | 顺着某条记录的关联字段列出被关联的记录 | 无（直接给 记录+字段） |
+| `worksheet record logs` | 某条记录的变更日志（谁在什么时候改了什么） | 无 |
+| `worksheet chart` | 图表命令组（create/get/update/delete/list） | spec-json（在 `chart create` 上） |
 
 > **关键认知**：`record list` 和 `record pivot` 共用同一套 **filter-json**；`bottom-stats` 用的是另一套老格式，别混。绝大多数"查数据"诉求用前两个就够。
 
@@ -99,7 +103,16 @@ hap worksheet fields WORKSHEET_ID        # 列出每个字段的 controlId / 名
 "版本字段": [ { "sid": "ITERATION_ROW_ID", "name": "迭代A" } ]
 ```
 
-筛选时 value 要用那个 `sid`。两种拿到它的办法：
+筛选时 value 要用那个 `sid`。**最直接的办法是让命令替你列**：
+
+```bash
+hap --json worksheet record relations <本表WS_ID> <本条记录rowid> <关联字段ID>
+```
+
+它顺着这条记录的关联字段把被关联的记录列出来，并附带它们的来源工作表信息——省掉下面两步手工反查。
+分页用 `-p`/`-n`（默认每页 20），要连系统字段一起拿加 `--is-return-system-fields`。
+
+手工反查的两种办法（还没有具体某条记录、或要按名字找时用）：
 
 1. **从关联表查**：去被关联的那张表 `record list --search "迭代A"`，拿到目标记录的 `rowid`。注意关联显示的 `name` 来自该表的标题字段，可能和你以为的不一样（比如标题其实是 "2.3" 而非 "迭代A 2.3"），所以以实际查到的为准。
 2. **从已有数据反查**：先 `record list` 拉几条本表记录，看那个关联字段里已出现的 `{sid, name}`，挑出 `name` 匹配的 `sid`。
@@ -186,7 +199,9 @@ hap worksheet record list WORKSHEET_ID \
 
 ## record pivot：透视聚合（统计的首选）
 
-任何「按 X 分组，算 Y 的合计/计数/平均」都用它。`--values-json` 和 **`--view-id` 都必填**（视图 id 用 `hap worksheet view list WORKSHEET_ID` 查，挑一个"全部"类视图即可）。
+任何「按 X 分组，算 Y 的合计/计数/平均」都用它。**只有 `--values-json` 是必填**；`--view-id` 可选
+（给了就套用该视图的筛选/排序，视图 id 用 `hap worksheet view list WORKSHEET_ID` 查），
+`-p`/`-n` 不传走默认值。
 
 ```bash
 hap worksheet record pivot WORKSHEET_ID \
@@ -240,10 +255,15 @@ hap worksheet record pivot WORKSHEET_ID \
 
 ## bottom-stats 与 chart（次要）
 
-- **`record bottom-stats`**：只返回视图底部那一行汇总（不是多维透视）。它走的是**另一套老格式**：`--column-rpts '[{"controlId":"amount","rptType":1}]'`（rptType 是整数，按 `--help` 确认对应关系），`--filter-controls` 用主站 wire 结构而非 filter-json。需要真正的分组统计时优先用 `record pivot`。
-- **`worksheet chart`**：在工作表上**建一个图表配置**（不是即时取数）。用 `--report-type`（整数图表类型）+ `--spec-json`（含 xaxes/yaxisList/filter 等）。建图表多数时候属于"改应用"，可交给 hap-cli-app-editor；纯取数分析用 `record pivot` 更直接。
+- **`record bottom-stats`**：只返回视图底部那一行汇总（不是多维透视）。它走的是**另一套老格式**：`--column-rpts '[{"controlId":"amount","rptType":1}]'`（rptType 是整数，按 `--help` 确认对应关系），`--filter-controls` 用主站 wire 结构而非 filter-json。另有 `-k/--keywords` 按关键字筛，以及 `--report-id`——给了它就读**某个图表视图**的汇总而不是普通表格的汇总（图表 id 来自 `hap worksheet chart list`）。需要真正的分组统计时优先用 `record pivot`。
+- **`record logs`**：某条记录的变更日志，回答"这个值是谁什么时候改的"。定位到可疑记录后用它，比翻应用级 `hap app logs` 精准。
+- **`worksheet chart`**：**是一个命令组**（`create` / `get` / `update` / `delete` / `list`），
+  在工作表上建/改图表配置，不是即时取数。建图用 `hap worksheet chart create`，
+  `--report-type`（整数图表类型）+ `-j/--spec-json`（含 xaxes/yaxisList/filter 等）都在**子命令**上，
+  `hap worksheet chart --help` 只会列出子命令。图表规格怎么写见 `hap guide chart`。
+  建图表多数时候属于"改应用"，可交给 hap-cli-app-editor；纯取数分析用 `record pivot` 更直接。
 
-先看 `hap worksheet record bottom-stats --help` / `hap worksheet chart --help` 再用。
+先看 `hap worksheet record bottom-stats --help` / `hap worksheet chart create --help` 再用。
 
 ---
 
@@ -254,7 +274,9 @@ hap worksheet record pivot WORKSHEET_ID \
 - **字段标识**：filter / 维度 / 值里的 `field` 用 controlId 或别名，不用中文字段名（用 `worksheet fields` 查）。
 - **运算符**：用 V3 词表（`ge`/`le`/`isempty`/`notin`…），不要套用工作流/视图那套拼写。
 - **value 形态**：选项字段用选项 key；关联字段用关联记录 rowid；成员字段用 accountId；为空类（`isempty`/`isnotempty`）不带 value。
-- **必填项**：`record list` / `record pivot` 的分页 `-p`、`-n` 都必填；`record pivot` 还必须带 `--view-id`。
+- **必填项**：只有 `record pivot` 的 `--values-json` 是必填。分页 `-p`/`-n` 都有默认值
+  （`record list` 每页 20、`pivot` 每页 100，页码都从 1 起），`--view-id` 两个命令都是可选的。
+  要一次取更多就显式给 `-n`。
 - **结果解析**：返回默认用字段别名作 key，要用 controlId 作 key 就加 `--use-field-id-as-key`；成员/关联字段是对象数组，取其中的 `fullname` / `name`。
 - **Shell 转义**：用单引号包整个 JSON、内部用双引号；筛选复杂时写进文件再 `--filter-json "$(cat f.json)"`。
 - **核对实际请求**：`hap config log on` 后再跑命令，可在日志里看到真正发出的请求体。
