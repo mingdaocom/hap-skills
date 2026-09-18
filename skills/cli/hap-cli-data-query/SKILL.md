@@ -5,7 +5,7 @@ description: 用 hap 命令行查询/筛选/统计 HAP 工作表里的业务数�
 
 # HAP 数据查询助手（筛选 · 透视 · 统计）
 
-帮用户用 `hap` 命令行从 HAP 工作表里**把想要的数据查出来**。难点不在命令本身，而在**参数 JSON 怎么写对**——筛选器结构、运算符词表、透视的维度与聚合。本 skill 把这些易错点讲清楚，并给可直接套用的模板。
+帮用户用 `hap` 命令行从 HAP 工作表里**把想要的数据查出来**。难点不在命令本身，而在**参数 JSON 怎么写对**——筛选条件的写法、各处支持哪些比较方式、透视的维度与聚合。本 skill 把这些易错点讲清楚，并给可直接套用的模板。
 
 > 本 skill 只管"查/筛/统计"（只读）。定位到目标行后要**写回数据**（改备注、改状态等）用
 > `hap worksheet record update`——**写记录不依赖默认应用**，有 `WORKSHEET_ID` 就能定位，
@@ -17,7 +17,7 @@ description: 用 hap 命令行查询/筛选/统计 HAP 工作表里的业务数�
 
 | 命令 | 用途 | 筛选器格式 |
 | --- | --- | --- |
-| `worksheet record list` | 按条件查记录（筛选/排序/分页） | **filter-json（builder DSL）** |
+| `worksheet record list` | 按条件查记录（筛选/排序/分页） | **filter-json（统一筛选写法）** |
 | `worksheet record pivot` | 透视聚合（分组维度 + 求和/计数等） | **filter-json（同上）** |
 | `worksheet record bottom-stats` | 视图底部那条汇总（单行统计） | filter-controls（主站 wire，**不同**） |
 | `worksheet record relations` | 顺着某条记录的关联字段列出被关联的记录 | 无（直接给 记录+字段） |
@@ -28,7 +28,8 @@ description: 用 hap 命令行查询/筛选/统计 HAP 工作表里的业务数�
 
 ## 第 0 步永远是：拿到字段 ID
 
-筛选/透视里的 `field` 用的是字段 ID（controlId）或别名，不是中文字段名。先查出来：
+筛选条件里的 `field` 可以写字段 ID（controlId）、别名，或界面上显示的列标题原文（工作表上没有的名字会被点名拒绝）；
+但透视的维度 `--rows-json` / `--columns-json` 和值 `--values-json` **只认字段 ID 或别名**，写列标题会被拒。先查出来：
 
 ```bash
 hap worksheet fields WORKSHEET_ID        # 列出每个字段的 controlId / 名称 / 类型
@@ -40,61 +41,66 @@ hap worksheet fields WORKSHEET_ID        # 列出每个字段的 controlId / 名
 
 ## filter-json：筛选器怎么写（record list / pivot 通用）
 
-### 结构
+### 写法
 
-筛选器是一棵树，由两种节点组成，**可嵌套**以表达复杂的 AND/OR：
+筛选条件就是一组条件，用 `logic` 组合，**可嵌套**以表达复杂的与/或：
 
 ```jsonc
-// 分组节点：用 logic 把若干子条件组合起来
-{ "type": "group", "logic": "AND",   // AND | OR（不区分大小写）
-  "children": [ <条件或子分组>, ... ] }
-
-// 条件节点：一个具体的过滤条件
-{ "type": "condition",
-  "field": "<controlId 或别名>",
-  "operator": "<运算符>",
-  "value": <标量 或 数组> }          // 为空类运算符不需要 value
+{ "logic": "and",                     // and | or
+  "items": [
+    { "field": "<字段 ID、别名或列标题>",
+      "op": "<比较方式>",
+      "value": <标量 或 数组> },       // empty / not_empty 不需要 value
+    { "logic": "or", "items": [ ... ] }  // 某一项本身也可以是一个组
+  ] }
 ```
 
-最外层通常是一个 `group`。要表达「(A 且 B) 或 (C 且 D)」就嵌套 group。
+要表达「(A 且 B) 或 (C 且 D)」就在 `items` 里再嵌组。这一种写法 `hap` 各处都收——记录查询、视图、
+业务规则、按钮、图表、工作流条件——权威说明见 **`hap guide record filter`**（3.1 写法、3.2 各处支持哪些
+比较方式、3.3 透视的限制），它随 CLI 版本走，别照本 skill 的记忆写。
 
-### 运算符：两套词表，别拿错
+> 旧写法（`{"type":"group","children":[{"type":"condition",...}]}` 那棵树）和旧拼法（`notin`、`isempty`、
+> `ge`、`startswith`…）仍然可用，以前写的筛选照样能跑；新写的一律用上面这种。
 
-**`record list` / `record pivot` 用的是「记录查询」这套**，共 21 个：
+### 比较方式：记录查询能用哪些
+
+**`record list` / `record pivot` 能用这 21 个**：
 
 ```
-eq ne  in notin  contains notcontains  concurrent
-startswith notstartswith  endswith notendswith
-gt ge lt le  between notbetween  belongsto notbelongsto
-isempty isnotempty
+eq ne  in not_in  contains not_contains  all_contains
+starts_with not_starts_with  ends_with not_ends_with
+gt gte lt lte  between not_between  belongs not_belongs
+empty not_empty
 ```
 
-**视图的 `filter` 与快速筛选、按钮的 `enableWhen`、图表的 `filter.items`、业务规则的 `filters`
-用的是另一套更长的**，那套里才有 `date_*`、`self`、`contains_all`、`array_eq`、`rc_eq` 这些。
-**它们在 `record list` / `record pivot` 上不存在。** 两套词表的完整对照见 **`hap guide record`
-的「筛选记录」一节**——那是随 CLI 版本走的权威表，别照本 skill 的记忆写。
+视图、业务规则、按钮、图表那几处还多一些专用的比较方式（`date_is`、`self`、`rc_eq`、`array_eq`…），
+**它们在 `record list` / `record pivot` 上不存在**——写了 `hap` 会当场拒绝并列出这里能用的。
+各处的完整对照见 `hap guide record filter` 的 3.2。
 
 要点：
 
-- **日期在这条路上也用 `between`**（配 `["2026-02-01","2026-03-31"]`），不是 `date_between`。
-- 大于等于是 `ge` / `le`（不是 `gte` / `lte`）；否定式无下划线（`notin` / `notcontains` / `notbetween`）；
-  为空是 `isempty` / `isnotempty`（不是 `empty`），且**不要带 `value` 字段**。
-- 写错名字 `hap` 会当场报错并列出可用取值；名字在另一条路合法时还会明确告诉你「那是视图/图表/规则
-  筛选的词，不是记录查询的」。
+- **日期也用 `between`**（配 `["2026-02-01","2026-03-31"]`）和 `gt` / `gte` / `lt` / `lte`。
+  在视图/规则/按钮/图表上，`hap` 会按列类型自动换成日期专用的比较方式，你照常写即可；
+  但 `date_between` 这类显式日期名只在那几处合法，**记录查询会拒绝它**。
+- `empty` / `not_empty` **不带 `value`**。⚠️ 实测（hap 0.9.0）`record list` 上这两个会被服务端忽略、返回全表
+  （`hap` 发出的请求是对的），`record pivot` 上正常。在 `record list` 上用它时务必核对条数，
+  对不上就改用 pivot 计数，或拉明细在本地判空。
+- 写错名字、写了这里没有的比较方式、写了不存在的列，`hap` 都会在发出去之前点名拒绝并告诉你可用取值。
+- `node` 键和对象形态的 `value` 只属于工作流条件，写在记录查询里会被拒绝。
 
-> 🚨 **服务端对不认识的 operator 不报错——它把整个条件丢掉，返回全表，并且报成功。**
-> 用 `date_between` 去查十二条逾期订单，拿回来的是全部订单，没有任何迹象说明筛选没生效。
+> 🚨 **服务端对不认识的比较方式不报错——它把整个条件丢掉，返回全表，并且报成功。**
+> 用一个它不认的名字去查十二条逾期订单，拿回来的是全部订单，没有任何迹象说明筛选没生效。
 > 你能看到报错，靠的是 `hap` 在发出去之前的本地拦截。所以**只要不是用 `hap` 发的筛选请求
 > （自己拼 HTTP、别的客户端），看结果要看条数，别只看 `success`。**
 
 ### value 怎么填（按字段类型）
 
-- **选项 / 单选 / 多选字段**：value 用选项的 **key**，不是显示文本。key 可从 `worksheet fields` 的字段 options 里查到。
+- **选项 / 单选 / 多选字段**：value 用选项的 **key** 最稳（从 `worksheet fields` 的字段 options 里查）；写选项的显示文本 `hap` 也会替你换成 key。
 - **关联表字段（Relation）**：value 用关联记录的 **rowid 数组**，配 `in` 或 `eq`。⚠️ 必须用 rowid，**不能用关联显示的标题文本**（如版本名）去匹配。怎么拿这个 rowid 见下方「关联字段筛选」。子表的反向关联字段同理：value 填**父记录的 rowid**，即可筛出该父记录的全部子行。
 - **成员字段（Collaborator）**：value 用成员的 **accountId 数组**，配 `in`/`eq`。
-- **部门字段**：value 用部门 **ID 数组**，配 `belongsto` / `notbelongsto`（在 `record pivot` 上这两个只对**地区**字段可用，见下方 pivot 一节）。
-- **文本字段**：`contains` / `startswith` / `eq` 等，value 直接给文本。
-- **日期字段**：`between` 给 `["2025-01-01","2025-01-31"]`，或 `gt`/`lt` 给单个日期/时间戳（**不是** `date_between`，那是视图/图表那套的词）。
+- **部门字段**：value 用部门 **ID 数组**，配 `belongs` / `not_belongs`（在 `record pivot` 上这两个只对**地区**字段可用，见下方 pivot 一节）。
+- **文本字段**：`contains` / `starts_with` / `eq` 等，value 直接给文本。
+- **日期字段**：`between` 给 `["2025-01-01","2025-01-31"]`，或 `gt` / `gte` / `lt` / `lte` 给单个日期/时间戳（**不是** `date_between`，记录查询不收它）。
 
 ### 关联字段筛选：先拿到关联记录的 rowid
 
@@ -122,8 +128,8 @@ hap --json worksheet record relations <本表WS_ID> <本条记录rowid> <关联�
 
 ```bash
 hap worksheet record list TASK_WS_ID --filter-json '{
-  "type":"group","logic":"AND",
-  "children":[{"type":"condition","field":"<版本字段ID>","operator":"in","value":["ITERATION_ROW_ID"]}]
+  "logic":"and",
+  "items":[{"field":"<版本字段ID>","op":"in","value":["ITERATION_ROW_ID"]}]
 }' -p 1 -n 100
 ```
 
@@ -135,8 +141,8 @@ hap worksheet record list TASK_WS_ID --filter-json '{
 
 ```bash
 hap worksheet record list <子表WS_ID> --use-field-id-as-key -p 1 -n 100 \
-  --filter-json '{"type":"group","logic":"AND","children":[
-    {"type":"condition","field":"<反向关联字段ID>","operator":"in","value":["<父记录rowid>"]}]}' \
+  --filter-json '{"logic":"and","items":[
+    {"field":"<反向关联字段ID>","op":"in","value":["<父记录rowid>"]}]}' \
   --sorts-json '[{"field":"<明细编号等排序字段ID>","isAsc":true}]'
 ```
 
@@ -152,26 +158,26 @@ hap worksheet record list <子表WS_ID> --use-field-id-as-key -p 1 -n 100 \
 
 ```bash
 hap worksheet record list WORKSHEET_ID --filter-json '{
-  "type": "group", "logic": "OR",
-  "children": [
-    { "type": "group", "logic": "AND", "children": [
-      { "type": "condition", "field": "name",         "operator": "startswith", "value": "张" },
-      { "type": "condition", "field": "onboard_date",  "operator": "between",    "value": ["2025-01-01","2025-01-31"] }
+  "logic": "or",
+  "items": [
+    { "logic": "and", "items": [
+      { "field": "name",         "op": "starts_with", "value": "张" },
+      { "field": "onboard_date", "op": "between",     "value": ["2025-01-01","2025-01-31"] }
     ]},
-    { "type": "group", "logic": "OR", "children": [
-      { "type": "condition", "field": "dept_option",  "operator": "in",        "value": ["k_sales","k_mkt"] },
-      { "type": "condition", "field": "dept_id",       "operator": "belongsto", "value": ["DEPT_HUABEI_ID"] }
+    { "logic": "or", "items": [
+      { "field": "dept_option",  "op": "in",      "value": ["k_sales","k_mkt"] },
+      { "field": "dept_id",      "op": "belongs", "value": ["DEPT_HUABEI_ID"] }
     ]}
   ]
 }'
 ```
 
-简单单条件（状态为空的记录）——注意 `isempty` 不带 value：
+简单单条件（状态为空的记录）——注意 `empty` 不带 value：
 
 ```bash
 hap worksheet record list WORKSHEET_ID --filter-json '{
-  "type":"group","logic":"AND",
-  "children":[{"type":"condition","field":"status","operator":"isempty"}]
+  "logic":"and",
+  "items":[{"field":"status","op":"empty"}]
 }'
 ```
 
@@ -211,7 +217,7 @@ hap worksheet record pivot WORKSHEET_ID \
   --rows-json '[{"field":"status"}]' \                         # 行维度（分组）
   --columns-json '[{"field":"create_date","granularity":3}]' \ # 列维度，可选
   --values-json '[{"field":"amount","aggregation":"SUM"}]' \   # 值（聚合），必填
-  --filter-json '<同 list 的 filter 格式>' \                    # 可选
+  --filter-json '<同 list 的筛选条件>' \                        # 可选
   --include-summary                                            # 要总计行加
 ```
 
@@ -229,35 +235,35 @@ hap worksheet record pivot WORKSHEET_ID \
 
 同一份 filter-json，`record list` 收、`pivot` 未必收——**pivot 认哪些比较，取决于字段装的是什么**：
 
-| operator | 在 pivot 上 |
+| 比较方式 | 在 pivot 上 |
 | --- | --- |
-| `eq` / `ne`、`isempty` / `isnotempty` | 都行 |
-| `contains` / `notcontains` | **一律不行**，任何字段类型都拒。`hap` 本地就拦下并提示改用 `startswith` / `endswith`，或干脆换 `record list` |
-| `in` / `notin` | 只在**单选、地区**上行；文本 / 数值 / 日期会被拒 |
-| `gt` / `ge` / `lt` / `le`、`between` / `notbetween` | 只在**数值、日期**上行 |
-| `belongsto` / `notbelongsto` | 只在**地区**上行 |
-| `concurrent` | 只在**文本**上行 |
-| `startswith` / `endswith` 及其否定式 | 只在**文本**上行 |
+| `eq` / `ne`、`empty` / `not_empty` | 都行 |
+| `contains` / `not_contains` | **一律不行**，任何字段类型都拒。`hap` 本地就拦下并提示改用 `starts_with` / `ends_with`，或干脆换 `record list` |
+| `in` / `not_in` | 只在**单选、地区**上行；文本 / 数值 / 日期会被拒 |
+| `gt` / `gte` / `lt` / `lte`、`between` / `not_between` | 只在**数值、日期**上行 |
+| `belongs` / `not_belongs` | 只在**地区**上行 |
+| `all_contains` | 只在**文本**上行 |
+| `starts_with` / `ends_with` 及其否定式 | 只在**文本**上行 |
 
 除 `contains` 外，其余按类型的限制 `hap` 拦不住（它不知道字段类型），由服务端拒绝并把你这次发的
 条件补回错误信息里，形如「A pivot accepts fewer comparisons than `record list` does…」。
 
 **pivot 还挑 `value` 的形态**（`record list` 不挑，两种写法都收）：
 
-| operator | pivot 要什么 |
+| 比较方式 | pivot 要什么 |
 | --- | --- |
-| `gt` / `ge` / `lt` / `le` | **裸值**。写成数组会被拒——`"value": 0` 行，`[0]` 和 `["0"]` 都不行 |
-| `between` / `notbetween` | **两个元素的数组**。写成裸值、或只给一个元素，都会被拒 |
-| `eq` / `ne` / `in` / `notin` | 两种都收，不用管 |
+| `gt` / `gte` / `lt` / `lte` | **裸值**。写成数组会被拒——`"value": 0` 行，`[0]` 和 `["0"]` 都不行 |
+| `between` / `not_between` | **两个元素的数组**。写成裸值、或只给一个元素，都会被拒 |
+| `eq` / `ne` / `in` / `not_in` | 两种都收，不用管 |
 
 同一条件在 `record list` 上无论哪种写法都能跑，**所以这类报错只会在换成 pivot 时冒出来**。
-这张表以 `hap guide record` 的 pivot 段为准。
+这两张表以 `hap guide record filter` 的 3.3 为准。
 
 > 筛不动就退回 `record list` 拿明细，再在本地聚合——比跟 pivot 的类型和形态限制较劲快。
 
 ### 维度（rows / columns）
 
-每项 `{"field":"<controlId>", "displayName":"可选", "granularity":<整数>, "includeEmpty":false}`：
+每项 `{"field":"<controlId 或别名>", "displayName":"可选", "granularity":<整数>, "includeEmpty":false}`：
 
 - `granularity` 仅对**日期/地区**字段有意义：
   - 日期：`1`=日，`2`=周，`3`=月
@@ -266,7 +272,7 @@ hap worksheet record pivot WORKSHEET_ID \
 
 ### 值（values）
 
-每项 `{"field":"<controlId>", "aggregation":"<聚合>", "displayName":"可选"}`：
+每项 `{"field":"<controlId 或别名>", "aggregation":"<聚合>", "displayName":"可选"}`：
 
 - `aggregation`（不区分大小写）：`COUNT` 计数、`DISTINCTCOUNT` 去重计数、`SUM` 求和、`MIN` 最小、`MAX` 最大、`AVG` 平均。
 - **只想数行数**（不针对某字段）：`field` 填特殊值 `record_count`，配 `COUNT`。
@@ -303,9 +309,9 @@ hap worksheet record pivot WORKSHEET_ID \
 
 照这些规则写，绝大多数查询一次就成：
 
-- **字段标识**：filter / 维度 / 值里的 `field` 用 controlId 或别名，不用中文字段名（用 `worksheet fields` 查）。
-- **运算符**：用 V3 词表（`ge`/`le`/`isempty`/`notin`…），不要套用工作流/视图那套拼写。
-- **value 形态**：选项字段用选项 key；关联字段用关联记录 rowid；成员字段用 accountId；为空类（`isempty`/`isnotempty`）不带 value。
+- **字段标识**：筛选条件里的 `field` 可用 controlId、别名或列标题；透视的维度 / 值里只认 controlId 或别名（用 `worksheet fields` 查）。
+- **筛选条件**：统一写法 `{"logic","items":[{"field","op","value"}]}`，比较方式用 `gte` / `lte` / `empty` / `not_in` 这类统一名；视图/图表专用的（`date_is`、`self`…）记录查询不收。拿不准就看 `hap guide record filter`。
+- **value 形态**：选项字段用选项 key；关联字段用关联记录 rowid；成员字段用 accountId；`empty` / `not_empty` 不带 value。
 - **必填项**：只有 `record pivot` 的 `--values-json` 是必填。分页 `-p`/`-n` 都有默认值
   （`record list` 每页 20、`pivot` 每页 100，页码都从 1 起），`--view-id` 两个命令都是可选的。
   要一次取更多就显式给 `-n`。
