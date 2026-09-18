@@ -67,7 +67,7 @@ HAP 的写接口大量存在「照样返回成功、数据却是错的」，所�
 
 | 类型 | 用在哪 |
 |---|---|
-| [FilterCondition](scripts/types/filter-condition.schema.json) | 视图筛选、业务规则、按钮 enableWhen、图表筛选、页面筛选组件 |
+| [FilterCondition](scripts/types/filter-condition.schema.json) | 视图筛选、业务规则、按钮 enableWhen、图表筛选、页面筛选组件的存储形态（读回时看到的）；写入时优先用统一筛选写法 `{logic, items:[{field, op, value}]}`，见 `hap guide record filter` |
 | [SortItem](scripts/types/sort-item.schema.json) | 视图多重排序、工作流节点 sorts |
 | [WireControl](scripts/types/wire-control.schema.json) | 字段的原始控件对象（读写通用货币） |
 | [OperateCondition](scripts/types/operate-condition.schema.json) | 工作流节点/分支条件（**不是** FilterCondition，字段名是 `filedId`） |

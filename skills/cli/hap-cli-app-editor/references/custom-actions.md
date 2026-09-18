@@ -16,7 +16,9 @@ hap worksheet create-custom-action <worksheetId> -a <appId> --action-spec '{
   "type": "updateCurrentRecord",
   "updateFields": ["<controlId>"],
   "confirm": true,
-  "confirmMsg": "确认标记为完成吗？"
+  "confirmMsg": "确认标记为完成吗？",
+  "enableWhen": {"logic":"and","items":[
+    {"field":"<状态列>","op":"ne","value":"<已完成选项key>"}]}
 }'
 
 # 模式二：--config 原始 wire 配置，原样下发
@@ -42,9 +44,9 @@ hap worksheet delete-custom-action <worksheetId> <btnId> --view-id <viewId> --pl
   在按钮表单上也必填，其余是选填，本来就不能填写的类型（附件、公式、备注…）只读展示。不需要、
   也不应该自己去指定档位。
 - **`enableWhen` 一给，按钮就自动变成「满足条件才可用」**，不用再手工设别的开关。筛选门槛二选一：
-  `enableWhen` 给高层筛选组结构（推荐），或 `filters` 直接给 wire 形态数组。`operator` 用
-  `hap guide record`「筛选记录」一节里**「视图 / 规则 / 按钮 / 图表筛选」那张词表**，
-  不是 `record list` / `record pivot` 那张——两套不通用。
+  `enableWhen` 用统一筛选写法（推荐，如 `{"logic":"and","items":[{"field":"<状态列>","op":"ne","value":"<已完成选项key>"}]}`），
+  或 `filters` 直接给 wire 形态数组。写法与按钮上可用的比较方式见 `hap guide record filter`（3.2 那张表的
+  「视图/规则/按钮/图表」一列）。
 - **`confirm` 一给，按钮就真的弹二次确认框**；`confirmMsg` 是框里的文案，不给用默认文案（按当前
   CLI 语言写入按钮）。任何 type 都能叠加。
 - **`--view-id` 撤下按钮只对「限定了显示视图」的按钮有效**。按钮设成「所有视图都显示」时没有
@@ -67,7 +69,7 @@ hap worksheet delete-custom-action <worksheetId> <btnId> --view-id <viewId> --pl
 | updateFields | （updateCurrentRecord）弹窗中要填写的字段；每项的填写模式由该字段自身的必填/可写性推导 | `["<controlId>", ...]` |
 | relationField | （createRelatedRecord）新记录写入的关联字段 | controlId string |
 | relationControl | （createRelatedRecord）配套透传值 | string（默认 ""） |
-| enableWhen | 按钮可用条件（满足筛选才显示） | → [FilterCondition[]](../scripts/types/filter-condition.schema.json) |
+| enableWhen | 按钮可用条件（满足筛选才显示） | 统一写法 `{logic, items:[{field, op, value}]}`；旧的 wire 数组 → [FilterCondition[]](../scripts/types/filter-condition.schema.json) 也收 |
 | filters | enableWhen 的 wire 形态替代写法 | wire 筛选数组（与 enableWhen 二选一） |
 | confirm | 强制二次确认弹窗 | bool |
 | confirmMsg | 确认弹窗文案 | string（默认 "你确认执行此操作吗？"） |

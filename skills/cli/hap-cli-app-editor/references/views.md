@@ -46,7 +46,8 @@ hap worksheet view create 6845f0a1b2c3d4e5f6a7b8c9 "任务树" \
 
 # 过滤表格（每个状态一张表）
 hap worksheet view create 6845f0a1b2c3d4e5f6a7b8c9 "进行中" \
-  --view-type sheet --filter-json '[{"controlId":"ctrl_status_24hex","dataType":11,"spliceType":1,"filterType":2,"values":["opt_key_1"]}]'
+  --view-type sheet --filter-json '{"logic":"and","items":[{"field":"ctrl_status_24hex","op":"eq","value":"opt_key_1"}]}'
+# ↑ 筛选条件用统一写法，见 `hap guide record filter`；旧的 wire 扁平数组（[{"controlId","dataType","spliceType","filterType","values"}]）仍然可用
 
 # 一次成型整视图（分组/封面/过滤/快筛/筛选列表/行色/按钮）用 --view-spec，见 §0
 hap worksheet view create 6845f0a1b2c3d4e5f6a7b8c9 "总览" --view-spec @view.json
@@ -137,8 +138,8 @@ wire 层键名不是一回事：高层方言由 CLI 翻译成 `editAttrs` + `adv
   "color": "<单选字段ID>",
   "tableFields": ["<字段ID>", "..."],
   "rowHeight": 0,                             // 0 紧凑 / 1 中等 / 2 高 / 3 超高
-  "filter": {"type":"group", "logic":"AND", "children":[
-    {"type":"condition", "field":"<状态字段ID>", "operator":"eq", "value":["<选项key>"]}
+  "filter": {"logic":"and", "items":[
+    {"field":"<状态字段ID>", "op":"eq", "value":"<选项key>"}
   ]}
 }
 ```
@@ -174,11 +175,10 @@ wire 层键名不是一回事：高层方言由 CLI 翻译成 `editAttrs` + `adv
 - **`quickFilters` 只写字段 ID 就行**，每项的类型按字段自动定，不必自己猜配哪种比较方式。
 - **相对时间窗口**：筛选条件里用 `dateRange` 表示「最近 N 天」这类相对窗口（`0` = 用绝对值），
   粒度用 `dateRangeType`。这两个键**只在日期字段上有意义**。
-- `filter` / `enableWhen` 里 `operator` 的完整取值见 `hap guide record` 的「筛选记录」一节，
-  认准**「视图 / 规则 / 按钮 / 图表筛选的词表」那张**——视图筛选、按钮 `enableWhen`、图表
-  `filter.items`、业务规则的 `filters` 都用它。**不要拿那节里另一张「`record list` / `record pivot`
-  的词表」**：两套不通用，视图这边才有 `date_*`（日期专用比较）、`self`、`contains_all`、
-  `array_eq`、`rc_eq` 这些，而记录查询那套没有。
+- `filter` / `enableWhen` 跟其它筛选是同一种写法 `{"logic","items":[{"field","op","value"}]}`，见
+  `hap guide record filter`。视图这边能用的比较方式看 3.2 那张表的「视图/规则/按钮/图表」一列——
+  比记录查询多出 `self`、`rc_eq`、`array_eq`、`date_is` 这些；日期列上照常写 `between` / `gt` /
+  `lte`，`hap` 会按列类型自动换成日期专用的比较方式。旧的 `{"type":"group","children":[…]}` 那棵树仍然可用。
 
 #### 插件视图与多表层级
 
@@ -225,7 +225,7 @@ wire 层键名不是一回事：高层方言由 CLI 翻译成 `editAttrs` + `adv
 | `name` | 视图名（改名） | string |
 | `advancedSetting` | 设置项字符串字典；**必须配 `--edit-ad-keys`**（见 §3） | 值全为字符串的对象 |
 | `AdvancedSetting` | 服务端接受的首字母大写别名 | 同上 |
-| `filters` | 视图过滤条件 | → [FilterCondition[]](../scripts/types/filter-condition.schema.json) |
+| `filters` | 视图过滤条件 | 读回是 → [FilterCondition[]](../scripts/types/filter-condition.schema.json)；写入时 `--filter-json` / `--view-spec` 的 `filter` 用统一写法 `{logic, items:[{field, op, value}]}` |
 | `fastFilters` | 快速筛选字段配置 | 数组 `[{controlId, dataType, spliceType, filterType, advancedSetting{…}}]`，每项的 advancedSetting 为模块专属结构，先读后改 |
 | `moreSort` | 多字段排序 | → [SortItem[]](../scripts/types/sort-item.schema.json) |
 | `sortCid` | 主排序字段 | controlId 字符串 |
