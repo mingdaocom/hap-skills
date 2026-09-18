@@ -113,7 +113,7 @@ hap worksheet view sort 6845f0a1b2c3d4e5f6a7b8c9 \
 
 ## 数据字典
 
-字典核对于 hap-cli 0.8.31
+字典核对于 hap-cli 0.9.0
 
 ### 0. `--view-spec` 高层方言
 

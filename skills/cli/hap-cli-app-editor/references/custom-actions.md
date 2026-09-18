@@ -55,7 +55,7 @@ hap worksheet delete-custom-action <worksheetId> <btnId> --view-id <viewId> --pl
 
 ## 数据字典
 
-字典核对于 hap-cli 0.8.31；未覆盖的键以读命令返回的实际结构为准。
+字典核对于 hap-cli 0.9.0；未覆盖的键以读命令返回的实际结构为准。
 
 ### action_spec 键表（--action-spec 输入）
 

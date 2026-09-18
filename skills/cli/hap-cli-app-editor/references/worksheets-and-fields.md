@@ -241,7 +241,7 @@ hap worksheet pair-relation <工作表ID> 客户 --repair       # 覆盖对方�
 
 ## 数据字典
 
-字典核对于 hap-cli 0.8.31；未覆盖的键以读命令（`hap --json worksheet fields <id> --raw`）返回的实际结构为准。
+字典核对于 hap-cli 0.9.0；未覆盖的键以读命令（`hap --json worksheet fields <id> --raw`）返回的实际结构为准。
 速查用 `hap worksheet field-types`（它是运行时生成的，与本表不一致时以它为准）。
 
 ### 1. 控件类型枚举（`type` 整数）
