@@ -7,7 +7,7 @@
 ```bash
 # 0. 拿 id
 hap app-editor inspect <appId>          # 拿分组 section_id、订单表 ws_id
-hap --json worksheet views <ws_id>      # 拿要内嵌的视图 view_id
+hap --json worksheet view list <ws_id>  # 拿要内嵌的视图 view_id
 
 # 1. 建页面壳子
 hap custom-page create <appId> "经营看板" --section-id <section_id>
@@ -38,7 +38,7 @@ hap app-editor plan dashboard.edit.json
 hap app-editor apply dashboard.edit.json
 
 # 4. 验证
-hap --json custom-page info <appId> <page_id>
+hap --json custom-page info <page_id>
 ```
 
 ## 注意

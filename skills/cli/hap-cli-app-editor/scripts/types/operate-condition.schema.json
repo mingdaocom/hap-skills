@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "OperateCondition — workflow node/branch condition groups (shared type, workflow module)",
-  "description": "Condition tree for workflow data nodes and branches: `hap workflow node save-action / save-search / save-get-more --condition`, branch nodes' operateCondition, trigger filters in `node batch-add`. Shape: a 2-D ARRAY — the OUTER array is OR groups, each INNER array is AND-ed items. This is NOT the worksheet FilterCondition type despite similar intent: the field key here is `filedId` (upstream spelling, sic — also filedTypeId/filedValue), the operator is the STRING enum conditionId, values are objects in conditionValues, and grouping is positional instead of spliceType. A workflow node config key named `filters` is ALSO this shape, not the worksheet one.",
+  "description": "Condition tree for workflow data nodes and branches: `hap workflow node save-action / save-search / save-get-more --condition`, branch nodes' operateCondition, trigger filters in `node batch-add`. Shape: a 2-D ARRAY — the OUTER array is OR groups, each INNER array is AND-ed items. This is NOT the worksheet FilterCondition type despite similar intent: the field key here is `filedId` (upstream spelling, sic — also filedTypeId/filedValue), the comparison is the STRING enum conditionId, values are objects in conditionValues, and grouping is positional instead of spliceType. A workflow node config key named `filters` is ALSO this shape, not the worksheet one. This is the stored form read commands return; when writing, `hap` also accepts the unified condition form {\"logic\":\"and\"|\"or\",\"items\":[{\"field\",\"op\",\"value\"}]} (workflow-only extras: a `node` key and object-shaped `value`; no `between` — write `gte` + `lte`) — see `hap guide record filter`.",
   "type": "array",
   "items": {
     "type": "array",
@@ -20,7 +20,7 @@
         },
         "conditionId": {
           "type": "string",
-          "description": "Operator as a STRING enum, e.g. \"1\"=contains, \"2\"=equals, \"7\"=is empty, \"8\"=is not empty, \"9\"=>, \"10\"=>=, \"11\"=<, \"12\"=<=, \"15\"=date is (date fields remap some operators — read an existing node with `hap workflow node get` to copy the exact id). Full table: workflow nodes reference doc."
+          "description": "Comparison as a STRING enum, e.g. \"1\"=contains, \"2\"=equals, \"7\"=is empty, \"8\"=is not empty, \"9\"=>, \"10\"=>=, \"11\"=<, \"12\"=<=, \"15\"=date is (date fields remap some comparisons — read an existing node with `hap workflow node get` to copy the exact id). Full table: workflow nodes reference doc."
         },
         "conditionValues": {
           "type": "array",

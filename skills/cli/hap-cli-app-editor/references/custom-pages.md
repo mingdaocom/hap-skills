@@ -11,6 +11,9 @@ hap custom-page delete <appId> <pageId> --section-id <sectionId> -y
 
 # 读页面布局 —— 注意：这里的参数填【页面 id】，不是应用 id
 hap custom-page info <pageId>
+# 🚨 传成应用 id 不会报错：它返回一个 version:0、components:[] 的空壳。
+#    别把这个空壳当成「页面没有组件」——照它整页写回会把真组件全清掉。
+#    读到 version 为 0 且 components 为空时，先确认自己传的是不是页面 id。
 
 # 组件类型对照表
 hap custom-page component-types
@@ -18,6 +21,45 @@ hap custom-page component-types
 # 改页面描述/设置（参数也是页面 id）
 hap custom-page update-config <pageId> --desc "运营周报看板"
 ```
+
+### 往页面上放一张统计图
+
+图表**不是**在页面里建的：先在工作表上建图拿 `reportId`，再把它作为组件摆到页面上。
+
+```bash
+# 1) 建图。--page-id 让这张图归属该自定义页，而不是算进工作表自己的统计列表
+hap worksheet chart create <worksheetId> --name "各状态金额" --report-type 1 \
+  --page-id <pageId> -j '{...图表规格...}'
+
+# 2) 读当前 version 和已有组件
+hap --json custom-page info <pageId>
+
+# 3) 整页写回（把新组件追加进原有 components 一起提交）
+hap custom-page save <pageId> --version <当前version> --components '[...]'
+```
+
+图表组件的必备形状：
+
+```jsonc
+{"type": 1, "value": "<reportId>", "worksheetId": "<worksheetId>",
+ "name": "各状态金额", "reportType": 1,
+ "config": {"objectId": "<32位十六进制随机串>"},
+ "web": {"title": "", "titleVisible": false, "visible": true,
+         "layout": {"x": 0, "y": 0, "w": 24, "h": 10, "minW": 2, "minH": 4}},
+ "mobile": {"title": "", "titleVisible": false, "visible": true, "layout": null}}
+```
+
+- 图表组件 `type` 是 **1**，`value` 放 `reportId`，还**必须**带 `worksheetId` 和 `reportType`。
+- `config.objectId` 每个组件一个唯一 32 位十六进制串（联动筛选靠它定位）。
+- 布局是 **48 栅格**：`w` 最大 48，一行放两张图各 `w:24`。
+- `--version` 必须等于页面当前 version，否则报「自定义页面保存失败」；存成功后 version +1。
+- 筛选组件（`type=6`）可以内联携带 `filtersGroup: {filters:[…]}`，CLI 会先存筛选组再把生成的 id
+  替换进组件。这时需要 `--owner-app-id`（省略时自动从页面的工作表元数据解析）。
+
+图表规格本身（`xaxes` / `yaxisList` / `filter` / reportType 取值）见 `hap guide chart`。
+**一张图没有 `filter` 块也能保存成功，但页面上一片空白**——新建时 CLI 会自动补「全部时间」的默认
+范围，所以 `chart create` 已不会空白；但 `chart update` **不补**（否则会覆盖这张图原本的时间范围），
+所以改图时只传要改的项。
 
 **组件增删改推荐走 edit-spec**（`hap app-editor apply`）：页面布局是整体读改写——读全量组件列表、改目标、整页写回；edit-spec 的 `component.add/update/delete` 帮你处理这套流程并按名字定位组件，其余组件原样保留。一次性示例：
 
@@ -106,7 +148,7 @@ hap custom-page save <pageId> --version <N> --components '[ ...全量组件... ]
 | --remark | 描述 | string | create |
 | --create-type | 创建类型，1=外链页面 | int | create |
 | --url-template | 外链地址模板 | string | create/rename |
-| --permanently | 彻底删除（默认进回收站） | flag | delete |
+| --permanently | 彻底删除；不加就进应用回收站，用 `hap app trash` 能看到也能还原 | flag | delete |
 | --version | 布局版本号（info 可得） | int | save 必填 |
 | --adjust-screen | 适配屏幕 | flag 对 | save/update-config |
 | --url-params | URL 参数描述符 | JSON array | save/update-config |

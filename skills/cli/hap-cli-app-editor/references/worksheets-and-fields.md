@@ -15,12 +15,17 @@ hap worksheet create 1f2e3d4c-5b6a-7081-92a3-b4c5d6e7f809 "客户" \
              {"type":"DROP_DOWN","name":"等级","options":["VIP","普通"]}]' \
   --title-name 客户名称
 
-# 基本信息
+# 基本信息；表单布局与视图列表可以顺带取回，不必再发两条命令
 hap --json worksheet info 6845f0a1b2c3d4e5f6a7b8c9
+hap --json worksheet info 6845f0a1b2c3d4e5f6a7b8c9 --with-form --with-views
 
-# 改别名 / 描述；改侧边栏名称或图标需要 --app-id
+# 改别名 / 描述；改侧边栏名称、图标或显示状态需要 --app-id
 hap worksheet update 6845f0a1b2c3d4e5f6a7b8c9 --alias customers --desc "客户主数据"
 hap worksheet update 6845f0a1b2c3d4e5f6a7b8c9 --name "客户（CRM）" \
+  --app-id 1f2e3d4c-5b6a-7081-92a3-b4c5d6e7f809
+
+# 从应用导航里隐藏（表本身照常可用、数据照常读写）
+hap worksheet update 6845f0a1b2c3d4e5f6a7b8c9 --visibility hidden \
   --app-id 1f2e3d4c-5b6a-7081-92a3-b4c5d6e7f809
 
 # 删除
@@ -31,6 +36,32 @@ hap worksheet delete 6845f0a1b2c3d4e5f6a7b8c9 --app-id 1f2e3d4c-5b6a-7081-92a3-b
 hap --json worksheet fields 6845f0a1b2c3d4e5f6a7b8c9
 hap --json worksheet fields 6845f0a1b2c3d4e5f6a7b8c9 --raw
 ```
+
+`--visibility` 取 `visible` / `hidden` / `pc-hidden` / `mobile-hidden`。**专门用来存另一张表
+子记录的那种表，通常就该设成 `hidden`**——隐藏只影响导航，不影响读写。
+
+### 只存子表行的工作表：读它要指出父表
+
+```bash
+hap --json worksheet fields <子表工作表ID> --parent <父表工作表ID>
+```
+
+这类表**不能单独读**，不带 `--parent` 会直接报读不了。把现成的表挂成某张表的子表用
+`hap worksheet mount-subtable`。
+
+### 🚨 复制工作表：没点名的关联列会变成纯文本
+
+```bash
+hap worksheet copy <工作表ID> "客户-副本" -a <应用ID> \
+  --keep-relation <关联字段ID> --keep-relation <子表字段ID>
+```
+
+`--keep-relation` 要**逐个点名**（可重复）。**没被点到的关联记录、子表、级联选择列，
+在副本里会被复制成普通文本列**——数据还在，关系没了，且没有任何提示。复制前先
+`worksheet fields` 把这些列的 id 列出来。
+
+副本里的列 id 和源表一模一样是正常的：列 id 只在自己表内唯一，看到两张表出现相同
+controlId 不必去「修」。
 
 ### 字段：先分清「新增」还是「改已有」
 
@@ -50,9 +81,23 @@ hap worksheet add-fields 6845f0a1b2c3d4e5f6a7b8c9 --controls '[
   {"type": 2,  "controlName": "备注"},
   {"type": 15, "controlName": "签约日期"}
 ]'
+
+# 布局太长放不进命令行时从文件读（--controls / --fields 都支持 @文件名）
+hap worksheet add-fields 6845f0a1b2c3d4e5f6a7b8c9 --controls @new-controls.json
 ```
 
 `--controls` 接 WireControl 原始形态（与 `fields --raw` 输出同构，见数据字典 §2）。
+
+子表既可以这样手写裸控件，也可以走 edit-spec 的 `field.add` + `subtable` 块（新建子表写它的列，
+或把已有表挂上来），后者会连子表侧的反向关联一起配好——见
+[edit-spec.md](edit-spec.md) 的「子表有两种模式」。
+
+> 🚨 **不要自己造 `controlId`。** 省略它，列 id 由服务端铸。自己填一个（从别处抄来的、
+> 或随手生成的 UUID）会被原样存下，**那样的列在表格和关联控件里读不出来，永远是空白**。
+
+嵌入页、自定义控件、查询记录、查询按钮、API 查询、OCR、自由连接、分段这几种以前没有
+模板的类型，现在也能像别的类型一样按类型名直接建，不必再手写原始控件字典。全部类型名
+见 `hap worksheet field-types`。
 
 #### 修改 / 删除 / 重排：优先走 edit-spec
 
@@ -83,7 +128,12 @@ hap app-editor apply    edit.json   # 逐 op 执行（--continue 失败不中断
 要点：
 
 - `field.add` 走增量追加；`field` 里 `type` 接 CODE（Text/Number/Relation…）、
-  类型名（TEXT/RELATE_SHEET…）或整数；复杂控件可加 `control:{<WireControl 原始键>}` 逃生口。
+  类型名（TEXT/RELATE_SHEET…）或整数。字段词汇是
+  `name` / `type` / `required` / `unique` / `options` / `relation` / `lookup` / `rollup` /
+  `formula` / `subtable` / `control`——跨表类型必须带自己那个块，写法见
+  [edit-spec.md](edit-spec.md) 的「field 的跨表块」。词表以外的键、块放错类型、块内未知键
+  一律**校验报错**，不会静默建出指向为空的坏列。这份词汇没建模的形状走
+  `control:{<WireControl 原始键>}` 逃生口（最后合并、优先生效）。
 - `field.update` 的 `set` 直接写 WireControl 原始键（见 §2/§3）。
 - `field.reorder` 按 `order` 重排显示顺序（顺序由控件 `row` 决定）；未列出的字段接在后面。
 - 元素可用名称或 id 引用，spec 内后面的 op 可引用前面刚建的元素。
@@ -94,6 +144,11 @@ hap app-editor apply    edit.json   # 逐 op 执行（--continue 失败不中断
 反向关联控件。仅两种场景使用：
 
 ```bash
+# 保存前先干跑检查（一个字都不写），保存后默认自动回读比对
+hap worksheet update-fields 6845f0a1b2c3d4e5f6a7b8c9 --fields @layout.json --check
+hap worksheet update-fields 6845f0a1b2c3d4e5f6a7b8c9 --fields @layout.json
+hap worksheet update-fields 6845f0a1b2c3d4e5f6a7b8c9 --fields @layout.json --no-verify
+
 # 场景 A：刚建的空表一次铺设全部字段（高层方言 --fields）
 hap worksheet update-fields 6845f0a1b2c3d4e5f6a7b8c9 --title-name 客户名称 --fields '[
   {"type":"TEXT", "name":"客户名称", "required":true},
@@ -103,10 +158,11 @@ hap worksheet update-fields 6845f0a1b2c3d4e5f6a7b8c9 --title-name 客户名称 -
   {"type":"DROP_DOWN", "name":"等级", "options":["VIP","普通","潜在"]}
 ]'
 
-# 场景 B：完整读出 → 在真实结构上改 → 整表写回（--controls 原样回传）
+# 场景 B：完整读出 → 在真实结构上改 → 整表写回（--raw + --controls，这条路干净往返）
 hap --json worksheet fields 6845f0a1b2c3d4e5f6a7b8c9 --raw > controls.json
 # ……编辑 controls.json：只动目标控件，其余键原样保留……
-hap worksheet update-fields 6845f0a1b2c3d4e5f6a7b8c9 --controls "$(cat controls.json)"
+hap worksheet update-fields 6845f0a1b2c3d4e5f6a7b8c9 --controls @controls.json --check
+hap worksheet update-fields 6845f0a1b2c3d4e5f6a7b8c9 --controls @controls.json
 ```
 
 坑位提示：
@@ -114,11 +170,79 @@ hap worksheet update-fields 6845f0a1b2c3d4e5f6a7b8c9 --controls "$(cat controls.
 - **永远不要**用 update-fields 来「加一个字段」——加字段用 add-fields 或 `field.add`。
 - 新建工作表自带的 名称/描述/附件 列在 update-fields 后会被丢弃，想保留就显式传回。
 - 写回时未知键原样保留，不要清洗你看不懂的键。
+- **条目带不带 `id` 决定它是改已有列还是建新列**：带 `id`（`worksheet fields` 输出里的那个）
+  就是改那一列，数据留着；不带 `id` 当成新列由服务端铸 id，而原来那一列如果没出现在这次
+  列表里，它和它存的数据一起消失。
+- **保存成功 ≠ 保存对了**：引用了已不存在的字段、表单里留下空行、同一列出现两次，这些都能
+  保存成功而不报错。`--check` 只报告问题不写入，改结构前先跑一次；真正保存后会**自动回读**
+  把这次留下的问题报出来（要关掉用 `--no-verify`）。看到报告别当噪音。
+- `--fields` 和 `--controls` 都接受 **`@文件名`**：真实整表布局远超一条命令行能承载的长度。
+
+### 双向关联：一对列，不是一个开关
+
+关联字段默认单向：A 表能点名 B 表的记录，B 表看不到 A。要双向，在字段 `config` 里开
+`bidirectional` 并给对方表上那一列起名，**一次建好两侧**：
+
+```bash
+hap worksheet add-fields <订单表ID> --controls '[
+  {"type": 29, "controlName": "客户", "dataSource": "<客户表工作表ID>",
+   "advancedSetting": {"bidirectional": "1", "showtype": "1"}}
+]'
+```
+
+或走整表布局的高层方言（`update-fields --fields` / `worksheet create --fields`）：
+
+```json
+{"type":"RELATE_SHEET", "name":"客户", "dataSource":"<客户表工作表ID>",
+ "config":{"bidirectional": true, "reverseName": "订单", "displayMode": "card"}}
+```
+
+走 edit-spec 时用 `relation` 块，目标表和展示列都可以写名字：
+
+```json
+{ "type": "field.add", "worksheet": "订单",
+  "field": { "name": "客户", "type": "RELATE_SHEET",
+             "relation": { "worksheet": "客户", "multiple": false,
+                           "showFields": ["客户名称", "等级"] } } }
+```
+
+> `relation` 块本身**不含 `bidirectional`**（块内未知键会被校验拒绝）。edit-spec 里要双向，
+> 先用 `relation` 块把关联建出来，再 `hap worksheet pair-relation` 补反向端；或者把
+> `advancedSetting` 塞进 `control` 逃生口。词汇与校验规则见
+> [edit-spec.md](edit-spec.md) 的「field 的跨表块」。
+
+- 这会在客户表上**真的建出一列**「订单」。`reverseName` 是对方表上那列的名字，不给就用本表名。
+- `displayMode` 取 `dropdown` / `card` / `inlineTable` / `tabTable`。
+- 已经有好几条反向关联的表，改结构时**用 `add-fields` 或 `field.add` 加列**，别整体替换布局——
+  反向列很容易在替换里被漏掉。
+
+#### 给已存在的关联字段补反向端
+
+建的时候没开 `bidirectional`，事后要补，用 `pair-relation`，**不要去改布局**：
+
+```bash
+hap worksheet pair-relation <工作表ID> 客户                # FIELD 传列名或字段 ID
+hap worksheet pair-relation <工作表ID> 客户 --name 订单     # 指定对方表上那列的名字
+hap worksheet pair-relation <工作表ID> 客户 --repair       # 覆盖对方表上的残留列
+```
+
+> 🚨 **不要用「占位 `sourceControlId`」自己伪造反向端。** 那样建出来的关联服务端并没有登记成
+> 反向端，而且**之后每做一次整表替换，这个字段就会被复制多出一份**，越改越多。已经这么配过的
+> 表用 `--repair` 收拾：它覆盖对方表上的残留列（含重复的多份），**只重写那一列，两张表其余列不动**。
+> 不加 `--repair` 时命令会先停下来告诉你有残留，不会擅自覆盖。
+
+#### 怎么判断一个关联到底是不是双向
+
+看 `hap worksheet fields` 输出里该字段的 `relation.bidirectional`：`true`/`false` 是已查证的
+结论，**`null` 表示查不出来**（通常是对方表没有读取权限）。
+
+**不能用「有没有 `sourceControlId`」判断双向**——单向关联也带着它，那只是给反向端预留的位置，
+目标表里并不存在这么一列。只有去对方表里找得到那一列才算数。
 
 ## 数据字典
 
-字典生成于 2026-06-10；未覆盖的键以读命令（`hap --json worksheet fields <id> --raw`）返回的实际结构为准。
-速查也可用 `hap worksheet field-types`。
+字典核对于 hap-cli 0.9.0；未覆盖的键以读命令（`hap --json worksheet fields <id> --raw`）返回的实际结构为准。
+速查用 `hap worksheet field-types`（它是运行时生成的，与本表不一致时以它为准）。
 
 ### 1. 控件类型枚举（`type` 整数）
 
@@ -174,7 +298,7 @@ hap worksheet update-fields 6845f0a1b2c3d4e5f6a7b8c9 --controls "$(cat controls.
 | 52 | SECTION | Section | 标签页（注意：不是 22 分段） |
 | 53 | FORMULA_FUNC | FunctionFormula | 函数公式 |
 | 54 | CUSTOM | CustomField | 自定义（插件）组件 |
-| 10010 | REMARK | — | 备注（静态文字） |
+| 10010 | REMARK | Remark | 备注（静态文字） |
 
 地区类的 CODE 统一是 `Region`，由 `regionLevel`（`"province"`/`"city"`/`"county"`，
 默认 county）分流到 19/23/24。
@@ -186,7 +310,7 @@ hap worksheet update-fields 6845f0a1b2c3d4e5f6a7b8c9 --controls "$(cat controls.
 
 | 键 | 含义 | 值形态 |
 |---|---|---|
-| `controlId` | 字段 id；新建时可不传或预置 UUID，更新时必传 | string |
+| `controlId` | 字段 id；**新建时必须省略**（服务端铸；自造的 id 会建出永远读不出值的空白列），更新时必传 | string |
 | `controlName` | 字段显示名 | string |
 | `type` | 控件类型（见 §1） | int 枚举 |
 | `alias` | API 别名（记录读写时可用） | string |
@@ -206,6 +330,8 @@ hap worksheet update-fields 6845f0a1b2c3d4e5f6a7b8c9 --controls "$(cat controls.
 | `showControls` | RELATE_SHEET / SUB_LIST：在选择器/内联列表中展示的关联字段 | controlId 的 JSON 数组 |
 | `relationControls` | SUB_LIST：完整子控件对象列表（内联新建或挂载已有表） | 控件对象数组，先读后改 |
 | `userPermission` | 成员/部门字段权限标志（默认 1） | int |
+| `fieldPermission` | 三位串：能否看见 / 能否编辑 / 新建记录时能否看见。与角色权限**按位与**之后才是最终结果 | `"111"` 这样的三位串 |
+| `controlPermissions` | 同上三位，字段自身允许的部分；`fields` 输出的 `isHidden` / `isReadOnly` / `isHiddenOnCreate` 就是这两串按位与算出来的 | 三位串 |
 | `dot` | 小数位（NUMBER 默认 0、MONEY/FORMULA_NUMBER 默认 2） | int |
 
 ### 3. 各控件类型高价值 advancedSetting 键
@@ -263,10 +389,33 @@ hap worksheet update-fields 6845f0a1b2c3d4e5f6a7b8c9 --controls "$(cat controls.
 | `row` / `col` / `size` | 显式网格位置/跨度；不传则自动流式布局（半宽两列一行） | int |
 | `layout` | `{span: 3|6|12}`，等价于 `size` | 对象 |
 | `config` | RELATE_SHEET 便捷块：`displayMode`(`"dropdown"`/`"card"`=单条，`"inlineTable"`/`"tabTable"`=多条)、`showFields`、`coverField`、`bidirectional` | 对象 |
-| `defaultValue` | 高层默认值，自动转 `advancedSetting.defsource`：`{source:"static", value}` 或 `{source:"field", field}` 或 `{source:"relationField", relationField, field}` | 对象 |
+| `defaultValue` | 高层默认值**数组**（不是单个对象），自动转 `advancedSetting.defsource`。每项 `{source, …}`：`{source:"static", value}`、`{source:"field", field}`、`{source:"relation", relationField, field}`（`relationField` 是关联字段、`field` 是取关联记录上的哪一列）、`{source:"system", value}`（`value` 取 `currentUser` / `now` / `currentLocation`）。source 写成别的会被整项丢掉 | 数组 |
 | `advanced_setting` / `advancedSetting` | 直写 advancedSetting 子键（见 §3） | 字符串值的对象 |
 | `extra` | 逃生口：合并进最终控件的任意原始键 | 对象（WireControl 键） |
 
 只读输出键（`id`、`alias`、`subType`、`precision`、`max`、`unit`、`desc`、`remark`、
-`isReadOnly`、`isHidden`、`isHiddenOnCreate`、`sourceType`、`relation`）在写入时会被
-自动忽略——`fields` 默认输出可以原样喂回 `--fields`，无需手工清洗。
+`isReadOnly`、`isHidden`、`isHiddenOnCreate`、`sourceType`、`relation`）在写入时会被自动忽略。
+
+`worksheet fields` 的默认输出**可以原样回传 `--fields`**，不需要任何手工清洗：空的
+`dataSource` / `sourceField` 会被忽略，选项键统一是 `isDeleted`，颜色和分值原样保留。
+
+```bash
+hap --json worksheet fields <工作表ID> > layout.json
+# 编辑 layout.json
+hap worksheet update-fields <工作表ID> --fields @layout.json --check
+hap worksheet update-fields <工作表ID> --fields @layout.json
+```
+
+要字节级控制 `advancedSetting` 时改走 `--raw` + `--controls`（原样下发，不做任何翻译）。
+注意**非空**的 `dataSource` 放在不接受它的类型上仍会报错——那是真的用错了，不是往返问题。
+
+其中 `isReadOnly` / `isHidden` / `isHiddenOnCreate` 是**算出来的真实值**（由
+`fieldPermission` 与 `controlPermissions` 按位与得出，见 §2），可以据此判断某个字段在表单里
+到底是不是被隐藏或锁定；`relation.bidirectional` 同理，`null` 表示查不出而不是「不是双向」。
+
+### 5. 同一个数字在不同位置意思不同
+
+- 字段类型 `2` 是文本；关联字段的 `sourceControlType: 2` 表示这是个关联；导航显示状态 `2` 是全隐藏。
+  用 `--visibility hidden` 这种名字就不用记该填哪个 `2`。
+- `enumDefault` / `enumDefault2` **每种字段类型含义都不一样**，不要把在某个类型上试出来的值
+  套到别的类型上（见 §2 的分类型说明）。

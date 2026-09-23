@@ -26,6 +26,19 @@ hap app chatbot rename <appId> <chatbotId> --section-id <sectionId> --name "售�
 hap app chatbot update-config <chatbotId> --welcome-text "欢迎咨询" \
   --preset-question "新问题一" --preset-question "新问题二"
 hap app chatbot delete <chatbotId> -a <appId> -y
+
+# 应用回收站：删掉的工作表 / 自定义页 / AI 助手，带删除人和时间
+hap app trash -a <appId>
+hap app trash -a <appId> -k 订单            # 按名称过滤
+
+# 分组内工作表排序（按顺序传完整 ID 列表）
+hap app sort-worksheets <appId> <sectionId> <wsId1> <wsId2> <wsId3>
+
+# 操作日志：定位「这个改动是谁什么时候做的」
+hap app logs <appId> --kind app --start "2026-09-01 00:00:00"
+hap app logs <appId> --kind record --ip <地址> --source-id <集成ID>
+hap app log-archives                      # 超出近期窗口的按时段归档
+hap app logs <appId> --archived-id <归档ID>
 ```
 
 坑位提示：
@@ -36,6 +49,24 @@ hap app chatbot delete <chatbotId> -a <appId> -y
 - 整应用从零创建不在本 skill 范围（用 hap-mcp-app-builder）；这里只编辑已存在的应用。
 - chatbot 的 `--preset-question` 可重复传，`update-config` 时是**整组替换**而非追加。
 - 想让 AI 起草助手配置，先 `hap app chatbot generate <appId> "<一句话描述>"` 拿到建议的名字/图标/开场白/提示词，再喂给 `create`。
+- `app logs` 不指定 `--start/--end` 时默认**最近 30 天**；更早的要先 `app log-archives` 拿归档 id
+  再用 `--archived-id` 查。`--kind` 取 `all|app|record|user`。
+- **备份、角色改名这类操作失败不再被当成功**：以前服务端用裸状态码表示「超限额」「重名」，CLI 照样
+  报成功；现在会按状态码判定并非零退出。
+
+### 删了之后怎么确认真的删掉了
+
+工作表、自定义页、AI 助手的删除**默认都是进应用回收站**，不是抹掉。删完用
+`hap app trash -a <appId>` 核对：能看到它，说明删成功了（还能还原）；看不到，才说明它根本没被删掉。
+
+| 对象 | 默认 | 彻底删除 |
+|---|---|---|
+| 自定义页 | 进回收站 | `hap custom-page delete … --permanently` |
+| AI 助手 | 进回收站 | `hap app chatbot delete … --permanent` |
+| 工作表 | 进回收站 | **CLI 目前没有出口**——只能在界面上从回收站里彻底删 |
+
+两个 `--permanent(ly)` 现在是真的彻底删（先进回收站再按回收站记录彻底删，删不掉会报错并非零退出），
+所以加了它之后 `app trash` 里**看不到**才是正确结果。
 
 ## 数据字典
 
@@ -67,5 +98,5 @@ hap app chatbot delete <chatbotId> -a <appId> -y
 | --section-id | 所在导航分组 | string | create / rename / delete |
 | --remark | 简介 | string | create |
 | --icon / --icon-color | 图标与颜色 | string | create / rename |
-| --permanent | 彻底删除（默认进回收站） | flag | delete |
+| --permanent | 彻底删除；不加就进应用回收站，用 `hap app trash` 能看到也能还原 | flag | delete |
 | --lang | 起草语言类型，0=默认 | int | generate |

@@ -19,10 +19,58 @@
         "required": { "type": "boolean" },
         "unique": { "type": "boolean" },
         "options": { "type": "array" },
-        "relation": { "type": "object" },
-        "lookup": { "type": "object" },
-        "rollup": { "type": "object" },
-        "formula": { "type": "string" }
+        "relation": {
+          "type": "object",
+          "description": "Relation fields: which worksheet the records come from.",
+          "additionalProperties": false,
+          "required": ["worksheet"],
+          "properties": {
+            "worksheet": { "type": "string", "minLength": 1, "description": "Worksheet the related records come from — name or id." },
+            "multiple": { "type": "boolean", "description": "true = several records, false = one (default)." },
+            "showFields": { "type": "array", "items": { "type": "string" }, "description": "Columns of the far worksheet to surface — names or ids." }
+          }
+        },
+        "lookup": {
+          "type": "object",
+          "description": "Lookup fields: mirror a column of a related record.",
+          "additionalProperties": false,
+          "required": ["via", "field"],
+          "properties": {
+            "via": { "type": "string", "minLength": 1, "description": "Relation column on this worksheet to reach the other one through — name or id." },
+            "field": { "type": "string", "minLength": 1, "description": "Column on the far worksheet to mirror — name or id." }
+          }
+        },
+        "rollup": {
+          "type": "object",
+          "description": "Rollup fields: add up a column of the related records.",
+          "additionalProperties": false,
+          "required": ["via", "field"],
+          "properties": {
+            "via": { "type": "string", "minLength": 1, "description": "Sub-table or multi-record relation column on this worksheet — name or id." },
+            "field": { "type": "string", "minLength": 1, "description": "Column on the far worksheet to add up — name or id." }
+          }
+        },
+        "formula": { "type": "string", "minLength": 1, "description": "Formula fields: the expression, e.g. \"$id1$ * $id2$\"." },
+        "subtable": {
+          "type": "object",
+          "description": "Sub-table fields: either the columns of a new child worksheet (fields), or an existing worksheet to mount (worksheet). Exactly one of the two.",
+          "additionalProperties": false,
+          "oneOf": [
+            { "required": ["fields"] },
+            { "required": ["worksheet"] }
+          ],
+          "properties": {
+            "fields": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "$ref": "#/$defs/field" },
+              "description": "Columns of the child worksheet to create, in the same clean form as a top-level field."
+            },
+            "worksheet": { "type": "string", "minLength": 1, "description": "Existing worksheet to mount as the sub-table — name or id." },
+            "showFields": { "type": "array", "items": { "type": "string" }, "description": "Which child columns the inline list shows — names or ids. Defaults to all visible ones." }
+          }
+        },
+        "control": { "type": "object", "description": "Raw control keys, merged last. Escape hatch for shapes the clean vocabulary does not model." }
       }
     },
     "add": {
