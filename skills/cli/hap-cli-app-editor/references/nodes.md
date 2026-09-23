@@ -66,7 +66,20 @@
 通用坑位（先读完再动手）：
 
 - **accounts 收件人编码是头号坑**：`type` 字段反直觉——`1`=固定用户（accountId 放在 `roleId` 里，不是 entityId！）、`2`=应用角色（`entityId`=应用 ID、`roleId`=角色 ID）、`6`=动态引用（触发者 `roleId:"uaid"`；成员字段引用放该字段的 controlId）、`7`=邮箱字面量（放 `entityId`）。编码错会让收件人显示为「已删除」、流程无法发布。完整结构 → [WorkflowAccounts](../scripts/types/workflow-accounts.schema.json)。
-- **条件里的字段键拼写是 `filedId`**（历史拼写，不是 `fieldId`——写成 `fieldId` 会被静默忽略，条件永远不命中）。条件是二维数组：外层 OR、内层 AND。完整结构 → [OperateCondition](../scripts/types/operate-condition.schema.json)。
+- **条件分两种写法，看你走哪条命令**：
+  - `save-action` / `save-search` / `save-get-more` 的 `--condition` 用统一筛选写法
+    `{"logic":"and","items":[{"field":"<列>","op":"eq","value":"<值>"}]}`——列写 ID、别名或标题都行，
+    类型自动查出来。工作流条件专属两样：`node` 指明这一列属于哪个上游步骤，`value` 写成对象
+    （`{"kind":"field","node":…,"fieldId":…}` 跟另一步骤的列比，`{"kind":"systemField","fieldId":"nowTime"}`
+    跟系统值比）。**工作流没有 `between`**，写 `gte` + `lte` 两条。可用的比较方式见 `hap guide record filter`。
+  - `node save -c` 里的条件只收**存储形态**：`operateCondition` 是二维数组（外层 OR、内层 AND），
+    字段键是历史拼写 `filedId`（不是 `fieldId`——写成 `fieldId` 会被静默忽略，条件永远不命中）。
+    完整结构 → [OperateCondition](../scripts/types/operate-condition.schema.json)。
+    🚨 **在 `node save -c` 里写统一写法是静默失效的**：放进 `operateCondition` 会被当场拒绝（提示它要
+    二维数组），但放进 `filter` / `condition` 键时**命令报成功、条件却被清空**，分支从此对所有记录放行。
+    要用统一写法就走上面三个快捷命令的 `--condition`。
+  - **读回时条件在哪个键**，跟写入用的键不是一回事：查询 / 数据 / 多条记录节点读回在 `filters`（每组带
+    `spliceType`），分支项读回在 `conditions`；`operateCondition` 只是写入时用的键。
 - 字段写入项（fields）的动态值用 `$<nodeId>-<fieldId>$` 模板引用上游节点的字段，nodeId 来自 `node list`。完整结构 → [WorkflowFieldWrite](../scripts/types/workflow-field-write.schema.json)。
 - 数据 / 查询 / 获取多条记录节点的目标工作表用 `node add --app-id` 给定，**也可以稍后在配置节点时再设置**。
 - `node add` 还有几个位置与搬运选项：`--gateway parallel|exclusive`（分支节点走每条路还是只走第一条
@@ -108,7 +121,7 @@ hap workflow node save-action <pid> <nid> -a 1 --app-id <worksheet_id> \
 hap workflow node save-action <pid> <nid> -a 2 --app-id <worksheet_id> \
   -s <source_node_id> \
   -f '[{"fieldId":"<金额字段id>","type":6,"fieldValue":"100"}]' \
-  --condition '[[{"filedId":"<字段id>","filedTypeId":6,"conditionId":"9","conditionValues":[{"value":"0"}]}]]'
+  --condition '{"logic":"and","items":[{"field":"<金额字段>","op":"gt","value":0}]}'
 ```
 
 ### SEARCH(7) — 查询单条记录
@@ -116,7 +129,8 @@ hap workflow node save-action <pid> <nid> -a 2 --app-id <worksheet_id> \
 ```bash
 # 按条件查一条，查不到就新建（--not-found 1），新建时写入 fields
 hap workflow node save-search <pid> <nid> -a 406 --app-id <worksheet_id> \
-  --condition '[[{"filedId":"<编号字段id>","filedTypeId":2,"conditionId":"2","conditionValues":[{"value":"","nodeId":"<trigger_node_id>","controlId":"<编号字段id>"}]}]]' \
+  --condition '{"logic":"and","items":[{"field":"<编号字段>","op":"eq",
+       "value":{"kind":"field","node":"<trigger_node_id>","fieldId":"<编号字段id>"}}]}' \
   --sorts '[{"controlId":"ctime","controlType":16,"isAsc":false}]' \
   --not-found 1 \
   -f '[{"fieldId":"<编号字段id>","type":2,"fieldValue":"$<trigger_node_id>-<编号字段id>$"}]'
@@ -338,6 +352,7 @@ hap workflow node save <pid> <gatewayId> --type 1 -c '{"flowIds":["<newId>","<ex
 
 # 3. 写新分支项的进入条件
 hap workflow node save <pid> <newId> --type 2 -c '{"operateCondition":[[{"filedId":"<字段id>","filedTypeId":6,"conditionId":"9","conditionValues":[{"value":"0"}]}]]}'
+# ↑ node save -c 走的是存储形态（filedId 二维数组），不收统一筛选写法
 
 # 4. 在新分支项后接动作节点
 hap workflow node add <pid> --type 6 -n "处理" --after <newId> -a 1 --app-id <worksheet_id>

@@ -76,17 +76,36 @@ hap worksheet delete-custom-action <worksheetId> <btnId> --view-id <viewId> --pl
 | sureName | 确认按钮文案 | string（默认 "确认"） |
 | cancelName | 取消按钮文案 | string（默认 "取消"） |
 | isAllView | 在所有视图显示 | int 0/1（默认 1） |
-| icon / color / showType / isBatch / advancedSetting | wire 键直通，原样复制 | 按 wire 键表 |
+| verifyPwd | 执行前要求验证密码 | bool（默认 false） |
+| workflowId | 指定按钮驱动的流程（默认 "" = 用自动生成的那条） | string |
+| runWorkflowAfterSubmit | 显式决定提交后跑不跑流程，**覆盖下表的 workflowType** | bool（true→1、false→2；不给就按 type 定） |
+| icon / color / showType / isBatch | wire 键直通，原样复制 | 按 wire 键表 |
+| advancedSetting | **不是原样复制**，见下方「advancedSetting 会被改写」 | 字符串值的对象 |
+| listViews / detailViews | 按钮在哪些视图上出现（行内 / 记录页） | viewId 数组，落库时序列化成字符串并改名 `listviews` / `detailviews` |
+
+`desc` 还有个未写在别处的别名：不给 `desc` 时会取 `remark`（V3 用后者命名悬浮说明）。
 
 ### type → wire 降级映射
 
 | spec type | clickType | writeType | writeObject | 额外 wire 键 |
 |---|---|---|---|---|
-| updateCurrentRecord | 3（填写） | 1（填写字段） | 1（本记录） | `writeControls: [{controlId, type}]`，type 按字段推导（见下） |
-| createRelatedRecord | 3（填写） | 2（新建关联记录） | 2（关联记录） | `addRelationControlId`、`relationControl` |
-| triggerWorkflow（默认） | 1（立即执行）；带 confirm 时 2（二次确认） | ""  | "" | — |
+| updateCurrentRecord | 3（填写） | 1（填写字段） | 1（本记录） | `writeControls: [{controlId, type}]`，type 按字段推导（见下）；`workflowType: 2` |
+| createRelatedRecord | 3（填写） | 2（新建关联记录） | 2（关联记录） | `addRelationControlId`、`relationControl`；`workflowType: 2` |
+| triggerWorkflow（默认） | 1（立即执行）；带 confirm 时 2（二次确认） | ""  | "" | `workflowType: 1` |
 
-固定下发：`workflowType: 1`（按钮驱动其关联流程）、`isAllView`。
+**`workflowType` 不是固定 1**：1=提交后执行那条流程、2=不执行。填写类的两种按钮下发 2，
+`triggerWorkflow` 下发 1；给了 `runWorkflowAfterSubmit` 则以它为准。固定下发的只有 `isAllView`。
+
+**填写类按钮的二次确认靠 `enableConfirm`，不是 `clickType`**：`clickType` 为 3 时给了
+`confirm` / `confirmMsg`，适配器会另外下发 `enableConfirm: true`——少了它，确认文案存进去了但对话框不出现。
+
+### advancedSetting 会被改写
+
+走 `--action-spec` 时 `advancedSetting` **不是原样复制**：
+
+- 三个键每次都补齐（你没给才补）：`remarkrequired="1"`（备注必填）、`remarkname`（备注框标题）、
+  `tiptext`（完成提示），少了它们确认框里是个没标题的理由框。
+- `listViews` / `detailViews` 会被序列化成 JSON 字符串，并改名成小写的 `listviews` / `detailviews` 落库。
 
 **`writeControls[].type` 由字段自身推导，不是固定值**：不可写的类型（附件、公式、备注…）给 `1`
 只读，工作表上必填的字段给 `3` 必填，其余给 `2` 填写。走 `--action-spec` / edit-spec 的
@@ -102,7 +121,7 @@ hap worksheet delete-custom-action <worksheetId> <btnId> --view-id <viewId> --pl
 | writeType | 填写类型 | int enum：1=填写字段，2=新建关联记录 |
 | writeObject | 填写对象 | int enum：1=本记录，2=关联记录 |
 | writeControls | 填写字段清单 | `[{controlId, type}]`；type：1=只读，2=填写，3=必填 |
-| addRelationControlId | 新建关联记录的目标关联字段 | controlId string |
+| addRelationControlId | 新建关联记录的目标关联字段（**写入用这个键；`custom-actions` 读回来叫 `addRelationControl`，无 `Id` 后缀**） | controlId string |
 | relationControl | 关联配套值 | string |
 | showType | 显示条件 | int enum：1=一直显示，2=满足筛选条件；**没设门控的按钮读回来可能是 `0`**，以读回值为准 |
 | filters | 显示/可用筛选 | → [FilterCondition[]](../scripts/types/filter-condition.schema.json) |
@@ -111,6 +130,10 @@ hap worksheet delete-custom-action <worksheetId> <btnId> --view-id <viewId> --pl
 | confirmMsg / sureName / cancelName | 二次确认文案三件套 | string |
 | icon / color | 图标与颜色 | string |
 | isBatch | 允许批量执行 | bool |
+| enableConfirm | 填写类按钮（clickType 3）的二次确认开关 | bool；走 action_spec 时由 confirm 推导，裸 config 要自己给 |
+| verifyPwd | 执行前验证密码 | bool |
+| workflowId | 按钮驱动的流程 id | string |
+| btnType / displayViews / status / iconUrl / updateTime / updateAccountId | 读回还会带这些，改按钮时原样保留即可 | 以读命令返回为准 |
 | advancedSetting | 高级设置 | object（以读命令返回为准） |
 
 ## 🚨 edit-spec 里的 `config` 是原始逃生口，不经适配

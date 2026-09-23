@@ -148,8 +148,10 @@ wire 层键名不是一回事：高层方言由 CLI 翻译成 `editAttrs` + `adv
 
 写错位置会被直接拒绝：
 
-- **看板 / 层级 / 地图 / 资源**：分组是**维度**（按哪个字段分成列），写在 `config.groupField`
-  （`view create --group-control` 就是它）。
+- **看板 / 层级 / 地图 / 资源**：分组是**维度**（按哪个字段分成列），但**四种视图各读各的 config 子键**，
+  写错键会被静默忽略：看板 `config.groupField`、层级 `config.relationField`、地图 `config.locationField`、
+  资源 `config.resourceField`。（命令级简写 `view create --group-control` 不走这些键，它直接写 wire 的
+  `viewControl`，四类都通用。）
 - **表格 / 画廊**：分组是**显示方式**（把行按某字段收拢成一段段），写在**顶层 `groupBy`**。
 
 ```jsonc

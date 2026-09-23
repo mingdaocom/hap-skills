@@ -389,7 +389,7 @@ hap worksheet pair-relation <工作表ID> 客户 --repair       # 覆盖对方�
 | `row` / `col` / `size` | 显式网格位置/跨度；不传则自动流式布局（半宽两列一行） | int |
 | `layout` | `{span: 3|6|12}`，等价于 `size` | 对象 |
 | `config` | RELATE_SHEET 便捷块：`displayMode`(`"dropdown"`/`"card"`=单条，`"inlineTable"`/`"tabTable"`=多条)、`showFields`、`coverField`、`bidirectional` | 对象 |
-| `defaultValue` | 高层默认值，自动转 `advancedSetting.defsource`：`{source:"static", value}` 或 `{source:"field", field}` 或 `{source:"relationField", relationField, field}` | 对象 |
+| `defaultValue` | 高层默认值**数组**（不是单个对象），自动转 `advancedSetting.defsource`。每项 `{source, …}`：`{source:"static", value}`、`{source:"field", field}`、`{source:"relation", relationField, field}`（`relationField` 是关联字段、`field` 是取关联记录上的哪一列）、`{source:"system", value}`（`value` 取 `currentUser` / `now` / `currentLocation`）。source 写成别的会被整项丢掉 | 数组 |
 | `advanced_setting` / `advancedSetting` | 直写 advancedSetting 子键（见 §3） | 字符串值的对象 |
 | `extra` | 逃生口：合并进最终控件的任意原始键 | 对象（WireControl 键） |
 
