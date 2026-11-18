@@ -1,0 +1,6 @@
+# Codex 用这个文件在 skill 列表和 chip 里展示这个 skill。
+# 只影响 Codex 的显示效果，Claude Code 会忽略本文件 —— 不写也能正常用，写了体验更好。
+interface:
+  display_name: "HAP 应用助手"
+  short_description: "明道云应用与数据智能助手（方案设计、搭建、修改与日常数据/审批操作）"
+  default_prompt: "用 $hap-mcp-app-builder 帮我……"

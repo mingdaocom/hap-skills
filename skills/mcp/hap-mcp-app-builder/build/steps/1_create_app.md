@@ -1,98 +1,67 @@
-# Step 1：创建应用与导航分组
+# Step 1: 创建应用外壳、导航分组与页面空壳 SOP (`1_create_app`)
 
-你是 HAP 应用创建执行器，负责创建应用实体和导航分组。
+<!-- SOURCE: build-app/create-app-sub-agent.yaml -->
+<!-- SOURCE: build-app/custom-page-create-sub-agent.yaml -->
 
-## 输入数据
+## 一、 本地宿主输入与参考映射
 
-- `org_id`：组织 ID（来自 `hap-plan.json`）
-- `appName`：应用名称（来自 `hap-plan.json`）
-- `appIcon`：应用图标（来自 `hap-plan.json`）
-- `appColor`：应用配色（来自 `hap-plan.json`）
-- `enableExternalPortal`：是否启用外部门户（来自 `hap-plan.json`，若规划了外部门户角色则为 `true`）
-- `sections`：导航分组列表（来自 `hap-plan.json`）
-
-## 执行流程
-
-1. 调用 `create_app` 创建应用，获得 `appId`（参数规则见下方）
-2. 调用 `create_app_sections` 批量创建导航分组，记录 `sectionIdByName`
-3. 写入应用访问链接（见下方）
-4. 更新 `hap-context.json`：写入 `appId`、`sectionIdByName`（不写 `progress`，由调度器统一管理）
-
-**⛔ 验证断言**：`appId` 非空，`sectionIdByName` 条目数等于 plan 中分组数量。
+- **执行方式**：主调度器极速内联执行（建壳、建分组、建页面空壳），随后紧接阅读 `build/steps/1b_update_app_desc.md` 内联更新应用说明与使用手册，一并将物理 ID 写入 `hap-context.json` 并置 `progress = "app_created"`。
+- **输入数据来源**：`{PROJECT_ROOT}/.hap-copilot/apps/{appName}/hap-plan.json`（含 `org_id`、`appName`、`appIcon`、`appColor`、`navLayout`、`navColor`、`enableExternalPortal`、`requirements`、`navGroups`、`customPages`）。
+- **必读领域规范**：`references/hap-domain-app-spec.md`、`references/hap-icon-palette.md`
+- **主要业务工具**：`["create_app", "create_app_sections", "create_app_items"]`
 
 ---
 
-## 参数规则
+## 二、 核心构建规则与执行步骤
 
-### remark
+### Part A：创建应用实体与导航分组（源自 `create-app-sub-agent.yaml`）
 
-面向 AI 和开发者的应用描述。根据 plan 中的应用定位和核心功能，概括为1～2简洁的描述。
+1. **解析应用级 `requirements` 与默认推断规则**：
+   - 将顶层 `requirements` 中的导航与应用设置要求优先映射到 `create_app` 参数（应用介绍与使用手册交由异步 Step 1b 处理，本步**严禁传 `remark` 和 `desc`**）；
+   - **`navLayout` 推断规则**（用户明确要求优先，如“顶部导航”→`top`、“树形导航”→`tree`、“分组导航”→`group`、“卡片导航”→`card`；未指定时默认 `group`，层级深选 `tree`，多独立业务域并列选 `top`，门户工作台型选 `card`）；
+   - **`navColor` 推断规则**（仅限枚举 `appColor | white | gray | black`，不支持自定义 HEX：蓝/绿/紫等深色主题默认 `appColor`；红/橙/黄等亮色主题选 `white`；重工/监控中心选 `black`；明确要求灰色选 `gray`）。
+2. **调用 `create_app`**（参数核实与异常恢复遵循 [宿主适配](../../HOST_ADAPTER.md)，成功后复用真实 `appId`）：
+   - `orgId`：`hap-plan.json` 中的 `org_id`（必填，注意参数名为 `orgId` 而非 `projectId`）；
+   - `name`：`appName`（必填）；
+   - `icon`：`appIcon`（带 `sys_` 前缀的合法 `fileName`）；
+   - `color`：`appColor`（HEX 色值，注意参数名为 `color` 而非 `iconColor`）；
+   - `navLayout` / `navColor`：按上述规则取值；
+   - `enableExternalPortal`：创建时传入已确认 Plan 的布尔值；为 `true` 时随应用创建一并启用，未指定时默认 `false`；
+   - 提取并原样保留返回的真实 `appId`；应用 ID 的格式以服务返回为准，不按工作表的 24 位 ID 格式推断。
+3. **批量创建导航分组 `create_app_sections`**：
+   - 若 `navGroups` 非空，按 `navGroups` 原顺序（严禁重排）转为 `sections: [{ "name": "<分组名>" }, ...]`，调用一次 `create_app_sections(appId, sections)`；
+   - 建立分组名称到真实 ID 的映射字典 `sectionIdByName`。
 
-### desc
+### Part B：批量创建自定义页面空壳（源自 `custom-page-create-sub-agent.yaml`）
 
-面向用户的应用使用手册（**必须使用原生 HTML + 行内 CSS 编写，禁止使用 Markdown**）。读取 `{PROJECT_ROOT}/apps/{appName}/overview.md` 和 `hap-plan.json` 中的 `roles` 列表，以用户视角改写为按角色组织的使用手册。
+1. **组装页面项列表**：遍历 `customPages`（合并全部 `dashboard` 与 `workspace` 页面），为每页构造一个 `item`：
+   - `name`：页面名称原样；
+   - `type`：固定 `"customPage"`；
+   - `icon`：优先原样使用页面规划的 `sys_` 前缀 `icon`；缺失时回退（`dashboard` → `"sys_dashboard"`，`workspace` → `"sys_hr_workbench"`）；
+   - `sectionId`：从 `sectionIdByName` 按 `groupName` 反查（查不到则省略）；
+   - `remark`：根据页面 `description` 用 `appLanguage` 生成一句简洁业务定位说明。
+2. **一次性调用 `create_app_items`**：
+   - 当 `customPages` 非空时，将全部页面合并到同一次 `create_app_items(appId, items)` 调用中（已成功页面不重复创建，部分失败只补缺项）；
+   - 从返回结果提取每个页面的真实 24 位 hex `id`，建立 `customPageIdByName`（`{ "<页面名>": "<pageId>" }`）与 `customPageContext`（`[{ "name", "pageId", "description" }]`）。
 
-**内容结构**：
+### Part C：写入应用直达链接卡片
 
-1. **开头**：一段简短的应用介绍（1～2 句话说明应用用途）
-2. **核心业务流转**：用一段话或简短的步骤列表，概述端到端的主业务流程（如"预约 → 开单 → 服务 → 结账 → 清洁"），让用户理解各角色之间如何协作、数据如何流转
-3. **按角色分块**：为 `roles` 中的每个角色生成独立章节，每个章节包含：
-   - 角色名称（作为小标题）
-   - 职责说明（一句话概括该角色做什么）
-   - 核心操作（该角色日常使用哪些功能模块，操作步骤是什么）
-   - 可访问的页面/工作台（如果有专属仪表盘或工作台，提及入口）
-   - 审批相关（如有）：该角色需要发起哪些审批、或需要审批哪些事项，通过/驳回后的效果
-4. **关键状态说明**：解释核心业务单据的状态流转（如"待处理 → 处理中 → 已完成"各代表什么，是手动操作还是系统自动变更）
-5. **注意事项**：从业务流程中提炼 2～4 条容易踩坑的使用提醒（如操作顺序约束、不可逆操作提示等）
-6. **AI 助手说明**（如有）：简要介绍 AI 助手的用途
-
-- **数据来源**：从 `overview.md`、`hap-plan.json` 的 `roles`、`workflows`、`worksheetCustomActions` 中提取
-- **去掉**：ER 图、设计思路、技术性描述、开发者视角的内容
-- **语气**：面向用户的"使用指南"，帮助每个角色的用户快速了解自己能做什么、怎么操作
-- **排版**：使用 HTML 标签排版（如 `<h3>`、`<ul><li>`、`<p>`、`<div style="...">`），可辅以应用颜色，样式美观，层次分明，便于快速浏览。**不要使用 Markdown 语法（如 `#`、`-`、`**`）**
-
-### navLayout
-
-根据应用的业务场景和复杂度选择：
-
-| 场景 | 值 |
-|------|-----|
-| 默认（大多数业务应用） | `group` |
-| 结构复杂、层级深（多层分组） | `tree` |
-| 多业务域并列（多个独立模块） | `top` |
-| 门户/工作台型（首页入口明显） | `card` |
-
-### navColor
-
-根据应用配色的色温选择：
-
-| 色温 | 值 | 适用色系 |
-|------|-----|---------|
-| 暗色系 | `appColor` | 蓝、绿、紫等 |
-| 亮色系 | `white` | 红、橙、黄等 |
-| 深色风格 | `black` | 重工、监控中心、品牌工作台、AI/云平台控制台等少数场景 |
-
-
+根据当前 MCP 服务对应域名（如 `meihua.mingdao.com`、`sandbox.mingdao.com` 或 `www.mingdao.com`），在 `{PROJECT_ROOT}/.hap-copilot/apps/{appName}/overview.md` 顶部写入访问链接提示块 `https://{前端域名}/app/{appId}`。
 
 ---
 
-## 写入应用访问链接
+## 三、 本地状态落盘契约
 
-根据当前使用的 MCP 服务地址，确定前端域名：
+将初始化结果写入 `{PROJECT_ROOT}/.hap-copilot/apps/{appName}/hap-context.json`（若走运行时引擎也可同步写入 `.build/receipts/step1-app-init.json`）：
 
-| MCP 服务地址 | 前端域名 |
-|---|---|
-| `api.mingdao.com/mcp` | `www.mingdao.com` |
-| `<非*.mingdao.com的host>/mcp` | `<非*.mingdao.com的host>` |
-
-> 不是 *.mingdao.com 的MCP服务地址，就使用该域名作为前端域名
-
-拼接应用链接 `https://{前端域名}/app/{appId}`，在 `{PROJECT_ROOT}/apps/{appName}/overview.md` 文件的最顶端（第 1 行）追加写入链接卡片：
-
-```markdown
-> [!TIP]
-> **🎉 应用已物理创建成功！**
-> **访问链接**：[点击此处立即进入系统 ➔](https://{前端域名}/app/{appId})
-
----
+```json
+{
+  "appName": "<appName>",
+  "appId": "<服务返回的真实appId>",
+  "org_id": "<org_id>",
+  "language": "<language>",
+  "progress": "app_created",
+  "sectionIdByName": { "业务总览": "<sectionId>" },
+  "customPageIdByName": { "经营看板": "<pageId>" }
+}
 ```

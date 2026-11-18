@@ -1,71 +1,75 @@
-# Step 10：创建并发布系统工作流
+# Step 10: 单条系统工作流设计、创建、校验与发布 SOP (`10_create_workflows`)
 
-你是 HAP 应用的工作流执行器。你会收到由上游设计师设计好的详细工作流节点方案，你的职责是：**忠实地将方案翻译为 API 调用**，完成工作流的创建和发布。
+<!-- SOURCE: build-app/workflow-design-sub-agent.yaml -->
+<!-- SOURCE: build-app/workflow-build-sub-agent.yaml -->
 
-你**不做业务决策**——节点的业务逻辑、分支条件、通知策略等已经由设计师确定。你只需要：
-1. 将方案中的工作表名称、字段名称映射为 `worksheetContext` 中的真实 ID
-2. 按正确的顺序调用工具创建节点
-3. 处理分支、审批块、子流程等结构化配置
+## 一、 本地宿主输入与参考映射
 
-> ⚠️ **严格遵循工具定义（最高优先级）**
->
-> **所有参数值必须从工具定义的 `enum`、`pattern`、`description` 中精确复制，禁止基于语义自行推理或改写。**
+- **执行方式**：独立 Subagent 按**单条系统工作流**并发执行，在同一子代理上下文内一气呵成完成 **「7 维闭环节点设计 ➔ 真实 ID 与身份映射 ➔ 物理建流与节点注入 ➔ 校验修复与发布」**，消除双阶段 JSON 传话失真与重复读表开销。
+- **输入切片**：读取 `.build/task-context/{taskId}.json`：
+  - `planSlice`：`workflow`（来自 `hap-plan.json` 的单条系统流定义，含 `name`、`description`、`trigger`、`intentHints`、`requirements`）、`workflowIndex`（全应用系统流职责索引）、`customActionIndex`（全应用动作流职责索引）、`relationLayouts`、`appLanguage`；
+  - `contextSlice`：`appId`、`org_id`（用作人员/部门查询的 `orgId`）、`worksheetIdByName`、`roleContext`（`[{ name, id, roleScope }]`）、`viewIdByName`；
+  - `worksheetContextSlice`：已建工作表真实 `worksheetId` 及字段 `{ name, id, alias, type, options }`（含选项 `{ key, value, index }`）。
+- **必读领域规范**：`references/hap-workflow-design-guide.md`、`references/hap-domain-workflow-spec.md`
+- **主要业务工具**：`["find_member", "find_department", "get_current_user", "get_worksheet_field", "get_worksheet_structure", "create_process", "get_workflow_structure", "get_workflow_node", "get_workflow_variables", "update_workflow_node", "update_workflow_variables", "batch_create_process_nodes", "batch_delete_process_nodes", "validate_process", "publish_process", "get_sms_signatures"]`
 
-> **⚠️ 必须完整阅读 `build/steps/workflow_rules.md` 后再开始执行。** 该文件包含所有工作流创建的共享规则（触发节点约定、易错规则、节点创建原则等）。
+---
 
-> [!CAUTION]
-> **出错恢复策略**：当 `publish_process` 或 `batch_create_process_nodes` 返回错误时（如 `NodeAppIsNull`、`StartNodeControlsIsNull`、`INVALID_NODE` 等），**不要盲目重试**。先回 `workflow_rules.md` 查找对应的错误名称，按规则修正后再重试。
+## 二、 核心构建规则与执行步骤
 
-## 输入数据
+### 1. 基于真实表结构的节点拓扑设计（源自 `workflow-design-sub-agent.yaml`）
+1. **只用真实上下文与主动等价纠正**：严格基于 `worksheetContextSlice` 中真实存在的表名、24 位字段 `id` 与选项 `key` 设计条件、查询、计算和更新，严禁捏造不存在的字段或选项；上游描述中的实现细节若与真实字段类型、表关系或节点能力不符，保留业务目标并按真实结构纠正为最简合法节点设计（如单条记录的多选人员/部门字段直接由单个通知节点群发，不拆成 `sub_process`；`compute` 仅用于数值或日期计算，文本拼接直接在模板中完成）。对照 `workflowIndex` 与 `customActionIndex` 明确本流程边界，避免与按钮动作流重复写数或互相循环触发。
+2. **完整因果闭环**：将 `workflow` 的 `description`、`intentHints` 与 `requirements` 全部落实为“触发（更新时间触发必设具体监听字段防死循环）→ 必要关联/单条取数 → 业务计算/审批/分支 → 状态与关联写回/通知”的完整节点链，不得停留在仅取数的半截步骤。
+3. **审批块（`approval_block`）双分支闭环硬门禁**：
+   - 凡包含 `approval_block` 的审批流程，**严禁只建一个孤立的 `approval_block` 就结束或发布**！
+   - 审批前确保单据状态处于“待审批/审核中”（若触发条件本身未限定或前置未置状态，先用 `update_record` 写入对应选项 `key`）；
+   - **必须完整处理通过与驳回两种审批结果**：按当前 Schema 选择合法位置。父流程若支持读取审批块最终结果，可在块后使用支持该输出的普通条件分支；若 `approval_result` 仅接受 `approve` 前驱，须在审批块内部 `approve` 之后建立该分支，不能接在父流程 `approval_block` 后。路径首节点的 `prevNode` 指向分支、`parentNode` 指向对应路径，更新引用该作用域内真实记录节点：
+     - **通过路径**：调用 `update_record` 将状态更新为业务约定的通过后状态（真实选项 `key`）+ 完成必要的下游关联写回/台账生成 + 使用当前 Schema 支持的通知节点通知发起人；
+     - **驳回路径**：调用 `update_record` 将状态回退为“已驳回/待修改”（真实选项 `key`）+ 使用当前 Schema 支持的通知节点通知发起人驳回信息以便修改重提。
+4. **人员与通知语义保真**。确认应用角色真实存在，并从 `roleContext` 或 `roleIdByName` 绑定该角色真实 ID（`PersonRef { kind: "role", id }`）。角色成员为空或数量未知仅记入 `issues` 说明审批、通知可能无人接收；不追问成员、不自动加人、不因此阻止发布。角色身份无法确认则继续无依赖配置并如实报告身份缺口。固定人员或部门用 `find_member` / `find_department`，组织参数取 `contextSlice.org_id`。“通知我”用 `get_current_user`，运行时发起人用 `triggerUser`，短信签名用 `get_sms_signatures`。
 
-- `appId`：应用 ID
-- `worksheetContext`：工作表结构列表，来自 `worksheetContext.json`（只读）。选项字段含 `options` 数组（`key` 是选项真实 ID，`value` 是中文名）。在节点中给选项字段赋值时，**必须且只能使用 `key`**。
-- `viewIdByName`：视图名称 → ID 映射（来自 `hap-context.json`）
-- `roleContext`：角色列表，含 `id` 和 `name`（来自 `hap-context.json`）
-- `workflowDesign`：来自 `hap-plan.json` 的 `workflows[]`，其中每条工作流的 `nodes` 字段包含由设计师输出的完整节点方案
+### 2. 物理创建、参数核实与发布流水线（源自 `workflow-build-sub-agent.yaml`）
+1. **Lazy MCP Schema 必读与 `appId` 必传铁律**：
+   - 按 [宿主适配](../../HOST_ADAPTER.md) 核实参数：宿主仅显示 `unknown` 时定位目标子类型并核对当前环境；若处于 Lazy-loaded MCP 环境（如 `call_mcp_tool`），首次调用 `create_process`、`batch_create_process_nodes`、`update_workflow_node`、`validate_process`、`publish_process` 前**必须先读取对应的 `.json` Schema 文件**确认 `approval_block`、`branch`、`update_record`、`Condition.op` 结构及必填字段；所有应用内流程接口调用时均须显式传入 `"appId": contextSlice.appId`。
+2. **字段与选项铁律**：
+   - 节点中引用业务 `fieldId` **必须使用 24 位真实 `id`，严禁传 `alias`**；
+   - 给单选/多选/下拉字段赋值时，**必须且只能传选项的真实 `key`**，严禁传中文名 `value`！关联取数节点的目标表由来源关联字段自动推导，不传 `worksheetId`；严禁直接更新公式/汇总/他表只读衍生字段。
+3. **创建流程外壳**：若 `worksheet_event` / `date_field` 的触发工作表 ID 缺失，先核对工程上下文与线上表列表；仍无法定位时报告依赖缺口，不伪造 ID 或跳过必需流程。恢复时用已有流程 ID 回读；缺 ID 时用 `get_workflow_list` 按名称、触发表和触发类型定位，再核对节点。复用本工程的流程，只补缺项，已发布且符合方案的直接回执。确认尚未创建时调用 `create_process(appId, name, description, publish: false, trigger)`，读取返回的 `processId` 与 **`triggerAlias`**（缺失 `triggerAlias` 时按需调用 `get_workflow_structure` 兜底取 `trigger.nodeAlias`）。
+4. **批量注入节点与内部块由内向外发布**：
+   - 调用 `batch_create_process_nodes(workflow_id: processId, nodes)` 一次性或分组写入节点（触发记录引用使用 `triggerAlias`）；
+   - 若含 `approval_block / sub_process / loop`，单独对其内部 `processId` 完成校验与 `publish_process`，**先内后外**。
+5. **校验定点修复、等价自愈与主流程发布**：
+   - 调用 `validate_process(workflow_id: processId)`；若有 `issues` 或设计与真实接口/字段不一致，按 `references/hap-domain-workflow-spec.md` 第四节（`nodeId / path / hint`）用 `update_workflow_node`（`config` 传原生 Object）或局部补建/重建**主动完成等价自愈并补齐合理默认参数**，严禁静默删减审批或通知节点凑发布；
+   - 遵循 [宿主适配](../../HOST_ADAPTER.md)「零代码建模与配置态交付原则」：流程内通过前置状态查询/分支过滤保障幂等；只要核心节点齐全且 `validate_process` 返回 `valid: true`，**必须立即调用 `publish_process(workflow_id: processId)` 发布上线**（超时或结果未知先回读防重），不因运行态事项或底层并发锁假设保留草稿。
 
-## 执行范围
+---
 
-> [!IMPORTANT]
-> 本步骤**仅处理系统级工作流**（即由定时/字段变更/记录创建等系统事件触发的工作流，在 plan 中没有 `processId` 的那些）。
-> 自定义动作工作流由下一步（Step 11）独立处理。
+## 三、 本地回执落盘契约
 
-## 执行流程
+> **顶层 `status` 与 `outputs.status` 严格区分铁律**：
+> - 顶层 `"status"` 表示**本搭建任务是否完成落库**（枚举仅 `"succeeded" | "failed"`）；`outputs.status` 表示**线上工作流的发布状态**（`"published" | "draft"`）。
+> - `validate_process` 通过并调用 `publish_process` 完成后，以 `status: "succeeded"` 和 `outputs.status: "published"` 记成功；角色成员为空或未知、尚未试跑仅记入 `issues`，不当作草稿理由。仅当接口报错或外部必需短信签名确实缺失导致服务端拒绝发布时，才保留真实 ID 与证据记录未完成。
 
-对每条**系统工作流**（plan 中无 `processId` 的）：
+执行完成后，写入 `receiptPath`（`.build/receipts/step10-sys-wf-{name}.json`）：
 
-### 步骤 1：创建工作流并获取触发节点引用
-
-1. 物理调用 `create_process` 创建工作流，获得 `processId`。
-2. 调用 `get_workflow_structure` 获取触发节点的 `nodeAlias`，作为后续所有节点引用触发记录的标识。
-
-### 步骤 2：创建主流程节点
-
-调用 `batch_create_process_nodes` 追加所有主流程节点。其中 `sub_process` **只传空壳**（不含 `config.process.nodes`），详见 `workflow_rules.md` 原则 4。审批块（`approval_block`）仍按原则 3 一次性内联创建。
-
-### 步骤 3：填充子流程内部节点（如有 sub_process）
-
-步骤 2 的 `batch_create_process_nodes` 返回值中，`data.data.createdNodes[]` 数组包含每个创建的节点。其中 `nodeType: "sub_process"` 的节点会携带一个 `processId` 字段——这就是系统为该子流程自动创建的**内部流程 ID**。
-
-对每个子流程的内部 processId：
-
-1. 调用 `get_workflow_structure`（传内部 processId），获取内部触发节点别名（固定 `sub_trigger`）
-2. 调用 `batch_create_process_nodes`（传内部 processId），创建子流程内部节点
-
-### 步骤 4：发布工作流
-
-**⚠️ 含子流程/审批块时必须按 `workflow_rules.md` 中「发布工作流」的发布顺序操作：先发布所有内部 processId → 最后发布主流程，否则 `NodeAppIsNull` 致命错误。**
-
-## 完成
-
-不写 `progress`（由调度器统一管理）。
-
-**⛔ 验证断言**：plan 中所有系统级工作流均已获得 `processId`，且调用 `publish_process` 返回成功。
-
-## 输出要求
-
-- 必须创建所有方案中的系统工作流，不能因为部分节点映射失败而跳过整条工作流
-- 单个节点映射失败时，跳过该节点，继续创建后续节点
-- 每条工作流发布完成后，简洁说明（1 句话）
-- 如有跳过的节点，说明原因
-- 全部完成后输出汇总
+```json
+{
+  "taskId": "<来自 taskContext.taskId>",
+  "runId": "<runId>",
+  "executor": { "kind": "subagent", "agentId": "<agentId>" },
+  "step": "10",
+  "target": { "type": "workflow", "id": "<processId>", "name": "<workflowName>" },
+  "status": "succeeded",
+  "outputs": {
+    "workflowName": "<workflowName>",
+    "processId": "<processId>",
+    "status": "published",
+    "description": "<已发布简述用途；若为 draft/skipped/unknown 说明具体原因>"
+  },
+  "verification": {
+    "passed": true,
+    "evidence": ["已完成系统工作流节点设计、创建、validate_process 校验与 publish_process 发布"]
+  },
+  "issues": []
+}
+```

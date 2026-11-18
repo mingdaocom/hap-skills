@@ -18,7 +18,7 @@
 | CLI | **hap-cli-app-editor** | 对**已有应用**做精确的局部修改（字段/视图/工作表/角色权限/工作流/自定义动作/页面） |
 | CLI | **hap-cli-data-query** | 复杂查数：多条件 AND/OR 筛选、嵌套分组、透视聚合统计（求和/计数/平均/分组） |
 | CLI | **hap-cli-environments** | 多环境/多账号操作守则：授权了多个 HAP 环境或账号时，决定在哪个环境/账号上执行，破坏性操作前先确认 |
-| MCP | **hap-mcp-app-builder** | 全自动一站式应用构建器：方案设计（Plan）→ 确认 → 自动物理搭建（Build），支持中断后一键续建 |
+| MCP | **hap-mcp-app-builder** | 全生命周期应用与数据助手：方案设计（Plan）→ 自动并发搭建（Build）→ 12 域存量应用修订（Modify）→ 日常业务数据查询与审批操作（Data） |
 | API | **hap-apiv3-data** | HAP V3 接口实操：鉴权（Appkey/Sign/PAT/OAuth）、Filter 筛选、记录的查询与增删改 |
 | API | **hap-api-website** | HAP + 前端项目完整搭建指南：用 HAP 当后端，后台配置 → 前端项目结构 → API 集成与数据渲染 |
 | API | **hap-view-plugin** | 开发 HAP 自定义视图插件（mdye）：初始化项目、启动调试、开发工作流、V3 接口集成与最佳实践 |
@@ -114,9 +114,9 @@ Agent 会自动克隆仓库并把技能装到对应位置。
 
 ### MCP 场景（基于 MCP 服务）
 
-#### hap-mcp-app-builder — 全自动应用构建器
+#### hap-mcp-app-builder — 全生命周期应用与数据助手（v2.0）
 
-适合「一句话全自动建应用」：从业务方案设计（Plan）开始，与你确认后自动进入物理搭建（Build）；若方案已存在，可直接一键续建/恢复。通过 `/hap-mcp-app-builder` 或直接用对话描述系统诉求（如「帮我搭建一个客户管理应用」）触发。是从零搭建完整 HAP 应用的推荐方式（走 MCP 服务而非命令行）。
+基于明道云（HAP）MCP 服务的一站式智能助手：完整覆盖从业务方案设计（Plan）、自动并发物理搭建（Build）、已有应用 12 大业务域增量修改（Modify），到日常业务数据检索、透视统计、增删改与审批待办处理（Data）。通过 `/hap-mcp-app-builder` 或直接用自然语言描述诉求（如「帮我搭建一个客户管理应用」「在订单表加个字段」「帮我查下我的待办审批」）触发。
 
 ### API 场景（基于 HAP V3 HTTP 接口）
 

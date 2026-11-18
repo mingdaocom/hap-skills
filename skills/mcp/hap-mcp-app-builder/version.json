@@ -1,6 +1,9 @@
 {
-  "version": "1.0.0",
-  "releaseNotes": "初始版本：方案设计 + 11 步物理搭建全流程",
+  "name": "hap-mcp-app-builder",
+  "version": "2.0.0",
+  "schemaVersion": 1,
+  "minToolsCount": 170,
+  "releaseNotes": "全新升级为全生命周期应用与数据助手：支持方案设计（Plan）、并发物理搭建（Build）、12 域存量应用修订（Modify）与日常业务数据/审批操作（Data）（更新完成后请立即重新读取根目录 SKILL.md 按新版工作流执行）",
   "repository": "https://github.com/mingdaocom/hap-skills",
   "branch": "main",
   "skillPath": "skills/mcp/hap-mcp-app-builder"
