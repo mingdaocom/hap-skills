@@ -29,14 +29,14 @@
 
 ### Part A：自定义动作与视图创建（源自 `view-build-sub-agent.yaml`）
 1. **先建自定义动作（若有）**：
-   - 若为中断续跑，先调用 `get_custom_action_list(appId, worksheet_id: worksheetId)` 核查已存在动作并直接复用其 `id` 与 `workflowId`，仅补建缺失项；
+   - **仅中断续跑时查已有列表**：全新构建（无 `previousReceipt`）直接调用 `create_custom_actions`，**无需写前调用 `get_custom_action_list`**；仅当 `previousReceipt` 存在或恢复续跑时，先调 `get_custom_action_list(appId, worksheet_id: worksheetId)` 复用已存在动作 `id` 与 `workflowId`，仅补建缺失项；
    - 若 `customActions` 非空，按 `references/hap-domain-custom-action-spec.md` 及各动作的 `requirements`、`runWorkflowAfterSubmit`、`recordScope` 组装参数，调用 1 次 `create_custom_actions(appId, worksheet_id: worksheetId, actions)`；
    - **区分按钮启用与工作流启用**：按钮新建默认 `status: 1`（启用），其预建空壳工作流默认处于未发布（关闭）状态，在 Step 11 发布前不会执行，**因此规划可用的按钮一律保持默认启用（`status: 1`），无需预先停用**；仅方案显式指定停用（`enabled: false` / `status: 0`）时设 `status: 0`，复用已有按钮时不改变其独立停用状态。
    - 记录返回的动作真实 `id` 与原样回传的关联 `workflowId`（回执中写入 `processId` 字段，无流程时为空串），供下一步视图挂载及阶段 4 使用。每个动作回执写 `createdByBuild`（本次新建为 true，复用既有为 false）（历史工程若曾记录 `disabledForWorkflowSetup` / `initialEnabled`，恢复时原样保留）。
 2. **再建工作表视图（单表严禁无视图，保持规划视图类型保真）**：
-   - 若 `views` 非空：将大驼峰类型转为 API 小驼峰（`Table→table`、`Kanban→kanban`、`Calendar→calendar`、`Gallery→gallery`、`Hierarchy→hierarchy`、`Gantt→gantt` 等），查阅 `create_view` 实时 Schema 匹配本表真实分组/日期/层级字段构建规划视图（误作展示字段的主表名不传；`batchActions` 仅挂载支持批量执行的本表动作；仅当本表确实不存在任何可承载该高级视图类型的真实字段时，才回退为 `table` 并在 `issues` 注明），按 `references/hap-domain-view-spec.md` 将本表缺失视图**合并为一次 `create_view(appId, worksheet_id: worksheetId, views)` 批量提交**；
+   - 若 `views` 非空：将大驼峰类型转为 API 小驼峰（`Table→table`、`Kanban→kanban`、`Calendar→calendar`、`Gallery→gallery`、`Hierarchy→hierarchy`、`Gantt→gantt` 等），匹配本表真实分组/日期/层级字段构建规划视图（误作展示字段的主表名不传；`batchActions` 仅挂载支持批量执行的本表动作；仅当本表确实不存在任何可承载该高级视图类型的真实字段时，才回退为 `table` 并在 `issues` 注明），按 `references/hap-domain-view-spec.md` 将本表缺失视图**合并为一次 `create_view(appId, worksheet_id: worksheetId, views)` 批量提交**；
    - 若 `views` 为空（常见于明细子表）：**必须创建 1 个兜底表格视图** `[{ "name": "全部记录", "type": "table" }]`（英文环境用 `"All"`），确保后续示例数据与查询 API 正常可用；
-   - 对规划、复用和兜底视图均应用视图规范。复用同名同类型视图，以 `get_view_structure` 核对每个视图的实际筛选字段及条件并记入回执；缺项用 `update_view` 在原视图补齐。
+   - **新建视图免逐个回读**：本次调用 `create_view` 新建成功的视图直接采用返回结果记入回执，**不固定逐个调用 `get_view_structure` 回读**；仅在恢复续作复用线上已有同名同类型视图且筛选条件未知时，才调用 `get_view_structure` 核对并用 `update_view` 补齐缺项。
 
 ### Part B：表单业务规则创建（源自 `business-rule-build-sub-agent.yaml`）
 1. 结合本表用途、实际字段、`businessRules` 和 `contextSlice.businessRulesNotes`，按 `references/hap-domain-business-rule-spec.md` 与 `create_business_rule` 实时 Schema 落地交互、校验、锁定与样式规则：

@@ -29,8 +29,8 @@
 4. **人员与通知语义保真**。确认应用角色真实存在，并从 `roleContext` 或 `roleIdByName` 绑定该角色真实 ID（`PersonRef { kind: "role", id }`）。角色成员为空或数量未知仅记入 `issues` 说明审批、通知可能无人接收；不追问成员、不自动加人、不因此阻止发布。角色身份无法确认则继续无依赖配置并如实报告身份缺口。固定人员或部门用 `find_member` / `find_department`，组织参数取 `contextSlice.org_id`。“通知我”用 `get_current_user`，运行时发起人用 `triggerUser`，短信签名用 `get_sms_signatures`。
 
 ### 2. 物理创建、参数核实与发布流水线（源自 `workflow-build-sub-agent.yaml`）
-1. **Lazy MCP Schema 必读与 `appId` 必传铁律**：
-   - 按 [宿主适配](../../HOST_ADAPTER.md) 核实参数：宿主仅显示 `unknown` 时定位目标子类型并核对当前环境；若处于 Lazy-loaded MCP 环境（如 `call_mcp_tool`），首次调用 `create_process`、`batch_create_process_nodes`、`update_workflow_node`、`validate_process`、`publish_process` 前**必须先读取对应的 `.json` Schema 文件**确认 `approval_block`、`branch`、`update_record`、`Condition.op` 结构及必填字段；所有应用内流程接口调用时均须显式传入 `"appId": contextSlice.appId`。
+1. **高效参数核对与 `appId` 必传铁律**：
+   - 按 [宿主适配](../../HOST_ADAPTER.md) 与任务包内联的 `references/hap-domain-workflow-spec.md` 构造 `create_process`、`batch_create_process_nodes`、`update_workflow_node`、`validate_process`、`publish_process` 参数（内联工具或单次 `ToolSearch` 加载后直接调用，**严禁在终端用 `find/jq/python` 搜索或拆解外部 `.json` Schema 文件**）；所有应用内流程接口调用时均须显式传入 `"appId": contextSlice.appId`。
 2. **字段与选项铁律**：
    - 节点中引用业务 `fieldId` **必须使用 24 位真实 `id`，严禁传 `alias`**；
    - 给单选/多选/下拉字段赋值时，**必须且只能传选项的真实 `key`**，严禁传中文名 `value`！关联取数节点的目标表由来源关联字段自动推导，不传 `worksheetId`；严禁直接更新公式/汇总/他表只读衍生字段。

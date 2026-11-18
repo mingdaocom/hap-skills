@@ -24,6 +24,7 @@ import datetime
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 from typing import Any, Dict, List, Optional, Tuple
@@ -571,13 +572,17 @@ def get_stage_tasks_definitions(app_dir: str, stage: str) -> List[Dict[str, Any]
             action_groups = plan.get("customActions") or plan.get("worksheetCustomActions") or []
             related_actions = [action for group in action_groups if isinstance(group, dict)
                                and group.get("worksheet") == name for action in group.get("actions") or []]
+            ws_dump = json.dumps(ws, ensure_ascii=False).lower()
+            s2a_refs = ["references/hap-domain-worksheet-spec.md"]
+            if any(k in ws_dump for k in ("customfield", "customwidget", "自由字段", "自定义字段", "(48)", "(54)", ":48", ":54")):
+                s2a_refs.append("references/hap-domain-custom-field-spec.md")
             tasks.append({
                 "taskId": f"step2a-ws-{normalize_name(name)}",
                 "taskName": f"[Step 2a] 创表 - {name}",
                 "step": "2a",
                 "target": {"type": "worksheet", "name": name},
                 "stepFile": "build/steps/2a_create_worksheets.md",
-                "references": ["references/hap-domain-worksheet-spec.md", "references/hap-domain-custom-field-spec.md"],
+                "references": s2a_refs,
                 "allowedTools": ["create_worksheet", "update_worksheet", "update_worksheet_settings"],
                 "receiptPath": f".build/receipts/step2a-ws-{normalize_name(name)}.json",
                 "taskContextPath": f".build/task-context/step2a-ws-{normalize_name(name)}.json",
@@ -1295,28 +1300,51 @@ def compile_task_bundles(
         f"- **准许工具白名单 (`allowedTools`)**: `{json.dumps(task_ctx_data.get('allowedTools', []), ensure_ascii=False)}`\n"
         f"- **回执落盘路径 (`receiptPath`)**: `{task_ctx_data.get('receiptPath', '')}`\n"
         "- **执行范围**：Plan 给出本步的业务目标、对象和用户明确的取舍。开工前读齐任务包中的领域规范正文，结合真实字段、用途与状态落实适用条款。Plan 未逐项列出的配置也按规范补全；区分必须、默认、按需及例外，新增业务政策或权限仍以用户授权为准。\n"
-        f"- **接口调用**：配置目标依领域规范确定，参数和可用能力以当前服务的实时 MCP Schema 为准；优先使用支持的原生配置。写入限于本步白名单，必要时只读核对。应用内调用显式携带 `appId`（`{app_id_val}`）。分卷读取及 Schema 定位遵循 `{os.path.join(skill_root, 'HOST_ADAPTER.md')}`。\n"
+        f"- **接口调用**：配置目标依领域规范确定，参数和可用能力以当前服务的实时 MCP Schema 为准；内联工具或单次 `ToolSearch` 加载后直接结合本包内联规范调用（无需额外读取 `HOST_ADAPTER.md` 或外部规范，**严禁在终端用 `find/jq/python` 搜索或拆解外部 `.json` Schema 文件**）。写入限于本步白名单，必要时只读核对。应用内调用显式携带 `appId`（`{app_id_val}`）。分卷读取及 Schema 定位遵循 `{os.path.join(skill_root, 'HOST_ADAPTER.md')}`。\n"
         "- **完成与续作**：保留规划类型及已建 ID，用写入结果或定向回读核对核心配置。在现有回执记录具体证据及有影响的缺项；已有对象在原对象补齐，续作先核对 previousReceipt 和线上状态。回执写入 `receiptPath` 后直接输出简短总结并结束当前轮次，切勿调用 `send_message` 等跨代理通信工具向父会话发送消息。\n\n"
         f"{acceptance_rules}\n"
         f"---\n\n## [1] 步骤执行 SOP (`{step_rel}`)\n\n{step_text.strip()}\n\n"
     ]
 
-    plan_dump = json.dumps(task_def.get("planSlice", {}), ensure_ascii=False).lower()
+    plan_slice = task_def.get("planSlice") or {}
+    ctx_slice = task_def.get("contextSlice") or {}
+    plan_dump = json.dumps(plan_slice, ensure_ascii=False).lower()
     ref_rel_list = task_def.get("references") or []
     # 示例规范含写入所需的资源表，置于全应用字段清单之前。
     context_section = f"专属任务上下文数据 (`taskContext`)\n\n```json\n{ctx_json_str}\n```\n"
     if step != "5":
         sections[0] += f"---\n\n## [2] {context_section}"
     for idx, ref_rel in enumerate(ref_rel_list, start=2 if step == "5" else 3):
-        # Step 2a 若不涉及自定义自由字段，无需内联 custom-field-spec
+        # Step 2a 若不涉及自定义自由字段，无需内联 custom-field-spec（避免颜色如 #3054eb 误命中子串 "54"）
         if step == "2a" and "custom-field-spec" in ref_rel:
-            if not any(k in plan_dump for k in ("customfield", "customwidget", "自由字段", "自定义字段", "48", "54")):
+            if not any(k in plan_dump for k in ("customfield", "customwidget", "自由字段", "自定义字段", "(48)", "(54)", ":48", ":54")):
+                continue
+        if step == "3" and ref_rel.endswith("hap-domain-custom-action-spec.md"):
+            if not plan_slice.get("customActions"):
+                continue
+        if step == "6" and ref_rel.endswith("hap-chart-design-guide.md"):
+            page_obj = plan_slice.get("page") if isinstance(plan_slice.get("page"), dict) else {}
+            if page_obj.get("type") == "workspace" and not page_obj.get("charts"):
                 continue
         ref_text = load_text(os.path.join(skill_root, ref_rel))
         if not ref_text:
             continue
+        if step == "2a" and ref_rel.endswith("hap-domain-worksheet-spec.md"):
+            ref_text = extract_h2_sections(ref_text, [
+                "工作表元数据与配置规范", "字段设计业务思考与选型决策", "字段通用控制属性与约束",
+                "特殊字段配置说明", "Divider", "Layout 12", "选项字段规范",
+                "默认值", "字段辅助文本规范", "工作表设置与表单体验增强规范",
+            ])
+        elif step == "2b" and ref_rel.endswith("hap-domain-worksheet-spec.md"):
+            ref_text = extract_h2_sections(ref_text, [
+                "字段通用控制属性与约束", "特殊字段配置说明", "Layout 12",
+                "Relation 跨表关联字段规范", "关联衍生控件规范",
+            ])
+        elif step == "3" and ref_rel.endswith("hap-domain-business-rule-spec.md"):
+            if not plan_slice.get("businessRules") and not ctx_slice.get("businessRulesNotes"):
+                ref_text = extract_h2_sections(ref_text, ["业务规则定位与核心设计场景", "四类规则"])
         # Step 8 角色权限只需 hap-app-design-guide 中的角色与外部门户章节
-        if step == "8" and ref_rel.endswith("hap-app-design-guide.md"):
+        elif step == "8" and ref_rel.endswith("hap-app-design-guide.md"):
             ref_text = extract_h2_sections(ref_text, ["角色权限", "外部门户"])
         sections.append(f"---\n\n## [{idx}] 必读领域规范全文 (`{ref_rel}`)\n\n{ref_text.strip()}\n")
 
@@ -1700,8 +1728,12 @@ def cmd_validate_plan(app_dir: str) -> Dict[str, Any]:
                 json.dumps(act.get("intentHints") or [], ensure_ascii=False),
                 json.dumps(act.get("requirements") or [], ensure_ascii=False),
             ])
-            # 剔除后台自动赋值与关联字段定语（如“将指派无人机状态置为…”“自动填写”），避免名词定语误触发人工输入警告
-            sanitized_text = combined_text
+            # 剔除否定/免输入表达（如“零人工输入”“无需现场填写”）及后台自动赋值定语，避免误触发人工输入警告
+            sanitized_text = re.sub(
+                r"(?:100%\s*)?(?:零|无|无需|不用|不需|无须|免|不)[^，。；,;！!\s]{0,8}(?:输入|填写|录入|选择|指派|弹窗|表单)",
+                "",
+                combined_text,
+            )
             for benign_phrase in (
                 "指派无人机", "指派设备", "指派车辆", "指派人员", "已指派", "所指派",
                 "自动填写", "自动写入", "自动录入", "自动设置", "无需填写", "无需输入", "零输入",
@@ -2539,6 +2571,7 @@ def main():
     p_fin = subparsers.add_parser("finalize", help="汇总校验回执并生成阶段报告")
     p_fin.add_argument("--app-dir", type=str, required=True, help="应用项目根目录")
     p_fin.add_argument("--progress", type=str, default="", help="可选显式指定 progress")
+    p_fin.add_argument("--advance-and-prepare", action="store_true", help="当 canAdvance 为 true 时，自动执行 advance 并准备下一阶段任务包")
 
     p_adv = subparsers.add_parser("advance", help="在报告放行后原子推进状态机")
     p_adv.add_argument("--app-dir", type=str, required=True, help="应用项目根目录")
@@ -2571,6 +2604,12 @@ def main():
         res = cmd_refresh(args.app_dir)
     elif args.command == "finalize":
         res = cmd_finalize(args.app_dir, args.progress if args.progress else None)
+        if args.advance_and_prepare and res.get("canAdvance"):
+            adv_res = cmd_advance(args.app_dir)
+            res["advancedResult"] = adv_res
+            next_prog = adv_res.get("newProgress") or res.get("nextProgress") or ""
+            if adv_res.get("advanced") and next_prog and next_prog != "completed":
+                res["nextStagePrepare"] = cmd_prepare(args.app_dir, next_prog, True)
     elif args.command == "advance":
         res = cmd_advance(args.app_dir)
     elif args.command == "status":

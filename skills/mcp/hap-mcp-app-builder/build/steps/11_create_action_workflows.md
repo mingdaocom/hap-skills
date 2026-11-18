@@ -33,14 +33,14 @@
      3. **严禁只建孤立的 `approval_block` 漏写通过/驳回状态回写分支就发布上线！**
 
 ### 2. 参数核实、节点注入与校验上线（源自 `custom-action-workflow-sub-agent.yaml`）
-1. **Lazy MCP Schema 必读与 `appId` 必传铁律**：宿主仅显示 `unknown` 时按 [宿主适配](../../HOST_ADAPTER.md) 定位子类型并核对当前环境；若处于 Lazy-loaded MCP 环境（如 `call_mcp_tool`），首次调用 `get_workflow_structure`、`batch_create_process_nodes`、`update_workflow_node`、`validate_process`、`publish_process` 前**必须先读取对应的 `.json` Schema 文件**确认 `approval_block`、`branch`、`update_record`、`Condition.op` 结构，且所有应用内流程接口均须显式传入 `"appId": contextSlice.appId`。
+1. **高效参数核对与 `appId` 必传铁律**：按 [宿主适配](../../HOST_ADAPTER.md) 与任务包内联的 `references/hap-domain-workflow-spec.md` 构造 `get_workflow_structure`、`batch_create_process_nodes`、`update_workflow_node`、`validate_process`、`publish_process` 参数（内联工具或单次 `ToolSearch` 加载后直接调用，**严禁在终端用 `find/jq/python` 搜索或拆解外部 `.json` Schema 文件**），且所有应用内流程接口均须显式传入 `"appId": contextSlice.appId`。
 2. **组织身份解析**。确认规划角色真实存在，按 `roleContext` 或 `roleIdByName` 绑定真实角色 ID。角色成员为空或未知仅记录审批、通知的送达限制；不追问、不自动加人，也不阻止发布。身份无法确认则继续无依赖配置并报告具体缺口。只有方案指定固定人员、部门或签名时才解析对应身份。
-3. **批量创建节点**：调用 `batch_create_process_nodes(workflow_id: processId, nodes)` 注入完整节点链（流程内各 `nodeAlias` 保持唯一，不直接写只读衍生字段）。
+3. **批量创建节点（免注入后重复回读）**：调用 `batch_create_process_nodes(workflow_id: processId, nodes)` 注入完整节点链（流程内各 `nodeAlias` 保持唯一，不直接写只读衍生字段）；注入成功后直接进入下一步 `validate_process`，**无需在注入后或发布后重复调用 `get_workflow_structure` 回读**。
 4. **内部块先内后外发布、等价自愈与主流程发布**：
    - 含 `approval_block / sub_process / loop` 时，先对内部 `processId` 完成校验与 `publish_process`；
    - 对主流程调用 `validate_process(workflow_id: processId)`，若有 `issues` 或设计与真实来源/字段不一致，按 `references/hap-domain-workflow-spec.md` 第四节（`nodeId / path / hint`）用 `update_workflow_node`（`config` 为原生 Object）或局部补建/重建**主动完成等价自愈并补齐合理默认参数**，严禁私自删减核心业务节点凑发布；
    - 遵循 [宿主适配](../../HOST_ADAPTER.md)「零代码建模与配置态交付原则」：配合按钮 `enableWhen` 与流程内前置状态过滤保障幂等；只要节点齐全且 `validate_process` 返回 `valid: true`，**必须立即调用 `publish_process(workflow_id: processId)` 发布上线**，不因运行态事项或底层并发锁假设保留草稿。
-5. **核对按钮启用状态**：按钮启用与工作流发布相互独立（Step 3 新建规划可用按钮已默认启用 `status: 1`）。调用 `get_custom_action_list` 核对目标动作：若方案规划可用但因历史原因或 `disabledForWorkflowSetup: true` 处于停用状态，调用 `update_custom_action(enabled: true)` 恢复启用并填 `outputs.actionEnabled: true`；方案显式规划停用或非本工程既有且独立停用的按钮保持原状。不要求业务试跑，未试跑记入 `issues`。
+5. **核对按钮启用状态（默认已启用免回读）**：按钮启用与工作流发布相互独立（Step 3 新建规划可用按钮已默认启用 `status: 1`）。若方案未显式规划停用且 `contextSlice.actionProvenance.disabledForWorkflowSetup` 不为 `true`，直接填 `outputs.actionEnabled: true`，**无需再调用 `get_custom_action_list` 回读**；仅当 `disabledForWorkflowSetup: true` 或恢复续作状态未知时，才调用 `get_custom_action_list` 核对并用 `update_custom_action(enabled: true)` 恢复启用（方案显式规划停用或非本工程既有且独立停用的按钮保持原状）。不要求业务试跑，未试跑记入 `issues`。
 
 ---
 

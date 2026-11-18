@@ -46,9 +46,9 @@
 
 ### 3. 描述生成、建表调用与表单设置按需增强
 1. **描述文案必填**：生成表级 `remark`、依据工作表规范 §1.2 与本表业务用途生成使用说明 `desc`（仅用 `<p>/<strong>/<br>`，禁转义实体）、按需 `importantNote`（`"#515151"`），以及每个输入字段的 `placeholder`、字段 `remark` 和按需 `desc`。
-2. **调用 `create_worksheet`**（成功后复用真实表 ID，异常按 [宿主适配](../../HOST_ADAPTER.md) 排查续作）：
+2. **调用 `create_worksheet`**（成功后直接复用返回结果，异常按 [宿主适配](../../HOST_ADAPTER.md) 排查续作）：
    - 传入 `appId`、`name`、`alias`（`biz_xxx`）、`sectionId`（取 `appSectionId`）、`icon`（保留 `sys_` 前缀）、`displayType`（**当 `worksheetType === "subTable"` 时必须传 `2` 隐藏**，普通表传 `1` 或省略）、`createDefaultView: false`、`returnData: true`、`addRecordButtonName`、`fields`（Step B 过滤后的基础字段）。
-   - 若建表成功后发现遗漏了非关联基础字段，仅可用 `update_worksheet.addFields` 增量补齐（修改已有字段用 `editFields`），**严禁二次调用 `create_worksheet`**。
+   - **`returnData: true` 直接提取铁律（严禁建表后再调 `get_worksheet_structure`）**：`create_worksheet(..., returnData: true)` 返回体已完整包含新建的 `worksheetId` 及全部字段真实 `id`、`alias`、`options`，**建表成功后直接从返回值提取回执字段，严禁额外加载或调用 `get_worksheet_structure` 重复回读**；若建表成功后发现遗漏了非关联基础字段，仅可用 `update_worksheet.addFields` 增量补齐（修改已有字段用 `editFields`），**严禁二次调用 `create_worksheet`**。
 3. **按需调用 `update_worksheet_settings`（子表与纯字典表直接跳过，严禁发空请求）**：
    - 仅命中以下体验特征时调用 1 次：① 含商品/房源/设备实拍图 `Attachment` 时配 `form.cover`（高 200～400）；② 流程单据定制动作化 `form.title`（如“发起采购申请”）；③ 开启 `form.tabs.hideWhenSingle: true`（关联 Tab >3 个设 `"left"`，否则 `"top"`）；④ 审批单据配 `afterSubmit: { action: "openCreatedRecord" }`，高频建档表配 `continueCreation: { enabled: true }`，重大作废/调账单配 `submitConfirmation`。
 
