@@ -37,7 +37,7 @@ python3 {SKILL_DIR}/scripts/build_runtime.py init --app-dir {APP_DIR} --skill-di
 ```
 
 ### 阶段 1：应用外壳与使用手册初始化（Step 1 + Step 1b 主调度器内联）
-1. 读取建壳（`../build/steps/1_create_app.md`）与应用说明（`../build/steps/1b_update_app_desc.md`）列出的必读 reference；写入手册前按 `../references/hap-domain-app-spec.md` 第六节，将已确认 Plan 的业务流程、角色和入口写入首次创建的说明；
+1. 读取建壳（`../build/steps/1_create_app.md`）、应用说明（`../build/steps/1b_update_app_desc.md`）及其必读 reference（含 `../references/hap-domain-app-spec.md` 第六节「场景一：全新编写使用手册」），按规范生成完整 HTML 使用手册，勿未读规范直接简写；
 2. 内联调用 `create_app`、`create_app_sections`、`create_app_items` 创建应用、分组与自定义页面空壳，紧接调用一次 `update_app(appId, name, remark, desc)` 写入应用简介与 HTML 使用手册（**直接复用 `create_app` 返回的 `appId`，无需再调用 `get_app_info`**），并更新 `overview.md` 顶部访问链接；
 3. 直接按以下标准结构写入 `{APP_DIR}/hap-context.json`（**无需 `grep` 脚本源码**）：
 ```json

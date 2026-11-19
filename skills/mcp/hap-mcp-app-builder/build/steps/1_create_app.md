@@ -5,9 +5,9 @@
 
 ## 一、 本地宿主输入与参考映射
 
-- **执行方式**：主调度器极速内联执行（建壳、建分组、建页面空壳），随后紧接阅读 `build/steps/1b_update_app_desc.md` 内联更新应用说明与使用手册，一并将物理 ID 写入 `hap-context.json` 并置 `progress = "app_created"`。
+- **执行方式**：主调度器极速内联执行（建壳、建分组、建页面空壳），随后紧接阅读 `./1b_update_app_desc.md` 内联更新应用说明与使用手册，一并将物理 ID 写入 `hap-context.json` 并置 `progress = "app_created"`。
 - **输入数据来源**：`{PROJECT_ROOT}/.hap-copilot/apps/{appName}/hap-plan.json`（含 `org_id`、`appName`、`appIcon`、`appColor`、`navLayout`、`navColor`、`enableExternalPortal`、`requirements`、`navGroups`、`customPages`）。
-- **必读领域规范**：`references/hap-domain-app-spec.md`、`references/hap-icon-palette.md`
+- **必读领域规范**：`../../references/hap-domain-app-spec.md`、`../../references/hap-icon-palette.md`
 - **主要业务工具**：`["create_app", "create_app_sections", "create_app_items"]`
 
 ---
