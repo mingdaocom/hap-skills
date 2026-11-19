@@ -92,7 +92,7 @@ hap-mcp-app-builder/
 │   ├── hap-domain-custom-field-spec.md         # 自定义字段（CustomField）前端组件注入规范
 │   └── hap-domain-record-data-spec.md          # 业务记录查询、透视统计与受控批量写改规范
 └── scripts/                                    # 5 个核心运行时脚本
-    ├── skill_update.py                         # 技能版本检查、SHA256 校验、软链原子更新与回滚
+    ├── skill_update.py                         # 技能只读版本检查（24h 缓存与升级提醒）
     ├── resolve_context.py                      # Modify/Build/Data 原文索引与可选章节提取器
     ├── build_runtime.py                        # Build DAG 状态机、分片任务编排与输出契约校验器
     ├── merge_worksheet_context.py              # 合并生成全保真 worksheetContext.json（含选项 key）

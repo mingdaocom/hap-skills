@@ -33,14 +33,14 @@ description: 用于明道云/HAP 应用的方案设计、自动搭建、继续�
 
 无论进入哪个场景，**均须先完成以下前置检查流水线**，再进入场景路由。
 
-### 0. Skill 版本检查与自更新（`scripts/skill_update.py`）
+### 0. Skill 版本只读检查与升级提醒（`scripts/skill_update.py`）
 
-本 Skill 版本号记录于同目录 [`version.json`](version.json)。首次触发或用户询问版本/更新时，可执行：
+本 Skill 版本号记录于同目录 [`version.json`](version.json)。首次触发或用户询问版本/更新时，可执行只读检查：
 ```bash
 python3 {SKILL_DIR}/scripts/skill_update.py check
 ```
-- **24 小时缓存与源码软链保护**：`check` 默认带 24 小时成功缓存、1 小时失败冷却与 3 秒快速联网超时（不影响日常查数与改表响应）；若当前目录为指向源码开发工作区的符号链接（`isSourceWorkspace: true`）或已关闭自动更新（`autoUpdate: false`），脚本自动静默跳过，绝不覆盖本地修改。
-- **发现新版并原子更新**：当返回 `"updateAvailable": true` 且允许自动更新时，执行 `python3 {SKILL_DIR}/scripts/skill_update.py update`（支持 GitHub 仓库拉取更新及带 SHA256 校验的发行包原子切换，保留上一版本供 `rollback` 秒级回退）；**更新成功后必须重新调用文件读取工具读取新版的 `SKILL.md` 与 `version.json`**，再继续本次任务。
+- **24 小时缓存与源码软链保护**：`check` 仅做只读 HTTPS 版本比对（默认 24 小时成功缓存、1 小时失败冷却、3 秒快速超时，不修改任何本地技能文件）；若当前目录为源码开发工作区或外部软链（`isSourceWorkspace: true`），脚本自动静默跳过。
+- **发现新版仅提醒、不静默覆写**：当返回 `"updateAvailable": true` 时，在回复中附 1 句简明提醒（展示远端新版本号与 `releaseNotes`），告知用户可回复 **「升级 HAP 应用助手」** 或在明道云 **「连接 AI」** 重新复制 Skills 安装提示词更新；**仅当用户明确要求升级时**，才在系统临时目录浅克隆 `https://github.com/mingdaocom/hap-skills` 将 `skills/mcp/hap-mcp-app-builder` 覆盖复制到当前客户端全局 skills 目录（勿先 `rm -rf` 删旧目录，完成后清理临时目录）。
 
 ### 1. 明道云 MCP 服务自动识别（不限服务名称）
 
