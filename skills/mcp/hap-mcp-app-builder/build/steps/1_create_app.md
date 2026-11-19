@@ -44,9 +44,9 @@
    - 当 `customPages` 非空时，将全部页面合并到同一次 `create_app_items(appId, items)` 调用中（已成功页面不重复创建，部分失败只补缺项）；
    - 从返回结果提取每个页面的真实 24 位 hex `id`，建立 `customPageIdByName`（`{ "<页面名>": "<pageId>" }`）与 `customPageContext`（`[{ "name", "pageId", "description" }]`）。
 
-### Part C：写入应用直达链接卡片
+### Part C：写入应用直达链接并在首次播报直接给出
 
-根据当前 MCP 服务对应域名（如 `meihua.mingdao.com`、`sandbox.mingdao.com` 或 `www.mingdao.com`），在 `{PROJECT_ROOT}/.hap-copilot/apps/{appName}/overview.md` 顶部写入访问链接提示块 `https://{前端域名}/app/{appId}`。
+根据当前 MCP 服务对应域名（如 `meihua.mingdao.com`、`sandbox.mingdao.com` 或 `www.mingdao.com`），在 `{PROJECT_ROOT}/.hap-copilot/apps/{appName}/overview.md` 顶部写入访问链接提示块 `https://{前端域名}/app/{appId}`；同时在阶段 1 完成后的**首次进度播报中直接把该直达访问链接发给用户**（不裸露内部 `appId`），方便用户边搭边看。
 
 ---
 

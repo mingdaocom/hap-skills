@@ -49,6 +49,7 @@ python3 {SKILL_DIR}/scripts/build_runtime.py init --app-dir {APP_DIR} --skill-di
   "customPageIdByName": { "<页面名>": "<24位真实pageId>" }
 }
 ```
+4. **首次播报即给直达访问链接（不裸露 `appId`）**：完成阶段 1 并在同轮启动阶段 1.5 并发建表时，给用户的第一次进度播报**必须直接附上应用访问链接**（`https://{前端域名}/app/{appId}`，按当前环境域名如 `www.mingdao.com` / `meihua.mingdao.com` / `sandbox.mingdao.com` 拼接），方便用户随时打开查看实时搭建进展，严禁在播报中裸露 `appId: ...` 等技术字段。
 
 ### 阶段 1.5：工作表两遍并发创建（Step 2a 基础表 ➔ Step 2b 跨表关联）
 ```bash
