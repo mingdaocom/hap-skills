@@ -31,6 +31,59 @@
         - **通过路径**：`update_record` 将状态置为业务约定的通过后状态（真实选项 `key`）+ 必要业务联动回写 + 使用当前 Schema 支持的通知节点通知申请人；
         - **驳回路径**：`update_record` 将状态回退为“已驳回 / 草稿”（真实选项 `key`）+ 使用当前 Schema 支持的通知节点通知申请人修改重提；
      3. **严禁只建孤立的 `approval_block` 漏写通过/驳回状态回写分支就发布上线！**
+     4. **动作流审批块极简结构参考**（仅作工具折叠嵌套 Schema 时的兜底骨架，存在差异时以当前实时 MCP Schema 为准）：
+```json
+{
+  "nodeType": "approval_block",
+  "nodeAlias": "approval_blk",
+  "prevNode": {"nodeAlias": "set_pending"},
+  "config": {
+    "selectedNode": {"nodeId": "<triggerNodeId>"},
+    "initiators": [{"kind": "triggerUser"}],
+    "process": {
+      "mode": "create",
+      "name": "按钮审批",
+      "start": {"worksheetId": "<wsId>"},
+      "nodes": [
+        {
+          "nodeType": "approve", "nodeAlias": "approve_step", "name": "角色审批",
+          "config": {"selectedNode": "approval_start", "approvers": [{"kind": "role", "id": "<roleId>"}], "mode": "any", "allowReject": true}
+        },
+        {
+          "nodeType": "branch", "nodeAlias": "approve_branch", "prevNode": {"nodeAlias": "approve_step"},
+          "config": {
+            "branchType": "approval_result", "mode": "firstMatch",
+            "paths": [
+              {"alias": "path_pass", "name": "审批通过", "filter": null, "result": "pass"},
+              {"alias": "path_reject", "name": "审批驳回", "filter": null, "result": "overrule"}
+            ]
+          }
+        },
+        {
+          "nodeType": "update_record", "nodeAlias": "on_pass_update",
+          "prevNode": {"nodeAlias": "approve_branch"}, "parentNode": {"nodeAlias": "path_pass"},
+          "config": {"selectedNode": "approval_start", "fields": [{"fieldId": "<statusFid>", "value": "<passKey>"}]}
+        },
+        {
+          "nodeType": "send_internal_notice", "nodeAlias": "on_pass_notice",
+          "prevNode": {"nodeAlias": "on_pass_update"}, "parentNode": {"nodeAlias": "path_pass"},
+          "config": {"message": "审批通过", "receivers": [{"kind": "triggerUser"}]}
+        },
+        {
+          "nodeType": "update_record", "nodeAlias": "on_reject_update",
+          "prevNode": {"nodeAlias": "approve_branch"}, "parentNode": {"nodeAlias": "path_reject"},
+          "config": {"selectedNode": "approval_start", "fields": [{"fieldId": "<statusFid>", "value": "<rejectKey>"}]}
+        },
+        {
+          "nodeType": "send_internal_notice", "nodeAlias": "on_reject_notice",
+          "prevNode": {"nodeAlias": "on_reject_update"}, "parentNode": {"nodeAlias": "path_reject"},
+          "config": {"message": "审批已驳回", "receivers": [{"kind": "triggerUser"}]}
+        }
+      ]
+    }
+  }
+}
+```
 
 ### 2. 参数核实、节点注入与校验上线（源自 `custom-action-workflow-sub-agent.yaml`）
 1. **高效参数核对与 `appId` 必传铁律**：按 [宿主适配](../../HOST_ADAPTER.md) 与任务包内联的 `references/hap-domain-workflow-spec.md` 构造 `get_workflow_structure`、`batch_create_process_nodes`、`update_workflow_node`、`validate_process`、`publish_process` 参数（内联工具或单次 `ToolSearch` 加载后直接调用，**严禁在终端用 `find/jq/python` 搜索或拆解外部 `.json` Schema 文件**），且所有应用内流程接口均须显式传入 `"appId": contextSlice.appId`。

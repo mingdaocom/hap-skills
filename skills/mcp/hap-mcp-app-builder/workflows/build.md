@@ -1,20 +1,20 @@
 # HAP 应用物理搭建报告驱动薄控制面调度器 (Report-Driven Build Orchestrator)
 
-你是 HAP（明道云）应用搭建的**报告驱动型薄控制面调度器（Report-Driven Thin Orchestrator）**。详细契约见 `build/CONTEXT.md`、`build/PROGRESS.md` 与 `build/OUTPUT_CONTRACT.md`。
+你是 HAP（明道云）应用搭建的**报告驱动型薄控制面调度器（Report-Driven Thin Orchestrator）**。详细契约见 `../build/CONTEXT.md`、`../build/PROGRESS.md` 与 `../build/OUTPUT_CONTRACT.md`。
 
 > [!IMPORTANT]
 > **轻重分离与薄控制面铁律**：
 > 1. **轻量全局单次操作由主调度器内联执行，重资产构建任务 100% 独立 Subagent 并发**：
 >    - **主调度器内联项（零 Subagent 冷启动开销）**：
->      - **Step 1 + Step 1b**：读取 `build/steps/1_create_app.md` 与 `build/steps/1b_update_app_desc.md`，内联完成应用创建、导航分组、页面空壳及应用说明/HTML 手册写入，将 `appId`、`sectionIdByName`、`customPageIdByName`、`appDescUpdated: true` 写入 `hap-context.json` 并置 `progress = "app_created"`；
->      - **Step 7**：阶段 2 完成后全量页面、工作表与 AI 助手 ID 已就绪，主调度器按 `build/steps/7_sort_app_items.md` 内联调用 `sort_app_items` 完成分组内动线排序。
+>      - **Step 1 + Step 1b**：读取 `../build/steps/1_create_app.md` 与 `../build/steps/1b_update_app_desc.md`，内联完成应用创建、导航分组、页面空壳及应用说明/HTML 手册写入，将 `appId`、`sectionIdByName`、`customPageIdByName`、`appDescUpdated: true` 写入 `hap-context.json` 并置 `progress = "app_created"`；
+>      - **Step 7**：阶段 2 完成后全量页面、工作表与 AI 助手 ID 已就绪，主调度器按 `../build/steps/7_sort_app_items.md` 内联调用 `sort_app_items` 完成全部分组（含纯工作表分组的子表/明细表顺排）动线排序。
 >    - **独立 Subagent 并发项（重资产隔离）**：
 >      - **Step 2a / 2b（建表与跨表关联）**、**Step 3 / 4a（单表动作视图规则与 AI 助手创建）**、**Step 4b / 5 / 6 / 8（助手节点配置、示例数据、自定义页面组装、单角色精细权限）**、**Step 10 / 11（单条系统流/动作流的节点设计 + 物理创建 + 校验发布一体化执行）** 必须 100% 派发给宿主平台的真实独立 Subagent 并发执行。
 > 2. **主调度器执行循环（所有 Subagent 阶段 · 整批收齐后播报铁律）**：
 >    `prepare`（准备任务） ➔ `dispatch & dispatched`（派发并登记） ➔ `wait`（收集回执） ➔ `finalize`（汇总）。`canAdvance: true` 时 `advance`；否则结合失败原因修复并重新 `prepare` 续作，不把阶段未完成当成结束会话的指令。
 >    - **按工具能力 3 档强制真并发与整批收齐铁律（详见 [宿主适配](../HOST_ADAPTER.md)）**：
 >      1. **第 1 档（有批量脚本编排工具如 `run_workflow`）**：整批阻塞型并发任务必须用脚本编排一次并发跑完并统一等待收齐（单次唤醒、0 刷屏），后台 `Step 5` 单独异步拉起；
->      2. **第 2 档（子代理工具自带后台/异步开关如 `run_in_background: true`，或天生异步返回 ID）**：**所有并发阶段的 Subagent 派发一律开启后台/异步模式**，全批迅速起跑后再统一等待阻塞任务收齐；
+>      2. **第 2 档（子代理工具自带后台/异步开关如 `run_in_background: true`，或天生异步返回 ID）**：**所有并发阶段的 Subagent 派发一律开启后台/异步模式**，全批迅速起跑并登记后**直接结束当前轮次（停止调用工具），等待系统后台完成通知自动唤醒**，**严禁 `Bash(sleep ...)` 循环轮询**；被单个回调唤醒时先查 1 次 `status`，未收齐前直接再次结束本轮等待下一通知，严禁提前 `finalize` 或逐条刷屏；
 >      3. **第 3 档（纯同步阻塞型子代理工具）**：在同一条消息内并列发出 4～5 个极简 `prompt` 调用。任何模式下，**只要仍有同批阻塞型 Subagent 在运行，严禁提前调用 `finalize` 空跑或逐条刷屏播报**。
 > 3. **运行记录（严禁 `grep/Read` 脚本源码）**：工程目录默认位于 `{APP_DIR}` = `{PROJECT_ROOT}/.hap-copilot/apps/{appName}`（恢复时使用 `scan_apps.py` 返回的绝对路径）。主调度器直接按下方标准命令与 JSON 契约操作，**严禁使用 `grep` 或 `Read` 翻阅 `scripts/build_runtime.py` 等脚本源码反推字段格式**。
 > 4. **完建优先与规划契约保真铁律（防中断 · 防乱替）**：
@@ -26,6 +26,8 @@
 
 ## 一、 构建阶段驱动流水线
 
+> **阶段流转 `--progress` 合法枚举速查**：`app_created`（阶段 1.5 Pass 1：Step 2a） ➔ `step2a_done`（阶段 1.5 Pass 2：Step 2b，无跨表关联时自动跳至 `worksheets_created`） ➔ `worksheets_created`（阶段 2：Step 3 + Step 4a） ➔ `fields_refreshed`（阶段 3：Step 7 + 4b + 5 + 6 + 8） ➔ `config_completed`（阶段 4：Step 10 + 11） ➔ `completed`（终态交付）。
+
 ### 初始化或核对运行目录
 
 启动前确认 `hap-plan.json` 已通过 `validate-plan` 预检。`--mcp-server` 必须传入口已选定的服务；重复初始化同一环境会复用原 `runId`，环境不一致或历史产物缺少运行配置时先核对原工程，不能覆盖配置后重建。
@@ -35,7 +37,7 @@ python3 {SKILL_DIR}/scripts/build_runtime.py init --app-dir {APP_DIR} --skill-di
 ```
 
 ### 阶段 1：应用外壳与使用手册初始化（Step 1 + Step 1b 主调度器内联）
-1. 读取建壳（`build/steps/1_create_app.md`）与应用说明（`build/steps/1b_update_app_desc.md`）列出的必读 reference；写入手册前按 `references/hap-domain-app-spec.md` 第六节，将已确认 Plan 的业务流程、角色和入口写入首次创建的说明；
+1. 读取建壳（`../build/steps/1_create_app.md`）与应用说明（`../build/steps/1b_update_app_desc.md`）列出的必读 reference；写入手册前按 `../references/hap-domain-app-spec.md` 第六节，将已确认 Plan 的业务流程、角色和入口写入首次创建的说明；
 2. 内联调用 `create_app`、`create_app_sections`、`create_app_items` 创建应用、分组与自定义页面空壳，紧接调用一次 `update_app(appId, name, remark, desc)` 写入应用简介与 HTML 使用手册（**直接复用 `create_app` 返回的 `appId`，无需再调用 `get_app_info`**），并更新 `overview.md` 顶部访问链接；
 3. 直接按以下标准结构写入 `{APP_DIR}/hap-context.json`（**无需 `grep` 脚本源码**）：
 ```json
@@ -73,8 +75,8 @@ python3 {SKILL_DIR}/scripts/build_runtime.py finalize --app-dir {APP_DIR} --prog
 python3 {SKILL_DIR}/scripts/build_runtime.py finalize --app-dir {APP_DIR} --progress worksheets_created --advance-and-prepare
 ```
 
-### 阶段 3：导航按需排序 + 助手节点、自定义页面、角色权限与后台示例数据全并发（Step 5 全程非阻塞！）
-1. **按需导航排序（`build/steps/7_sort_app_items.md`）**：仅当某个导航分组内**同时包含自定义页面/AI 助手与工作表**（需将自定义页面置顶、AI 助手置尾）时，主调度器直接对该分组内联调用 1 次 `sort_app_items(appId, sectionId, itemIds)`；纯工作表且顺序已对齐的分组直接跳过；
+### 阶段 3：全分组导航排序 + 助手节点、自定义页面、角色权限与后台示例数据全并发（Step 5 全程非阻塞！）
+1. **全分组导航排序（`../build/steps/7_sort_app_items.md`）**：按 6 级优先级顺序（自定义页面置顶 ➔ 主业务表 ➔ 紧随主表的明细子表 ➔ 台账/流水表 ➔ 基础字典表 ➔ AI 助手置尾），**不跳过纯工作表分组**（并发建表顺序不定，子表与明细表也必须紧排在所属主表后面）；主调度器遍历所有包含 **≥ 2 项**应用的导航分组，依次/并发调用 `sort_app_items(appId, sectionId, itemIds)`（仅 0～1 项分组跳过）；
 2. 并发派发本阶段 Subagent（含后台任务 `Step 5`）：
 ```bash
 # 直接使用上一阶段返回的 nextStagePrepare.readyTasks（或执行 prepare --progress fields_refreshed）
@@ -122,7 +124,7 @@ async def run_one(t):
     return await agent(prompt, schema=SCHEMA, role=t["taskName"][:40], type_name="self")
 results = await asyncio.gather(*(run_one(t) for t in tasks), return_exceptions=True)
 ```
-2. **第 2 档（无编排工具，但子代理工具带后台/异步参数如 `run_in_background: true`，或天生异步返回 ID）**：**本阶段全部并发任务（含阻塞型与 `Step 5`）一律显式开启后台/异步模式派发**（每发 1 个立即返回 ID 并后台开跑，彻底杜绝轻量模型单轮只吐 1 个工具调用退化为串行），全部起跑后（异步回调宿主可顺手登记 `dispatched`）等待全部阻塞型任务收齐再推进；
+2. **第 2 档（无编排工具，但子代理工具带后台/异步参数如 `run_in_background: true`，或天生异步返回 ID）**：**本阶段全部并发任务（含阻塞型与 `Step 5`）一律显式开启后台/异步模式派发**（每发 1 个立即返回 ID 并后台开跑，彻底杜绝轻量模型单轮只吐 1 个工具调用退化为串行）；全部起跑后（异步回调宿主可顺手登记 `dispatched`）**直接结束当前轮次（停止调用工具），等待系统后台完成通知自动唤醒**，**严禁在终端运行 `sleep` 循环轮询**；被单个通知唤醒后先调用 1 次 `build_runtime.py status --app-dir {APP_DIR}`，若 `phaseComplete` 为 `false` 则再次结束本轮等待下一通知；
 3. **第 3 档（仅有纯同步阻塞型子代理工具）**：在同一条助手消息内并列发出 **4～5 个**子代理调用（超过 5 个分波次并行，严禁发 1 个等返回再发下 1 个）。
 
 - **极简派发 `prompt` 铁律（严禁扩写成小作文）**：直接原样套用下方单段模板（仅替换 `{taskName}`、`{step}`、`{bundleFiles}`、`{receiptPath}`，单条 `prompt` 严格控制在 **150 字以内**）；所有字段、业务要点、工具白名单与回执契约均已预编译在 `bundleFiles` 内，**严禁在派发 `prompt` 中自行复述字段、白名单或 SOP 细节**。
