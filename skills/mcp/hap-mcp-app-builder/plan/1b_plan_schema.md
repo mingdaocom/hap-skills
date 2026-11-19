@@ -74,7 +74,7 @@
 
 1. **`customPages`（自定义页面数组）**：
    - 公共属性：`name`、`groupName`、`type`（`"dashboard"` 或 `"workspace"`）、`description`、`icon`（从 `../references/hap-icon-palette.md` 选取带 `sys_` 前缀的合法图标，如 `"sys_control-panel_traffic"`、`"sys_hr_workbench"`）、`color`、`requirements`?。
-   - `type: "dashboard"` 必填 `charts`（建议 6～10 项：1 个 `"全局筛选(FiltersGroup:维度1,维度2)"` + 4～6 个 `NumberChart` + 趋势/占比/排行图 + `PivotTable`，图表枚举使用标准 MCP `chartType`）。
+   - `type: "dashboard"` 必填 `charts`（紧凑格式 `"名称(chartType)"`，建议 6～10 项：1 个 `"全局筛选(FiltersGroup:维度1,维度2)"` + 4～6 个 `numberChart` + 趋势/占比/排行图 + `pivotTable`，图表类型严格使用小驼峰标准 MCP `chartType`）。
    - `type: "workspace"` 必填 `components`（紧凑格式 `"名称(Type)"`，`Type` ∈ `Button | View | Text | Carousel | Section`）。
    - 可选 `viewBindings` 用于明确 View 组件到工作表与视图的绑定，例如 `{"待出库": {"worksheet": "出库单", "view": "待出库"}}`；键为 `components` 中的组件名称，两个值必须逐字匹配已规划对象。此映射兼容旧方案：缺省时根据已确认的方案和真实视图语义解析，不新增必填键。
    - 在页面 `requirements` 中明确每个待办组件的数据源及筛选口径，每个图表的数据源、指标、聚合、维度与时间范围；不能将不同语义映射为同一个无筛选视图或同一指标。旧方案缺少该信息时从已确认总览和字段、视图语义推导，无法确定的标记缺口，不新增固定确认门禁。
