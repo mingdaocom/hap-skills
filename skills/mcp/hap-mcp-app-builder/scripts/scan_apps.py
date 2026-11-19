@@ -132,7 +132,7 @@ def scan_single_root(apps_dir: str, is_legacy: bool, seen_paths: set) -> list:
             "appDir": entry_path,
             "appName": app_name,
             "mcpServer": run.get("mcpServer") or ctx.get("mcpServer") or plan.get("mcpServer"),
-            "orgId": plan.get("org_id") or plan.get("orgId") or ctx.get("org_id") or ctx.get("orgId"),
+            "orgId": plan.get("orgId") or plan.get("org_id") or ctx.get("orgId") or ctx.get("org_id"),
             "appId": ctx.get("appId"),
             "runId": run.get("runId"),
             "progress": progress,

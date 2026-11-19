@@ -6,7 +6,7 @@
 ## 一、 本地宿主输入与参考映射
 
 - **执行方式**：主调度器极速内联执行（建壳、建分组、建页面空壳），随后紧接阅读 `./1b_update_app_desc.md` 内联更新应用说明与使用手册，一并将物理 ID 写入 `hap-context.json` 并置 `progress = "app_created"`。
-- **输入数据来源**：`{PROJECT_ROOT}/.hap-copilot/apps/{appName}/hap-plan.json`（含 `org_id`、`appName`、`appIcon`、`appColor`、`navLayout`、`navColor`、`enableExternalPortal`、`requirements`、`navGroups`、`customPages`）。
+- **输入数据来源**：`{PROJECT_ROOT}/.hap-copilot/apps/{appName}/hap-plan.json`（含 `orgId`、`appName`、`appIcon`、`appColor`、`navLayout`、`navColor`、`enableExternalPortal`、`requirements`、`navGroups`、`customPages`）。
 - **必读领域规范**：`../../references/hap-domain-app-spec.md`、`../../references/hap-icon-palette.md`
 - **主要业务工具**：`["create_app", "create_app_sections", "create_app_items"]`
 
@@ -21,7 +21,7 @@
    - **`navLayout` 推断规则**（用户明确要求优先，如“顶部导航”→`top`、“树形导航”→`tree`、“分组导航”→`group`、“卡片导航”→`card`；未指定时默认 `group`，层级深选 `tree`，多独立业务域并列选 `top`，门户工作台型选 `card`）；
    - **`navColor` 推断规则**（仅限枚举 `appColor | white | gray | black`，不支持自定义 HEX：蓝/绿/紫等深色主题默认 `appColor`；红/橙/黄等亮色主题选 `white`；重工/监控中心选 `black`；明确要求灰色选 `gray`）。
 2. **调用 `create_app`**（参数核实与异常恢复遵循 [宿主适配](../../HOST_ADAPTER.md)，成功后复用真实 `appId`）：
-   - `orgId`：`hap-plan.json` 中的 `org_id`（必填，注意参数名为 `orgId` 而非 `projectId`）；
+   - `orgId`：`hap-plan.json` 中的 `orgId`（必填，注意参数名为 `orgId` 而非 `projectId`）；
    - `name`：`appName`（必填）；
    - `icon`：`appIcon`（带 `sys_` 前缀的合法 `fileName`）；
    - `color`：`appColor`（HEX 色值，注意参数名为 `color` 而非 `iconColor`）；
@@ -58,7 +58,7 @@
 {
   "appName": "<appName>",
   "appId": "<服务返回的真实appId>",
-  "org_id": "<org_id>",
+  "orgId": "<orgId>",
   "language": "<language>",
   "progress": "app_created",
   "sectionIdByName": { "业务总览": "<sectionId>" },

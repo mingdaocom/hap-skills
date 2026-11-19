@@ -505,7 +505,7 @@ def get_stage_tasks_definitions(app_dir: str, stage: str) -> List[Dict[str, Any]
 
     app_name = plan.get("appName") or plan.get("name") or context.get("appName") or os.path.basename(app_dir)
     app_id = context.get("appId", "")
-    org_id = plan.get("org_id") or plan.get("orgId") or context.get("org_id") or context.get("orgId", "")
+    org_id = plan.get("orgId") or plan.get("org_id") or context.get("orgId") or context.get("org_id", "")
     app_lang = plan.get("language") or context.get("language") or "zh-CN"
     app_color = plan.get("appColor", "")
     app_reqs = plan.get("requirements", [])
@@ -547,11 +547,11 @@ def get_stage_tasks_definitions(app_dir: str, stage: str) -> List[Dict[str, Any]
                 "enableExternalPortal": bool(plan.get("enableExternalPortal", False)),
                 "requirements": app_reqs,
                 "appLanguage": app_lang,
-                "org_id": org_id,
+                "orgId": org_id,
                 "navGroups": nav_groups,
                 "customPages": custom_pages,
             },
-            "contextSlice": {"org_id": org_id},
+            "contextSlice": {"orgId": org_id},
             "worksheetContextSlice": {},
             "desc": f"创建应用 [{app_name}]、导航分组与自定义页面空壳",
         })
@@ -1054,7 +1054,7 @@ def get_stage_tasks_definitions(app_dir: str, stage: str) -> List[Dict[str, Any]
                 },
                 "contextSlice": {
                     "appId": app_id,
-                    "org_id": org_id,
+                    "orgId": org_id,
                     "worksheetIdByName": ws_id_by_name,
                     "roleContext": role_ctx,
                     "roleIdByName": role_ids,
@@ -1089,7 +1089,7 @@ def get_stage_tasks_definitions(app_dir: str, stage: str) -> List[Dict[str, Any]
                 },
                 "contextSlice": {
                     "appId": app_id,
-                    "org_id": org_id,
+                    "orgId": org_id,
                     "processId": proc_id,
                     "actionId": context.get("actionIdByName", {}).get(f"{ws_n}/{act_n}", ""),
                     "actionProvenance": context.get("actionProvenanceByKey", {}).get(comp_key, {}),

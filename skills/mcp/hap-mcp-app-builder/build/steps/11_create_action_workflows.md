@@ -8,7 +8,7 @@
 - **执行方式**：独立 Subagent 按**单个自定义动作**并发执行，在同一子代理上下文内一气呵成完成 **「读取预建触发节点与数据源核对 ➔ 7 维闭环节点设计 ➔ 物理节点注入 ➔ 校验修复与发布」**。动作空壳流程已由 Step 3 `create_custom_actions` 自动预建，本步**严禁调用 `create_process`**。
 - **输入切片**：读取 `.build/task-context/{taskId}.json`：
   - `planSlice`：`actionWorkflow`（该按钮动作完整规划定义，含所属 `worksheet`、动作 `name`、`type`、`runWorkflowAfterSubmit`、`description`、`intentHints`、`requirements`）、`workflowIndex`、`customActionIndex`、`relationLayouts`、`appLanguage`；
-  - `contextSlice`：`appId`、`org_id`、`processId`（Step 3 按 `worksheet::action` 精确捕获的预建 `workflowId`）、`worksheetIdByName`、`roleContext`、`viewIdByName`；
+  - `contextSlice`：`appId`、`orgId`、`processId`（Step 3 按 `worksheet::action` 精确捕获的预建 `workflowId`）、`worksheetIdByName`、`roleContext`、`viewIdByName`；
   - `worksheetContextSlice`：已建工作表真实 `worksheetId` 及字段 `{ name, id, alias, type, options }`（含选项 `{ key, value, index }`）。
 - **必读领域规范**：`references/hap-workflow-design-guide.md`、`references/hap-domain-workflow-spec.md`
 - **主要业务工具**：`["get_custom_action_list", "update_custom_action", "find_member", "find_department", "get_current_user", "get_worksheet_field", "get_worksheet_structure", "get_workflow_structure", "get_workflow_node", "get_workflow_variables", "update_workflow_node", "update_workflow_variables", "batch_create_process_nodes", "batch_delete_process_nodes", "validate_process", "publish_process", "get_sms_signatures"]`

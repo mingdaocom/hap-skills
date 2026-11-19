@@ -10,7 +10,7 @@
 
 ```json
 {
-  "org_id": "来自前置检查确定的组织 ID",
+  "orgId": "来自前置检查确定的组织 ID",
   "appName": "应用名称（2~8字，严禁带系统/管理/平台/软件/后台等后缀）",
   "language": "zh-CN",
   "appIcon": "sys_ 前缀受控图标 fileName，如 sys_dashboard",
@@ -30,7 +30,7 @@
 ```
 
 ### 1. 顶层属性约束
-- **`org_id`**：固定下划线键名 `org_id`（严禁写为 `orgId`）。
+- **`orgId`**：当前组织 ID（与 MCP 工具 `orgId` 参数同名）。
 - **`language`**：与当前会话锁定的语言代码一致（如 `"zh-CN"`、`"en"`、`"ja"`），下游构建子代理据此统一所有用户可见文本语言。
 - **`appIcon` / `appColor`**：从 `../references/hap-icon-palette.md` 精确选取带 `sys_` 前缀的合法 `fileName` 与 9 色板 HEX 色值；`navLayout` 与 `navColor` 选型遵循 `../references/hap-domain-app-spec.md`。
 - **`enableExternalPortal`**：规划了外部门户角色（`roleScope: "externalPortal"`）时必须设为 `true`。

@@ -40,8 +40,8 @@ python3 {SKILL_DIR}/scripts/skill_update.py check
    - **Data 场景（`workflows/data.md`）**：**免卡 170 上限**，具备当前操作所需数据/审批工具即放行；
    - **Plan / Build / Modify 及配置排查**：硬卡 **`tools_count >= 170`**；不足时读取 [MCP 接入指南](MCP_SETUP.md)「场景三」输出阻断卡片并停止。
 2. **URL 直达与组织连通性**：
-   - 用户提供明道云链接（`/app/{appId}[/{sectionId}[/{itemId}[/{viewId}[/row/{rowId}]]]]`）或 `appId` 时，直接提取并调用 `get_app_info(appId)` 校验连通性、读取名称与 `organizationId` 记为 `org_id`，**跳过多组织询问**；
-   - 未提供时调用 `get_org_list` 缓存 `organizations`（唯一组织自动记为 `org_id`，多组织留待需定归属时询问）；
+   - 用户提供明道云链接（`/app/{appId}[/{sectionId}[/{itemId}[/{viewId}[/row/{rowId}]]]]`）或 `appId` 时，直接提取并调用 `get_app_info(appId)` 校验连通性、读取名称与 `organizationId` 记为 `orgId`，**跳过多组织询问**；
+   - 未提供时调用 `get_org_list` 缓存 `organizations`（唯一组织自动记为 `orgId`，多组织留待需定归属时询问）；
    - `get_org_list` 鉴权失败（`401`）按 [MCP 接入指南](MCP_SETUP.md)「场景二」更新令牌；令牌正常但建应用/访问目标应用被拒按「场景四」排查范围与角色权限。
 3. **可选预授权**：宿主支持时可对 `{MCP_SERVER_NAME}/*` 申请一次性批量授权。
 
@@ -89,4 +89,4 @@ python3 {SKILL_DIR}/scripts/skill_update.py check
    按 `mcpServer`、`orgId`、`appId` 与 `appDir` 区分工程（旧工程缺身份信息时先核对原配置，始终用返回的真实 `appDir` 绝对路径）：
    - **命中未完成工程（`planned` / `in_progress`）**：用户已明确续建且唯一匹配时，直接按原 `appDir` 读 `workflows/build.md` 恢复；意图不清时通过提问工具提供选项（不静默覆盖）：`(Recommended) 继续搭建`（`workflows/build.md`）/ `调整原方案后再搭建`（`workflows/plan.md`）/ `新建独立应用`。
    - **无匹配或已 `completed`**：按新建进入第 3 步。
-3. **选择组织并启动 Plan**：复用前置检查的 `org_id` 或 `organizations`——唯一 `org_id` 直接读取 `workflows/plan.md`；**多组织且未指定时调用提问工具点选，⛔ STOP：确认前严禁同轮输出完整设计方案**。
+3. **选择组织并启动 Plan**：复用前置检查的 `orgId` 或 `organizations`——唯一 `orgId` 直接读取 `workflows/plan.md`；**多组织且未指定时调用提问工具点选，⛔ STOP：确认前严禁同轮输出完整设计方案**。

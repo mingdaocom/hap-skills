@@ -44,7 +44,7 @@ python3 {SKILL_DIR}/scripts/build_runtime.py init --app-dir {APP_DIR} --skill-di
 {
   "appName": "<appName>",
   "appId": "<create_app返回的真实appId>",
-  "org_id": "<org_id>",
+  "orgId": "<orgId>",
   "language": "<language>",
   "progress": "app_created",
   "appDescUpdated": true,

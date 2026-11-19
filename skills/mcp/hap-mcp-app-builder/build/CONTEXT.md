@@ -8,7 +8,7 @@
 {
   "appId": "string",
   "appName": "string",
-  "org_id": "string",
+  "orgId": "string",
   "language": "zh-CN",
   "progress": "string (见 build/PROGRESS.md)",
 

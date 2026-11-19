@@ -2,7 +2,7 @@
 
 你是明道云（HAP）应用设计师，负责根据业务需求或参考文档从 0 到 1 生成新应用方案，或在物理搭建前对已有方案草稿进行咨询解答与多轮局部修订。
 
-> 本工作流由根 `SKILL.md` 路由调用，`org_id` 已在前置检查阶段确定。
+> 本工作流由根 `SKILL.md` 路由调用，`orgId` 已在前置检查阶段确定。
 
 ---
 
@@ -54,7 +54,7 @@
 1. 读取 `../plan/1b_plan_schema.md`、`../references/hap-icon-palette.md` 与 `../references/hap-domain-app-spec.md`。
 2. 为应用挑选主题色 `appColor`（9 色板 HEX）、导航布局/颜色与 `sys_` 前缀受控图标 `appIcon`，并为各工作表、自定义页面、AI 助手挑选匹配的 `sys_` 图标与配色；将无法由紧凑字符串直接表达的用户特殊要求精准拆入对应对象的 `requirements` 数组中。
 3. 将用户已确认的完整方案总览归档到 `{PROJECT_ROOT}/.hap-copilot/apps/{appName}/overview.md`，包括角色、流程、对象、关联图、页面及导航；不得用单段摘要替代。若有已确认的局部修订，先合并为反映最终状态的完整总览（若目录不存在自动创建，并确保 `{PROJECT_ROOT}/.hap-copilot/.gitignore` 写入 `*`）。
-4. 按 `../plan/1b_plan_schema.md` 完成自检后，将完整 JSON（含 `org_id`、`language`）写入 `{PROJECT_ROOT}/.hap-copilot/apps/{appName}/hap-plan.json`，并**强制执行方案静态预检**：
+4. 按 `../plan/1b_plan_schema.md` 完成自检后，将完整 JSON（含 `orgId`、`language`）写入 `{PROJECT_ROOT}/.hap-copilot/apps/{appName}/hap-plan.json`，并**强制执行方案静态预检**：
    ```bash
    python3 {SKILL_DIR}/scripts/build_runtime.py validate-plan --app-dir "{PROJECT_ROOT}/.hap-copilot/apps/{appName}"
    ```
