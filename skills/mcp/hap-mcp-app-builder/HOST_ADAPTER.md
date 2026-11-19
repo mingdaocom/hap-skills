@@ -17,7 +17,10 @@
   - **Build 子代理场景**：Subagent 首轮只需直接读取 `prepare` 预编译生成的 `bundleFiles`（`.build/task-bundles/{taskId}*.md`，单卷已控制在单次读取上限内，首部已内联宿主调用规则、步骤 SOP、专属 `taskContext` 与本步必读领域规范章节，**无需再单独读取 `HOST_ADAPTER.md` 或外部 `references/*.md`**），在 Codex 中，每次工具返回只读一个任务的一卷。若返回提示截断或缺尾部，用行号分段续读至该卷末行；多个执行器仍可并行。**严禁仅用 `grep` 搜索代替阅读，也严禁 `grep/Read` `scripts/build_runtime.py` 等脚本源码**；`sourceFiles` 仅在异常恢复或核对跨表补充细节时按需查阅，正常执行不扫描无关表或他表回执。
   - **跨宿主子代理派发与完成收口规范**：
     - **子代理侧**：完成任务并将标准 JSON 回执写入 `receiptPath` 后，直接输出简短文本总结结束当前会话，**严禁调用 `send_message` 等跨代理通信工具向父会话 ID 发送消息**（各宿主均会在子代理结束时自动将结果回传主调度器，手动发消息反而易触发 `recipient not found` 报错）；
-    - **主调度器侧（自适应各宿主并发原语）**：在同步并行 Tool Call 宿主（如 Claude Code `Task`）中，同一轮并列发出本阶段就绪任务并等待整批返回；在支持代码编排的宿主（如 Antigravity `run_workflow`）中，优先用 `parallel(...)` 整批等待；在异步回调宿主（如 `invoke_subagent`）中，中途被单个子代理唤醒时先核对剩余 `running` 数（通过 `manage_subagents(list)` 或 `.build/receipts/` 落盘数），**未收齐全部阻塞型任务前严禁提前调用 `finalize` 空跑或逐条刷屏播报**。
+    - **主调度器侧（按工具原生能力 3 档自选，不硬编码宿主名）**：
+      1. **第 1 档 · 具备批量脚本编排工具（如 `run_workflow`）**：同阶段全部阻塞型子任务必须通过脚本编排一次性并发拉起并统一等待收齐（用 `asyncio.gather(..., return_exceptions=True)` 防单点失败取消整批，整批完结只唤醒主调度器 1 次，0 刷屏）；`isBackground: true` 的后台任务（如 `Step 5`）仍单独异步起跑不阻塞；
+      2. **第 2 档 · 子代理工具天生异步返回 ID 或带有后台开关参数（如 `run_in_background` / `background` / `async`）**：**所有并发阶段的 Subagent 派发一律显式开启后台/异步模式**，让每次派发立即返回 ID 并在后台同时运行（彻底免疫轻量模型单轮只吐 1 个工具调用导致的串行退化），全部起跑后统一等待阻塞任务收齐；中途被单个回调唤醒时先核对 `.build/receipts/` 数量，未收齐前严禁提前 `finalize` 或逐条刷屏播报；
+      3. **第 3 档 · 仅有纯同步阻塞型子代理工具（无脚本编排也无异步参数）**：严控单条派发 `prompt` 在 150 字以内，按每波 4～5 个在同一条助手消息内并列发出并行调用。
 
 ## 零代码建模与配置态交付原则
 

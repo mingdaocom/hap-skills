@@ -12,9 +12,10 @@
 >      - **Step 2a / 2b（建表与跨表关联）**、**Step 3 / 4a（单表动作视图规则与 AI 助手创建）**、**Step 4b / 5 / 6 / 8（助手节点配置、示例数据、自定义页面组装、单角色精细权限）**、**Step 10 / 11（单条系统流/动作流的节点设计 + 物理创建 + 校验发布一体化执行）** 必须 100% 派发给宿主平台的真实独立 Subagent 并发执行。
 > 2. **主调度器执行循环（所有 Subagent 阶段 · 整批收齐后播报铁律）**：
 >    `prepare`（准备任务） ➔ `dispatch & dispatched`（派发并登记） ➔ `wait`（收集回执） ➔ `finalize`（汇总）。`canAdvance: true` 时 `advance`；否则结合失败原因修复并重新 `prepare` 续作，不把阶段未完成当成结束会话的指令。
->    - **整批收齐后播报（严禁中途刷屏与盲目 `finalize`）**：
->      1. 若宿主提供批量工作流编排能力（如 `run_workflow` 的 `parallel(...)`），同一阶段的阻塞型并发任务优先通过其一次性并发派发并等待整批完成，由编排结果统一唤醒主调度器一次，避免单个 Subagent 完成反复唤醒刷屏；
->      2. 若通过单点 `invoke_subagent` 或 `Agent/Task` 并发派发，主调度器必须跟踪同批阻塞型任务的完成计数（对 `isBackground: true` 的后台任务如 `Step 5`，在支持 `run_in_background: true` 的宿主中必须显式开启后台非阻塞运行）：**只要仍有同批阻塞型 Subagent 在运行，严禁提前调用 `finalize` 空跑**，且仅在整批任务全部收齐完成阶段推进后统一向用户播报阶段进展。
+>    - **按工具能力 3 档强制真并发与整批收齐铁律（详见 [宿主适配](../HOST_ADAPTER.md)）**：
+>      1. **第 1 档（有批量脚本编排工具如 `run_workflow`）**：整批阻塞型并发任务必须用脚本编排一次并发跑完并统一等待收齐（单次唤醒、0 刷屏），后台 `Step 5` 单独异步拉起；
+>      2. **第 2 档（子代理工具自带后台/异步开关如 `run_in_background: true`，或天生异步返回 ID）**：**所有并发阶段的 Subagent 派发一律开启后台/异步模式**，全批迅速起跑后再统一等待阻塞任务收齐；
+>      3. **第 3 档（纯同步阻塞型子代理工具）**：在同一条消息内并列发出 4～5 个极简 `prompt` 调用。任何模式下，**只要仍有同批阻塞型 Subagent 在运行，严禁提前调用 `finalize` 空跑或逐条刷屏播报**。
 > 3. **运行记录（严禁 `grep/Read` 脚本源码）**：工程目录默认位于 `{APP_DIR}` = `{PROJECT_ROOT}/.hap-copilot/apps/{appName}`（恢复时使用 `scan_apps.py` 返回的绝对路径）。主调度器直接按下方标准命令与 JSON 契约操作，**严禁使用 `grep` 或 `Read` 翻阅 `scripts/build_runtime.py` 等脚本源码反推字段格式**。
 > 4. **完建优先与规划契约保真铁律（防中断 · 防乱替）**：
 >    - **本步验收与原对象续作**。按已批准方案回读本步核心配置。页面已有 ID 但缺主图、动作已有流程 ID 但缺节点、角色已有 ID 但缺必要授权时，继续在原对象补齐。可选微调或需下游验证的事项写入 `issues`，成功与失败回执遵循 [输出契约](../build/OUTPUT_CONTRACT.md)。
@@ -109,11 +110,22 @@ python3 {SKILL_DIR}/scripts/build_runtime.py finalize --app-dir {APP_DIR} --prog
 | **Step 10** | 并发 Subagent | 单条系统流设计、创建、校验修复与发布 | `["find_member", "find_department", "get_current_user", "get_worksheet_field", "get_worksheet_structure", "create_process", "get_workflow_structure", "get_workflow_node", "get_workflow_variables", "update_workflow_node", "update_workflow_variables", "batch_create_process_nodes", "batch_delete_process_nodes", "validate_process", "publish_process", "get_sms_signatures"]` |
 | **Step 11** | 并发 Subagent | 单个动作流设计、注入、校验发布及本次搭建入口恢复 | 同 Step 10（去掉 `"create_process"`，复用预建 `processId`），加 `get_custom_action_list`、`update_custom_action` |
 
-### 统一 Subagent 派发 Prompt 模板
-`build_runtime.py prepare` 会为每个待执行任务生成预编译任务包 `bundleFiles`（`.build/task-bundles/{taskId}*.md`，已内联宿主调用规则、步骤 SOP、专属 `taskContext` 与本步必读规范章节，单卷严格控制在单次读取上限内）。对待执行的 `readyTask` 创建独立 Subagent（若为异步回调宿主则登记 `build_runtime.py dispatched --app-dir {APP_DIR} --task-id {taskId} --agent-id {agentId}`），并严格遵守以下两条防并发退化硬约束：
+### 统一 Subagent 派发规则与极简 Prompt 模板
+`build_runtime.py prepare` 会为每个待执行任务生成预编译任务包 `bundleFiles`（`.build/task-bundles/{taskId}*.md`，已内联宿主调用规则、步骤 SOP、专属 `taskContext` 与本步必读规范章节，单卷严格控制在单次读取上限内）。派发前按当前手头工具能力从高到低命中对应档位：
 
-- **极简派发 `prompt` 铁律（严禁扩写成小作文）**：直接原样套用下方单段模板（仅替换 `{taskName}`、`{step}`、`{bundleFiles}`、`{receiptPath}`，单条 `prompt` 严格控制在 **150 字以内**）；所有字段、业务要点、工具白名单与回执契约均已预编译在 `bundleFiles` 内，**严禁在派发 `prompt` 中自行复述字段、白名单或 SOP 细节**（扩写成上千字极易撑爆单轮多工具生成预算，导致模型截断退化为串行）。
-- **同轮多工具真并发与分波次上限**：同一阶段的就绪任务必须在**同一条助手消息中并列发出多个子代理工具调用**（严禁发 1 个等返回再发下 1 个）；当单阶段就绪任务超过 5 个时，按每波 **4～5 个**在同一条消息内并行派发，防止轻量模型一轮试图吐出 10 个工具调用时提前截断退化为串行。
+1. **第 1 档（手头有 `run_workflow` 等脚本编排工具）**：将本阶段全部阻塞型 `readyTasks` 写入单次 `run_workflow` 脚本并发执行（单任务用 `try/except` 或 `asyncio.gather(..., return_exceptions=True)` 隔离，防止单个失败取消同批任务；`isBackground: true` 的 `Step 5` 仍单独异步起跑）：
+```python
+import asyncio
+SCHEMA = {"type": "object", "properties": {"taskId": {"type": "string"}, "status": {"type": "string"}}, "required": ["taskId", "status"]}
+async def run_one(t):
+    prompt = f'执行 {t["taskName"]}（step = "{t["step"]}"）。完整读取预编译包 {t["bundleFiles"]}（已内联全部规则与数据，勿读外部规范、勿用 find/jq/python 搜本地 JSON），完成后写入 {t["receiptPath"]} 并直接结束。'
+    return await agent(prompt, schema=SCHEMA, role=t["taskName"][:40], type_name="self")
+results = await asyncio.gather(*(run_one(t) for t in tasks), return_exceptions=True)
+```
+2. **第 2 档（无编排工具，但子代理工具带后台/异步参数如 `run_in_background: true`，或天生异步返回 ID）**：**本阶段全部并发任务（含阻塞型与 `Step 5`）一律显式开启后台/异步模式派发**（每发 1 个立即返回 ID 并后台开跑，彻底杜绝轻量模型单轮只吐 1 个工具调用退化为串行），全部起跑后（异步回调宿主可顺手登记 `dispatched`）等待全部阻塞型任务收齐再推进；
+3. **第 3 档（仅有纯同步阻塞型子代理工具）**：在同一条助手消息内并列发出 **4～5 个**子代理调用（超过 5 个分波次并行，严禁发 1 个等返回再发下 1 个）。
+
+- **极简派发 `prompt` 铁律（严禁扩写成小作文）**：直接原样套用下方单段模板（仅替换 `{taskName}`、`{step}`、`{bundleFiles}`、`{receiptPath}`，单条 `prompt` 严格控制在 **150 字以内**）；所有字段、业务要点、工具白名单与回执契约均已预编译在 `bundleFiles` 内，**严禁在派发 `prompt` 中自行复述字段、白名单或 SOP 细节**。
 - `readyTasks` 默认包含容量等待任务，按宿主并发槽位派发；槽位释放后再次 `prepare` 补位。
 - `resume: true` 的失败任务会携带 `previousReceipt`，执行者须先核实线上实际状态并保留已创建成果，仅续作未完成部分。
 - **阶段顺序与中断恢复**：全局进度按阶段验收推进。阶段报告返回 `reviewLaterTasks` 时，按其 `prepareProgress` 运行 `prepare --progress` 获取候选包，逐项核实真实输入与依赖，只派发已就绪的任务。例如通知记录负责人只需已建成的负责人字段，通知指定角色则需该角色的真实 ID。保留提前完成的回执，回到原阶段修复、汇总；不得用后续阶段报告跳过失败任务。
