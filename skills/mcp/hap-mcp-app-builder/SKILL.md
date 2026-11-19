@@ -39,7 +39,7 @@ description: 用于明道云/HAP 应用的方案设计、自动搭建、继续�
 ```bash
 python3 {SKILL_DIR}/scripts/skill_update.py check
 ```
-- **5 分钟缓存与源码软链保护**：`check` 默认带 5 分钟缓存；若当前目录为指向源码开发工作区的符号链接（`isSourceWorkspace: true`）或已关闭自动更新（`autoUpdate: false`），脚本自动静默跳过，绝不覆盖本地修改。
+- **24 小时缓存与源码软链保护**：`check` 默认带 24 小时成功缓存、1 小时失败冷却与 3 秒快速联网超时（不影响日常查数与改表响应）；若当前目录为指向源码开发工作区的符号链接（`isSourceWorkspace: true`）或已关闭自动更新（`autoUpdate: false`），脚本自动静默跳过，绝不覆盖本地修改。
 - **发现新版并原子更新**：当返回 `"updateAvailable": true` 且允许自动更新时，执行 `python3 {SKILL_DIR}/scripts/skill_update.py update`（支持 GitHub 仓库拉取更新及带 SHA256 校验的发行包原子切换，保留上一版本供 `rollback` 秒级回退）；**更新成功后必须重新调用文件读取工具读取新版的 `SKILL.md` 与 `version.json`**，再继续本次任务。
 
 ### 1. 明道云 MCP 服务自动识别（不限服务名称）
@@ -47,7 +47,7 @@ python3 {SKILL_DIR}/scripts/skill_update.py check
 从当前运行时环境中检测所有暴露了明道云核心工具（同时包含 `get_org_list` 与 `create_app`）的 MCP 服务，**不限制服务名称**（无论是 `hap_mcp`、`mingdao_mcp`、`hap_meihua_mcp`、`hap_sandbox_mcp` 或用户自定义名称均可识别）：
 
 - **情况 A：未检测到任何明道云 MCP 服务（0 个）**
-  读取 [MCP 接入指南](MCP_SETUP.md)，直接引导用户在明道云打开 **「连接 AI」** 弹窗 ➔ 勾选 **「应用助手」** ➔ 选择或创建 **「个人访问令牌」** ➔ 点击 **「复制提示词（发送给 Agent 安装）」** 粘贴到当前对话。收到安装提示词后，**自动跳过 Skill 重复安装步骤，仅提取 MCP 服务地址与令牌完成宿主 MCP 配置**；连接生效后重新执行服务检测、第 2 步全量工具门禁与连通性校验，通过后继续原任务。
+  读取 [MCP 接入指南](MCP_SETUP.md)，直接引导用户在明道云打开 **「连接 AI」** 弹窗 ➔ 勾选 **「HAP 应用助手」** ➔ 选择或创建 **「个人访问令牌」** ➔ 点击 **「复制提示词（发送给 Agent 安装）」** 粘贴到当前对话。收到安装提示词后，**自动跳过 Skill 重复安装步骤，仅提取 MCP 服务地址与令牌完成宿主 MCP 配置**；连接生效后重新执行服务检测、第 2 步全量工具门禁与连通性校验，通过后继续原任务。
 
 - **情况 B：检测到唯一一个明道云 MCP 服务（1 个）**
   自动静默选定该服务作为 `MCP_SERVER_NAME`，无需打断用户确认，直接进入第 2 步。

@@ -19,9 +19,9 @@ import urllib.error
 import urllib.request
 from zipfile import ZipFile
 
-SUCCESS_CACHE_TTL = 300   # 成功检查缓存 5 分钟
-FAILURE_CACHE_TTL = 60    # 失败重试冷却 1 分钟
-HTTP_TIMEOUT = 8
+SUCCESS_CACHE_TTL = 86400  # 成功检查缓存 24 小时
+FAILURE_CACHE_TTL = 3600   # 失败重试冷却 1 小时
+HTTP_TIMEOUT = 3           # 联网快速超时 3 秒，连不上快速静默跳过
 
 
 def sha256_file(path: Path) -> str:
@@ -423,7 +423,7 @@ def main():
 
     sub.add_parser("status", help="离线查看当前版本、安装形态、脏文件与自动更新状态")
 
-    p_chk = sub.add_parser("check", help="检查远端是否有新版本（默认带 5 分钟缓存）")
+    p_chk = sub.add_parser("check", help="检查远端是否有新版本（默认带 24 小时缓存与 3 秒快速超时）")
     p_chk.add_argument("--server", type=str, default=None, help="更新源服务地址")
     p_chk.add_argument("--force", action="store_true", help="忽略缓存立即检查")
     p_chk.add_argument("--allow-http", action="store_true", help="允许研发 HTTP 更新源")
