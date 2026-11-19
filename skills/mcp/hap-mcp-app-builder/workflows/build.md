@@ -109,8 +109,10 @@ python3 {SKILL_DIR}/scripts/build_runtime.py finalize --app-dir {APP_DIR} --prog
 | **Step 11** | 并发 Subagent | 单个动作流设计、注入、校验发布及本次搭建入口恢复 | 同 Step 10（去掉 `"create_process"`，复用预建 `processId`），加 `get_custom_action_list`、`update_custom_action` |
 
 ### 统一 Subagent 派发 Prompt 模板
-`build_runtime.py prepare` 会为每个待执行任务生成预编译任务包 `bundleFiles`（`.build/task-bundles/{taskId}*.md`，已内联宿主调用规则、步骤 SOP、专属 `taskContext` 与本步必读规范章节，单卷严格控制在单次读取上限内）。对待执行的 `readyTask` 创建独立 Subagent，登记 `build_runtime.py dispatched --app-dir {APP_DIR} --task-id {taskId} --agent-id {agentId}`，并传入以下提示词：
+`build_runtime.py prepare` 会为每个待执行任务生成预编译任务包 `bundleFiles`（`.build/task-bundles/{taskId}*.md`，已内联宿主调用规则、步骤 SOP、专属 `taskContext` 与本步必读规范章节，单卷严格控制在单次读取上限内）。对待执行的 `readyTask` 创建独立 Subagent（若为异步回调宿主则登记 `build_runtime.py dispatched --app-dir {APP_DIR} --task-id {taskId} --agent-id {agentId}`），并严格遵守以下两条防并发退化硬约束：
 
+- **极简派发 `prompt` 铁律（严禁扩写成小作文）**：直接原样套用下方单段模板（仅替换 `{taskName}`、`{step}`、`{bundleFiles}`、`{receiptPath}`，单条 `prompt` 严格控制在 **150 字以内**）；所有字段、业务要点、工具白名单与回执契约均已预编译在 `bundleFiles` 内，**严禁在派发 `prompt` 中自行复述字段、白名单或 SOP 细节**（扩写成上千字极易撑爆单轮多工具生成预算，导致模型截断退化为串行）。
+- **同轮多工具真并发与分波次上限**：同一阶段的就绪任务必须在**同一条助手消息中并列发出多个子代理工具调用**（严禁发 1 个等返回再发下 1 个）；当单阶段就绪任务超过 5 个时，按每波 **4～5 个**在同一条消息内并行派发，防止轻量模型一轮试图吐出 10 个工具调用时提前截断退化为串行。
 - `readyTasks` 默认包含容量等待任务，按宿主并发槽位派发；槽位释放后再次 `prepare` 补位。
 - `resume: true` 的失败任务会携带 `previousReceipt`，执行者须先核实线上实际状态并保留已创建成果，仅续作未完成部分。
 - **阶段顺序与中断恢复**：全局进度按阶段验收推进。阶段报告返回 `reviewLaterTasks` 时，按其 `prepareProgress` 运行 `prepare --progress` 获取候选包，逐项核实真实输入与依赖，只派发已就绪的任务。例如通知记录负责人只需已建成的负责人字段，通知指定角色则需该角色的真实 ID。保留提前完成的回执，回到原阶段修复、汇总；不得用后续阶段报告跳过失败任务。
@@ -118,7 +120,7 @@ python3 {SKILL_DIR}/scripts/build_runtime.py finalize --app-dir {APP_DIR} --prog
   2. **Subagent 平台级报错中断（未生成回执）**：收到宿主系统消息提示执行器停止或失败时，使用 `reset-task` 或 `dispatch-failed` 清除挂起状态，并在可恢复且不重复写入的前提下重新 `prepare` 派发。后台 `Step 5` 可并发续作，失败或重试均不阻塞阶段推进及终态交付；若无法完成，报告实际示例数据缺口和原因，不要求主调度器串行补录，也不把未生成数据称为已完成。若用户明确要求示例数据作为交付核心，则按该要求如实标明未完成。
 
 ```markdown
-执行 {taskName}（step = "{step}"）。直接完整读取本任务预编译包 {bundleFiles}（包内已内联执行说明、步骤 SOP、专属数据与领域规范，无需再读外部规范文件，严禁在终端用 find/jq/python 搜索或拆解外部 JSON Schema 文件）。完成后将结果写入 {receiptPath} 并直接结束。
+执行 {taskName}（step = "{step}"）。完整读取预编译包 {bundleFiles}（已内联全部规则与数据，勿读外部规范、勿用 find/jq/python 搜本地 JSON），完成后写入 {receiptPath} 并直接结束。
 ```
 
 ---
