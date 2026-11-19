@@ -25,7 +25,7 @@
 4. **共用组件映射与 `filtersGroup` 置后输出**：
    - 为每个内联图表/视图分配稳定的本地 UUIDv4 `objectId`，`filtersGroup` 同一业务条件只建一个筛选项（内层 `filterId` 传 UUIDv4，外层 `filtersGroupId` 留空不传），在 `objectControls` 中绑定所有语义兼容的图表/视图 `objectId`（目标 `controlId` 必须属于对应工作表，同一筛选项内每张表最多绑定 1 个字段，跨表绑定选项字段须确认同源兼容，不兼容对象记入 `notes`）；
    - `components` 数组中先排列被引用的 `chart` / `view` 组件，最后输出 `filtersGroup`（其坐标 `position` 仍置顶于 `y: 0`）；
-   - 按 `page.type` 应用页面规范对应的 Dashboard 或 Workspace 新建规则，依据真实数据源完成本页组件与布局。
+   - 按 `page.type` 应用页面规范对应的 Dashboard 或 Workspace 新建规则，依据真实数据源完成本页组件与布局：**其中 `Dashboard` 转换 `charts` 并配齐 `filtersGroup`、核心 KPI 与分析图；`Workspace` 除转换 `Text / Button / View / Carousel` 外，必须按 `hap-domain-custom-page-spec.md` §3.2 基于 `worksheetContextSlice` 默认补充 KPI 卡片（2～6 个）、业务 `section` 分段与每个 `View` 右侧上下排列的 2 张辅助图（View `w=32`，右图各 `w=16`、同一父级对齐），仅当方案/`requirements` 显式排除统计或缺少真实统计依据时不添加**。
    - 每张图分别核实事实表、筛选、维度、聚合、单位和时间范围，分配独立的组件/图表配置，不能复制第一个图的指标冒充其他图。数据为空时保留真实查询及空状态，禁止制造零值或示例结果作为真实统计；无法可靠表达的指标记入 `notes` 与 `issues`。
    - **主题色呼应与数值卡图标**：富文本使用指南（多阶段/多角色工作台优先采用多场景分栏卡片，自带外层圆角底色时将 `text` 组件顶层 `appearance` 设为 `"transparent"`）与快捷按钮（主动作优先使用 `appColor`）须结合当前应用主题色 `appColor` 设计；数值卡需显示图标时从 `references/hap-icon-palette.md` 选带 `sys_` 前缀的合法 `fileName` 写入 `components[].config.config.numberCard` 并显式开启图标显示开关，量级/小数位/单位写入 `values[]`。
 
@@ -33,7 +33,7 @@
 1. **一次全量保存（全新构建免写前探查）**：全新构建（无 `previousReceipt`）已知 `pageId` 为 Step 1 新建空壳，**直接组装组件树调用 1 次 `update_custom_page(appId, page_id: pageId, components)` 保存整页，无需写前调用 `get_custom_page_structure` 探查空壳**（若写入前参数校验报错未落库，一次集中修正全部错误路径后重提，最多 3 次；若确认线上页面已有组件树落库或本次保存已成功，**严禁再次调用 `update_custom_page`**）。
 2. **轻量摘要核验（`summary` 通过即收口，免 `full` 逐图回读）**：保存成功后，调用 1 次 `get_custom_page_structure(appId, page_id: pageId, detail: "summary")` 检查组件数量、位置尺寸及相邻占位是否重叠；**摘要参数符合目标即完成检查，直接写入成功回执，不追加 `full` 或逐组件配置读取**。
 3. **异常时在原页面局部补齐**：仅当 `summary` 发现组件缺失/栅格重叠或属于断点续作时，按 `patch_custom_page_components` 契约用 `add` 补齐缺失组件、用 `update` 修正已有组件（布局微调可省略 `config`；涉及数据源、指标或绑定修正时才按需读取对应组件详情或 `full`）。
-4. **按页面用途验收（严格以 `planSlice.page` 规划组件为唯一完成标准）**。用回读结果核对 `planSlice.page` 中规划的 `charts` 或 `components` 清单，在 `verification.evidence` 列出实际组件、绑定及指标。**只要 `planSlice.page` 规划的组件与业务口径已落库（例如 `workspace` 工作台页面若在 `components` 中仅规划了视图 `View` 与按钮 `Button` 而未规划统计图，则配齐规划的视图与按钮即为 100% 完成），必须填 `outputs.completed: true` 且顶层 `status: "succeeded"`！严禁因为未额外添加规划外的 KPI 卡片或配套统计图、未做前端渲染实测或跨表站点动态约束未配而将 `outputs.completed` 设为 `false`！** 受限的可选派生指标或布局微调写进 `outputs.notes`。仅当 `planSlice.page` 明确规划的核心组件确实缺失或待办视图错误绑定了无筛选“全部”视图时，才填 `outputs.completed: false` 并记 `failed` 供续作。
+4. **按页面用途验收**：用回读结果核对 `planSlice.page` 中规划的 `charts` 或 `components` 清单（含 `Workspace` 按规范补齐的 KPI 与右侧辅助图），在 `verification.evidence` 列出实际组件、绑定及指标。可实现且符合规范的组件均已落库（受限于平台能力或 `requirements` 显式排除的统计项记录在 `outputs.notes`），即填 `outputs.completed: true` 且顶层 `status: "succeeded"`，严禁仅因未做前端渲染实测或运行态未验证将 `outputs.completed` 设为 `false`！仅当 `planSlice.page` 明确规划的核心组件确实缺失、未完成布局错位或待办视图错误绑定了无筛选“全部”视图时，才填 `outputs.completed: false` 并记 `failed` 供续作。
 
 ---
 

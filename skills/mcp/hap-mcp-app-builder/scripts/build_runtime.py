@@ -1322,10 +1322,6 @@ def compile_task_bundles(
         if step == "3" and ref_rel.endswith("hap-domain-custom-action-spec.md"):
             if not plan_slice.get("customActions"):
                 continue
-        if step == "6" and ref_rel.endswith("hap-chart-design-guide.md"):
-            page_obj = plan_slice.get("page") if isinstance(plan_slice.get("page"), dict) else {}
-            if page_obj.get("type") == "workspace" and not page_obj.get("charts"):
-                continue
         ref_text = load_text(os.path.join(skill_root, ref_rel))
         if not ref_text:
             continue
