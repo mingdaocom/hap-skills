@@ -1325,20 +1325,11 @@ def compile_task_bundles(
         ref_text = load_text(os.path.join(skill_root, ref_rel))
         if not ref_text:
             continue
-        if step == "2a" and ref_rel.endswith("hap-domain-worksheet-spec.md"):
-            ref_text = extract_h2_sections(ref_text, [
-                "工作表元数据与配置规范", "字段设计业务思考与选型决策", "字段通用控制属性与约束",
-                "特殊字段配置说明", "Divider", "Layout 12", "选项字段规范",
-                "默认值", "字段辅助文本规范", "工作表设置与表单体验增强规范",
-            ])
-        elif step == "2b" and ref_rel.endswith("hap-domain-worksheet-spec.md"):
+        if step == "2b" and ref_rel.endswith("hap-domain-worksheet-spec.md"):
             ref_text = extract_h2_sections(ref_text, [
                 "字段通用控制属性与约束", "特殊字段配置说明", "Layout 12",
                 "Relation 跨表关联字段规范", "关联衍生控件规范",
             ])
-        elif step == "3" and ref_rel.endswith("hap-domain-business-rule-spec.md"):
-            if not plan_slice.get("businessRules") and not ctx_slice.get("businessRulesNotes"):
-                ref_text = extract_h2_sections(ref_text, ["业务规则定位与核心设计场景", "四类规则"])
         # Step 8 角色权限只需 hap-app-design-guide 中的角色与外部门户章节
         elif step == "8" and ref_rel.endswith("hap-app-design-guide.md"):
             ref_text = extract_h2_sections(ref_text, ["角色权限", "外部门户"])
