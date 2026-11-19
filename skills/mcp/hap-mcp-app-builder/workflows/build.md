@@ -58,7 +58,9 @@ python3 {SKILL_DIR}/scripts/build_runtime.py init --app-dir {APP_DIR} --skill-di
 ```bash
 # Pass 1: Step 2a 全表并发建表与基础字段排版
 python3 {SKILL_DIR}/scripts/build_runtime.py prepare --app-dir {APP_DIR} --progress app_created
-# -> 批量派发 readyTasks 中的 Subagent 并调用 dispatched 登记 -> 等待完成
+# -> 批量派发 readyTasks 中的 Subagent 后，按需登记已派发（无需运行 --help 查参数）：
+# python3 {SKILL_DIR}/scripts/build_runtime.py dispatched --app-dir {APP_DIR} --task-id <taskId> --agent-id <agentId>
+# -> 查状态直接用 build_runtime.py status --app-dir {APP_DIR}（无需 ls .build/receipts/）-> 等待完成
 # -> 一键完成本阶段汇总、推进与下一阶段任务准备（若无跨表关联自动跳至 worksheets_created）：
 python3 {SKILL_DIR}/scripts/build_runtime.py finalize --app-dir {APP_DIR} --progress app_created --advance-and-prepare
 

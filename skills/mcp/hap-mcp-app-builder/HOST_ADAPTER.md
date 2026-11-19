@@ -7,7 +7,7 @@
 - **开工前必查实时 MCP Schema（唯一能力真值源，严禁未查先降级）**：
   - **真值源定位**：Skill 中的 `references/hap-*.md` 与 `modify_guide.md` 仅提供业务建模原则与高频防坑约束，**绝非平台参数全集**；**当前连接环境的实时 MCP 工具 Schema 才是判断平台支持哪些子能力与合法参数结构的唯一权威真值源**。
   - **按宿主机制高效核对 Schema（严禁跨客户端目录 `find` 或多轮 `jq/python` 拆解本地文件）**：
-    - **内联定义或 `ToolSearch` 宿主（如 Claude Code / WorkBuddy / Cursor / Codex）**：工具定义已随会话内联提供，或调用 1 次 `ToolSearch` 加载后直接结合当前任务包已内联的 `references/hap-*.md` 领域规范构造参数调用；**绝对禁止在终端执行 `find /Users` 搜索 `.gemini` 等其他客户端目录下的 `.json` 文件，也严禁编写多轮 `jq` 或 `python` 脚本逐层拆解 Schema 文件**；
+    - **内联定义或 `ToolSearch` 宿主（如 Claude Code / WorkBuddy / Cursor / Codex）**：工具定义已随会话内联提供，或首轮按 `allowedTools` 一次性并行 `ToolSearch` 加载齐所需工具（严禁逐个串行 `ToolSearch` 试探）后直接结合当前任务包已内联的 `references/hap-*.md` 领域规范构造参数调用；**绝对禁止在终端执行 `find /Users` 搜索 `.gemini` 等其他客户端目录下的 `.json` 文件，也严禁编写多轮 `jq` 或 `python` 脚本逐层拆解 Schema 文件**；
     - **Antigravity Lazy MCP（`call_mcp_tool`）**：按宿主在系统提示词中提供的路径（如 `~/.gemini/antigravity/mcp/<服务名>/<toolName>.json`）使用 `read_file` 读取对应 Schema 文件（超长单行用 `ByteOffset` 续读或按目标类型名精准定位）。
   - **严禁主观断定不支持而绕路**：只要实时 MCP Schema 支持对应原生参数（例如 `Rollup` 的 `config.relationFilter` 条件汇总、`Relation` 的 `resultFilter` 等），必须优先采用原生能力并结合真实表结构主动补全合理过滤口径；**绝对禁止仅因 Skill 文档未提及，在未查实时 MCP Schema 前就主观认定“平台不支持”并擅自降级为普通字段 + 绕路工作流**，也严禁跳过 Schema 凭印象盲猜入参。
 - **文档简写与 `appId` 必传铁律**：文档中的 `tool_name(...)` 均为重点业务参数示意简写。除 `get_org_list`、`get_org_detail`、`get_app_list`、`create_app`、`find_member`、`find_department`、`get_current_user` 等少数全局/组织级接口外，**所有应用内读写接口（即使已传全局唯一的 `worksheet_id` / `workflow_id` / `page_id` / `role_id` / `chatbot_id`）调用时必须始终显式传入当前目标 `"appId"`**；遇到 `10001` 或单点 `401` 报错时，第一时间核查是否漏传 `"appId"` 或写错参数键名。
@@ -16,7 +16,7 @@
   - **Data 场景**：完整读取 `workflows/data.md`，遵循其中的视图平铺与降维取数准则、分级确认门禁、`fields[].type` 防坑规则及审批/PBP 流转规范。
   - **Build 子代理场景**：Subagent 首轮只需直接读取 `prepare` 预编译生成的 `bundleFiles`（`.build/task-bundles/{taskId}*.md`，单卷已控制在单次读取上限内，首部已内联宿主调用规则、步骤 SOP、专属 `taskContext` 与本步必读领域规范章节，**无需再单独读取 `HOST_ADAPTER.md` 或外部 `references/*.md`**），在 Codex 中，每次工具返回只读一个任务的一卷。若返回提示截断或缺尾部，用行号分段续读至该卷末行；多个执行器仍可并行。**严禁仅用 `grep` 搜索代替阅读，也严禁 `grep/Read` `scripts/build_runtime.py` 等脚本源码**；`sourceFiles` 仅在异常恢复或核对跨表补充细节时按需查阅，正常执行不扫描无关表或他表回执。
   - **跨宿主子代理派发与完成收口规范**：
-    - **子代理侧**：完成任务并将标准 JSON 回执写入 `receiptPath` 后，直接输出简短文本总结结束当前会话，**严禁调用 `send_message` 等跨代理通信工具向父会话 ID 发送消息**（各宿主均会在子代理结束时自动将结果回传主调度器，手动发消息反而易触发 `recipient not found` 报错）；
+    - **子代理侧**：子代理为短平快原子执行器，**严禁调用 `TaskCreate` / `TaskUpdate` / `TodoWrite` 自建内部待办卡片**；完成任务并将标准 JSON 回执写入 `receiptPath` 后，直接输出简短文本总结结束当前会话，**严禁调用 `send_message` 等跨代理通信工具向父会话 ID 发送消息**（各宿主均会在子代理结束时自动将结果回传主调度器，手动发消息反而易触发 `recipient not found` 报错）；
     - **主调度器侧（按工具原生能力 3 档自选，不硬编码宿主名）**：
       1. **第 1 档 · 具备批量脚本编排工具（如 `run_workflow`）**：同阶段全部阻塞型子任务必须通过脚本编排一次性并发拉起并统一等待收齐（用 `asyncio.gather(..., return_exceptions=True)` 防单点失败取消整批，整批完结只唤醒主调度器 1 次，0 刷屏）；`isBackground: true` 的后台任务（如 `Step 5`）仍单独异步起跑不阻塞；
       2. **第 2 档 · 子代理工具天生异步返回 ID 或带有后台开关参数（如 `run_in_background` / `background` / `async`）**：**所有并发阶段的 Subagent 派发一律显式开启后台/异步模式**，让每次派发立即返回 ID 并在后台同时运行（彻底免疫轻量模型单轮只吐 1 个工具调用导致的串行退化）；全批起跑后**直接结束当前轮次（停止调用工具），等待系统后台完成通知自动唤醒**，**严禁使用 `Bash(sleep ...)` 循环轮询**；中途被单个回调唤醒时先查 1 次 `build_runtime.py status`（或核对 `.build/receipts/` 数量），未全部收齐前再次直接结束本轮等待下一通知，严禁提前 `finalize` 或逐条刷屏播报；

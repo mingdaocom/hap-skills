@@ -32,7 +32,7 @@
 ### 1. 顶层属性约束
 - **`org_id`**：固定下划线键名 `org_id`（严禁写为 `orgId`）。
 - **`language`**：与当前会话锁定的语言代码一致（如 `"zh-CN"`、`"en"`、`"ja"`），下游构建子代理据此统一所有用户可见文本语言。
-- **`appIcon` / `appColor`**：从 `references/hap-icon-palette.md` 精确选取带 `sys_` 前缀的合法 `fileName` 与 9 色板 HEX 色值；`navLayout` 与 `navColor` 选型遵循 `references/hap-domain-app-spec.md`。
+- **`appIcon` / `appColor`**：从 `../references/hap-icon-palette.md` 精确选取带 `sys_` 前缀的合法 `fileName` 与 9 色板 HEX 色值；`navLayout` 与 `navColor` 选型遵循 `../references/hap-domain-app-spec.md`。
 - **`enableExternalPortal`**：规划了外部门户角色（`roleScope: "externalPortal"`）时必须设为 `true`。
 - **`navGroups`**：完整覆盖 `worksheets`、`customPages`、`aiAssistants` 中用到的全部 `groupName`（逐字精确一致，严禁简写），决定分组创建与展示顺序。
 
@@ -50,7 +50,7 @@
 
 - **`name`（去“表”后缀规范）**：使用纯粹业务实体名词（如 `客户`、`采购订单`、`中奖名单`），自动剔除口语中的“表/工作表”后缀（仅 `资产负债表`、`利润表`、`课程表` 等专有名词或用户显式强调保留时例外）。
 - **`worksheetType` 与主子表双向闭环硬约束**：普通表为 `"normal"`（默认），明细子表为 `"subTable"` 且必填 `parentWorksheet`（主表名称）。**凡声明 `worksheetType: "subTable"` 的子表，其主表 `fields` 中必须 100% 包含对应的 `"子表名(SubTable:子工作表名)"` 字段，严禁出现孤立子表！**
-- **`icon`**：从 `references/hap-icon-palette.md` 选取带 `sys_` 前缀的合法图标，同组内避免雷同。
+- **`icon`**：从 `../references/hap-icon-palette.md` 选取带 `sys_` 前缀的合法图标，同组内避免雷同。
 - **`businessRulesNotes`**：字符串数组，用“意图 + 举例”的自然语言描述显隐、只读、动态赋值（含通过关联字段 `rcid` 自动带出所属站点/负责人）、本表字段对比校验（如“结束时间不早于开始时间”）或终态锁定规则（注意：关联候选框 `resultFilter` 不支持动态引用当前表单字段，跨表归属一致优先规划为“选子对象后自动带出归属站点/部门”或配合 `Lookup` 字段做同表校验）。
 - **`consistencyNotes`（必填）**：简述本表选项字段如何支撑视图筛选、业务规则、动作条件与工作流流转。
 
@@ -73,7 +73,7 @@
 ## 三、 `customPages`、`customActions`、`workflows`、`roles`、`aiAssistants`
 
 1. **`customPages`（自定义页面数组）**：
-   - 公共属性：`name`、`groupName`、`type`（`"dashboard"` 或 `"workspace"`）、`description`、`icon`（从 `references/hap-icon-palette.md` 选取带 `sys_` 前缀的合法图标，如 `"sys_control-panel_traffic"`、`"sys_hr_workbench"`）、`color`、`requirements`?。
+   - 公共属性：`name`、`groupName`、`type`（`"dashboard"` 或 `"workspace"`）、`description`、`icon`（从 `../references/hap-icon-palette.md` 选取带 `sys_` 前缀的合法图标，如 `"sys_control-panel_traffic"`、`"sys_hr_workbench"`）、`color`、`requirements`?。
    - `type: "dashboard"` 必填 `charts`（建议 6～10 项：1 个 `"全局筛选(FiltersGroup:维度1,维度2)"` + 4～6 个 `NumberChart` + 趋势/占比/排行图 + `PivotTable`，图表枚举使用标准 MCP `chartType`）。
    - `type: "workspace"` 必填 `components`（紧凑格式 `"名称(Type)"`，`Type` ∈ `Button | View | Text | Carousel | Section`）。
    - 可选 `viewBindings` 用于明确 View 组件到工作表与视图的绑定，例如 `{"待出库": {"worksheet": "出库单", "view": "待出库"}}`；键为 `components` 中的组件名称，两个值必须逐字匹配已规划对象。此映射兼容旧方案：缺省时根据已确认的方案和真实视图语义解析，不新增必填键。

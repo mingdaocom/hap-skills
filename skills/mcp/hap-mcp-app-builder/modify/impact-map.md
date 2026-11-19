@@ -12,7 +12,7 @@
 4. 跨领域操作按什么固定顺序执行；
 5. 哪些关键事实缺失时必须停止并向用户消歧。
 
-风险分级（`low` / `high`）及删除/关闭直通规则统一由 `modify/safety-rules.md` 维护；自动化与人工能力边界由 `modify/execution-boundaries.md` 维护；各领域具体读写方法与工具选型见 `modify/modify_guide.md` 及对应 `references/hap-domain-*-spec.md`。
+风险分级（`low` / `high`）及删除/关闭直通规则统一由 `./safety-rules.md` 维护；自动化与人工能力边界由 `./execution-boundaries.md` 维护；各领域具体读写方法与工具选型见 `./modify_guide.md` 及对应 `../references/hap-domain-*-spec.md`。
 
 ---
 
@@ -36,9 +36,9 @@
   - 不补就无法完成目标且方案明确的归为 `required_linked`；业务政策或人员范围有实质歧义时先向用户消歧；
   - 有直接使用价值但非必需的视图、看板或独立自动化归为 `recommended` 供用户选择。
 - **初始记录与示例数据区分**：
-  - 功能运行必需或需求中已给出明确参数的**真实基准初始记录**纳入 `required_linked`（按 `modify/safety-rules.md` 查重落库）；
+  - 功能运行必需或需求中已给出明确参数的**真实基准初始记录**纳入 `required_linked`（按 `./safety-rules.md` 查重落库）；
   - 尚未发生的业务结果记录保持为空，不为完整性编造；
-  - **演示/测试示例数据**仅在用户明确要求，或在多表关联/配套视图图表需数据体验且建表无其他阻塞澄清时，于建表完成后提供一次可选询问（每表上限见 `modify/safety-rules.md`，拒绝或跳过即止，不为补关联向未授权表造数据）。
+  - **演示/测试示例数据**仅在用户明确要求，或在多表关联/配套视图图表需数据体验且建表无其他阻塞澄清时，于建表完成后提供一次可选询问（每表上限见 `./safety-rules.md`，拒绝或跳过即止，不为补关联向未授权表造数据）。
 
 ---
 
@@ -49,7 +49,7 @@
 | 修改应用名称、说明、图标或颜色 | 当前应用基础信息 | 无额外连带；未要求属性保持不变 | `app_navigation` | 目标应用无法唯一确定时阻断 |
 | 修改单个或多个应用项导航名称/图标/显示模式/备注/用户说明 | 真实应用项 ID、用途与当前必要属性 | 保留未改属性；区分页面/助手的导航名称与实体名称 | 工作表、页面、助手统一走 `app_navigation` (`update_app_items`) | 对象指代不明时消歧 |
 | 新建、重命名或调整导航分组 | 当前完整分组树、同级名称和顺序 | 受影响的精确排序为 `required_linked` | `app_navigation` | 分组层级或同级项不完整时阻断 |
-| 删除导航分组 | 分组层级、`items`/`childSections` 与可选其他一级分组 | 保留所有应用项；多候选承接去向先询问用户，选定后直接执行 | `app_navigation`（参数契约见 `references/hap-domain-app-spec.md`） | 非空一级分组存在多个候选承接分组且未选定时询问 |
+| 删除导航分组 | 分组层级、`items`/`childSections` 与可选其他一级分组 | 保留所有应用项；多候选承接去向先询问用户，选定后直接执行 | `app_navigation`（参数契约见 `../references/hap-domain-app-spec.md`） | 非空一级分组存在多个候选承接分组且未选定时询问 |
 | 调整导航项顺序 | 目标分组及组内全部应用项真实 ID | 保持其他项相对顺序为 `required_linked` | `app_navigation` | 目标项、分组归属或现有顺序无法核实时阻断 |
 | 移动或隐藏入口 | 目标项、原/目标分组、角色可见性、替代访问路径 | 保持必要访问路径为 `required_linked`；备用入口为 `recommended` | 先处理对象归属与 `app_navigation`；权限变化另接 `role_permission` | 唯一入口或受影响角色无法确认时阻断 |
 
@@ -70,7 +70,7 @@
 |---|---|---|---|---|
 | 新建工作表 | 目标分组及组内顺序、表名/alias 唯一性、有效角色列表（供推荐询问） | 默认视图与目标必需表单规则为 `required_linked`；角色授权按选择规则处理；组内导航定位为 `required_linked`（同组自定义页面在前、工作表在后，主表在前、明细子表紧随其后；默认追加末尾已满足顺序时免调排序） | `worksheet(含规则/索引) → (view_action) → (app_navigation) → (role_permission)` | 父分组、核心字段或必要数据源不明时阻断消歧 |
 | 修改工作表普通属性 | 当前工作表必要属性 | 保留未批准属性为 `required_linked` | `worksheet` | 目标工作表无法唯一定位时停止 |
-| 删除工作表 | 真实目标、整表准确记录数（`totalCount`）及已知具体引用 | 空表按 `modify/safety-rules.md` 直通；非空表按 `high` 确认，不固定追加导航或权限清理 | 已知必要前置依赖处理 → `worksheet` 删除 | 空表证据缺失先补查；已知依赖未决先处理 |
+| 删除工作表 | 真实目标、整表准确记录数（`totalCount`）及已知具体引用 | 空表按 `./safety-rules.md` 直通；非空表按 `high` 确认，不固定追加导航或权限清理 | 已知必要前置依赖处理 → `worksheet` 删除 | 空表证据缺失先补查；已知依赖未决先处理 |
 | 新增普通字段 | 当前字段集合、alias 唯一性、表单布局 | 按业务语义就近排入表单布局为 `required_linked`；加入特定视图展示为 `recommended` | `worksheet`；明确要求视图展示时接 `view_action` | 字段身份或布局无法核实时阻断 |
 | 新增敏感字段 | 普通字段依赖 + 目标角色字段权限 | 限制不应访问角色为 `required_linked` | `worksheet → role_permission` | 敏感范围或目标角色不明时阻断 |
 | 修改字段名称、说明或展示属性 | 目标字段最新配置与布局 | 保留类型、alias、校验等未批准属性为 `required_linked` | `worksheet` | 必要原配置缺失时补读 `get_worksheet_field` |

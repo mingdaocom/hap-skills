@@ -1300,8 +1300,8 @@ def compile_task_bundles(
         f"- **准许工具白名单 (`allowedTools`)**: `{json.dumps(task_ctx_data.get('allowedTools', []), ensure_ascii=False)}`\n"
         f"- **回执落盘路径 (`receiptPath`)**: `{task_ctx_data.get('receiptPath', '')}`\n"
         "- **执行范围**：Plan 给出本步的业务目标、对象和用户明确的取舍。开工前读齐任务包中的领域规范正文，结合真实字段、用途与状态落实适用条款。Plan 未逐项列出的配置也按规范补全；区分必须、默认、按需及例外，新增业务政策或权限仍以用户授权为准。\n"
-        f"- **接口调用**：配置目标依领域规范确定，参数和可用能力以当前服务的实时 MCP Schema 为准；内联工具或单次 `ToolSearch` 加载后直接结合本包内联规范调用（无需额外读取 `HOST_ADAPTER.md` 或外部规范，**严禁在终端用 `find/jq/python` 搜索或拆解外部 `.json` Schema 文件**）。写入限于本步白名单，必要时只读核对。应用内调用显式携带 `appId`（`{app_id_val}`）。分卷读取及 Schema 定位遵循 `{os.path.join(skill_root, 'HOST_ADAPTER.md')}`。\n"
-        "- **完成与续作**：保留规划类型及已建 ID，用写入结果或定向回读核对核心配置。在现有回执记录具体证据及有影响的缺项；已有对象在原对象补齐，续作先核对 previousReceipt 和线上状态。回执写入 `receiptPath` 后直接输出简短总结并结束当前轮次，切勿调用 `send_message` 等跨代理通信工具向父会话发送消息。\n\n"
+        f"- **接口调用**：配置目标依领域规范确定，参数和可用能力以当前服务的实时 MCP Schema 为准；内联工具或首轮按 `allowedTools` 一次性并行 `ToolSearch` 加载齐后直接结合本包内联规范调用（严禁逐个串行 `ToolSearch` 试探，无需额外读取 `HOST_ADAPTER.md` 或外部规范，**严禁在终端用 `find/jq/python` 搜索或拆解外部 `.json` Schema 文件**）。写入限于本步白名单，必要时只读核对。应用内调用显式携带 `appId`（`{app_id_val}`）。分卷读取及 Schema 定位遵循 `{os.path.join(skill_root, 'HOST_ADAPTER.md')}`。\n"
+        "- **完成与续作**：子代理为短平快原子执行器，**严禁调用 `TaskCreate` / `TaskUpdate` / `TodoWrite` 自建进度清单**。保留规划类型及已建 ID，用写入结果或定向回读核对核心配置。在现有回执记录具体证据及有影响的缺项；已有对象在原对象补齐，续作先核对 previousReceipt 和线上状态。回执写入 `receiptPath` 后直接输出简短总结并结束当前轮次，切勿调用 `send_message` 等跨代理通信工具向父会话发送消息。\n\n"
         f"{acceptance_rules}\n"
         f"---\n\n## [1] 步骤执行 SOP (`{step_rel}`)\n\n{step_text.strip()}\n\n"
     ]
@@ -1363,11 +1363,16 @@ def compile_task_bundles(
         if total_parts == 1:
             p = os.path.join(bundle_dir, f"{task_id}.md")
             banner = "> **[完整单卷 1/1]** 本文件已内联 SOP、专属数据与全部必读规范正文，无需额外读取外部参考文档。\n\n"
+            footer = "\n\n<!-- END OF BUNDLE (1/1): 本文件已完整结束，勿用 offset 续读 -->\n"
         else:
             p = os.path.join(bundle_dir, f"{task_id}.part{i}.md")
             banner = f"> **[预编译任务包 分卷 {i}/{total_parts}]** 按宿主适配的读取方式读齐全部 {total_parts} 卷后执行。\n\n"
+            if i < total_parts:
+                footer = f"\n\n<!-- END OF PART {i}/{total_parts}: 本卷已完整结束，勿用 offset 续读，直接读取 {task_id}.part{i + 1}.md -->\n"
+            else:
+                footer = f"\n\n<!-- END OF PART {i}/{total_parts}: 全部 {total_parts} 卷已完整结束，勿用 offset 续读 -->\n"
         with open(p, "w", encoding="utf-8") as f:
-            f.write(banner + "".join(ch))
+            f.write(banner + "".join(ch) + footer)
         out_paths.append(p)
 
     return out_paths
