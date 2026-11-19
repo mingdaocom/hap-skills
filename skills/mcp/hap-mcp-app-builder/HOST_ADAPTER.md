@@ -6,9 +6,9 @@
 
 - **开工前必查实时 MCP Schema（唯一能力真值源，严禁未查先降级）**：
   - **真值源定位**：Skill 中的 `references/hap-*.md` 与 `modify_guide.md` 仅提供业务建模原则与高频防坑约束，**绝非平台参数全集**；**当前连接环境的实时 MCP 工具 Schema 才是判断平台支持哪些子能力与合法参数结构的唯一权威真值源**。
-  - **按宿主机制高效核对 Schema（严禁跨客户端目录 `find` 或多轮 `jq/python` 拆解本地文件）**：
-    - **内联定义或 `ToolSearch` 宿主（如 Claude Code / WorkBuddy / Cursor / Codex）**：工具定义已随会话内联提供，或首轮按 `allowedTools` 一次性并行 `ToolSearch` 加载齐所需工具（严禁逐个串行 `ToolSearch` 试探）后直接结合当前任务包已内联的 `references/hap-*.md` 领域规范构造参数调用；**绝对禁止在终端执行 `find /Users` 搜索 `.gemini` 等其他客户端目录下的 `.json` 文件，也严禁编写多轮 `jq` 或 `python` 脚本逐层拆解 Schema 文件**；
-    - **Antigravity Lazy MCP（`call_mcp_tool`）**：按宿主在系统提示词中提供的路径（如 `~/.gemini/antigravity/mcp/<服务名>/<toolName>.json`）使用 `read_file` 读取对应 Schema 文件（超长单行用 `ByteOffset` 续读或按目标类型名精准定位）。
+  - **按宿主 Schema 暴露机制高效核对（不硬编码客户端名，严禁跨目录 `find` 或多轮盲拆）**：
+    - **全量内联或按需展开宿主（如 `ToolSearch` / 摘要展开模式）**：工具定义已随会话内联提供，或首轮按 `allowedTools` 一次性并行加载齐所需工具（严禁逐个串行试探）后直接结合本包内联的 `references/hap-*.md` 构造参数；
+    - **本地文件懒加载宿主（如将工具 Schema 落盘为 `<toolName>.json`）**：优先用文件读取工具核对 `required` 与子配置；若遇超长单行 Schema（如工作流节点、自定义页面/图表类 >100 KB 文件）被单次读取上限截断，用字节偏移续读或**对该已知单个 Schema 文件做 1 次精准关键字切片定位目标字段**（仍**绝对禁止跨目录 `find /Users` 搜索其他客户端文件，或编写多轮 `jq`/`python` 脚本盲目拆解**）。
   - **严禁主观断定不支持而绕路**：只要实时 MCP Schema 支持对应原生参数（例如 `Rollup` 的 `config.relationFilter` 条件汇总、`Relation` 的 `resultFilter` 等），必须优先采用原生能力并结合真实表结构主动补全合理过滤口径；**绝对禁止仅因 Skill 文档未提及，在未查实时 MCP Schema 前就主观认定“平台不支持”并擅自降级为普通字段 + 绕路工作流**，也严禁跳过 Schema 凭印象盲猜入参。
 - **文档简写与 `appId` 必传铁律**：文档中的 `tool_name(...)` 均为重点业务参数示意简写。除 `get_org_list`、`get_org_detail`、`get_app_list`、`create_app`、`find_member`、`find_department`、`get_current_user`、`get_regions` 以及个人跨应用审批工具（`get_approve_list`、`get_approve_details`、`batch_process_approves`、`return_approve`、`revoke_approve`、`terminate_approve`、`urge_approve`）外，**所有应用内读写接口（即使已传全局唯一的 `worksheet_id` / `workflow_id` / `page_id` / `role_id` / `chatbot_id`）调用时必须始终显式传入当前目标 `"appId"`**；遇到 `10001` 或单点 `401` 报错时，第一时间核查是否漏传 `"appId"` 或写错参数键名。
 - **按场景分层读取规则**：

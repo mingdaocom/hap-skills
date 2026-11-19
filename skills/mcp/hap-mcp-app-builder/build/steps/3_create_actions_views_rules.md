@@ -45,21 +45,7 @@
    - 对无需跨表动态查询即可由字段属性覆盖的条件（如 `required`），在 `outputs.ruleChecks` 记录对应字段属性依据；超出业务规则范围的停用前跨表统计提示等交由流程或说明承接，不作本步失败条件。
 2. 对每个适用条件核对全部受影响的真实字段，续作时先查同名及同义规则：
    - 推导 `ruleType`（交互/校验/锁定/样式），纠正不严谨的动作表述（如子表行操作 `permissions` 仅用于 `editable` 动作，不得放入 `show/hide`），构造合法无冲突的 `conditions` 与动作配置块，逐条调用 `create_business_rule`。失败时按 [宿主适配](../../HOST_ADAPTER.md) 排查并继续其他独立规则。
-   - **`create_business_rule` 折叠 Schema 极简参考骨架**（`conditions.children[].value` 的静态比较值须传**字符串数组**如 `["0"]`，勿传标量 `0`/`"0"`；实时 Schema 优先）：
-```json
-// 1) 校验规则 (validation)
-{
-  "appId": "<appId>", "worksheet_id": "<wsId>", "name": "数量必须大于0", "ruleType": "validation",
-  "conditions": {"type": "group", "logic": "AND", "children": [{"type": "condition", "field": "<qtyFieldId>", "operator": "le", "value": ["0"]}]},
-  "validation": {"message": "数量必须大于 0", "errorAction": "blockSubmit", "fields": ["<qtyFieldId>"], "promptOnFieldInput": true, "validateOnServerSave": true}
-}
-// 2) 关联带值交互规则 (interaction: setFieldValue + rcid)
-{
-  "appId": "<appId>", "worksheet_id": "<wsId>", "name": "选商品带出单价", "ruleType": "interaction",
-  "conditions": {"type": "group", "logic": "AND", "children": [{"type": "condition", "field": "<relFieldId>", "operator": "isnotempty"}]},
-  "actions": [{"actionType": "setFieldValue", "assignments": [{"field": "<targetFieldId>", "value": {"sourceType": "field", "sourceField": {"sourceType": "currentFormField", "rcid": "<relFieldId>", "field": "<sourceFieldId>"}}}]}]
-}
-```
+   - **条件值格式防错提示**：`conditions.children[].value` 的静态比较值须传**字符串数组**（如 `["0"]`），勿传标量 `0`/`"0"`；其余字段与动作结构以实时 `create_business_rule` Schema 为准。
 
 ---
 

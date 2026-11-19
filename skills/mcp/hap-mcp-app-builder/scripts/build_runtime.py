@@ -1300,7 +1300,7 @@ def compile_task_bundles(
         f"- **准许工具白名单 (`allowedTools`)**: `{json.dumps(task_ctx_data.get('allowedTools', []), ensure_ascii=False)}`\n"
         f"- **回执落盘路径 (`receiptPath`)**: `{task_ctx_data.get('receiptPath', '')}`\n"
         "- **执行范围**：Plan 给出本步的业务目标、对象和用户明确的取舍。开工前读齐任务包中的领域规范正文，结合真实字段、用途与状态落实适用条款。Plan 未逐项列出的配置也按规范补全；区分必须、默认、按需及例外，新增业务政策或权限仍以用户授权为准。\n"
-        f"- **接口调用**：配置目标依领域规范确定，参数和可用能力以当前服务的实时 MCP Schema 为准；内联工具或首轮按 `allowedTools` 一次性并行 `ToolSearch` 加载齐后直接结合本包内联规范调用（严禁逐个串行 `ToolSearch` 试探，无需额外读取 `HOST_ADAPTER.md` 或外部规范，**严禁在终端用 `find/jq/python` 搜索或拆解外部 `.json` Schema 文件**）。写入限于本步白名单，必要时只读核对。应用内调用显式携带 `appId`（`{app_id_val}`）。分卷读取及 Schema 定位遵循 `{os.path.join(skill_root, 'HOST_ADAPTER.md')}`。\n"
+        f"- **接口调用**：配置目标依领域规范确定，参数和可用能力以当前服务的实时 MCP Schema 为准；内联工具或首轮按 `allowedTools` 一次性并行加载齐后结合本包规范调用（严禁逐个串行试探，无需额外读取 `HOST_ADAPTER.md` 或外部规范；本地文件懒加载宿主遇超长单行 Schema 截断时，可用偏移量续读或对该已知单文件做 1 次精准关键字定位，**严禁跨目录 `find` 搜索外部 `.json` 或多轮拆解**）。写入限于本步白名单，必要时只读核对。应用内调用显式携带 `appId`（`{app_id_val}`）。分卷读取及 Schema 定位遵循 `{os.path.join(skill_root, 'HOST_ADAPTER.md')}`。\n"
         "- **完成与续作**：子代理为短平快原子执行器，**严禁调用 `TaskCreate` / `TaskUpdate` / `TodoWrite` 自建进度清单**。保留规划类型及已建 ID，用写入结果或定向回读核对核心配置。在现有回执记录具体证据及有影响的缺项；已有对象在原对象补齐，续作先核对 previousReceipt 和线上状态。回执写入 `receiptPath` 后直接输出简短总结并结束当前轮次，切勿调用 `send_message` 等跨代理通信工具向父会话发送消息。\n\n"
         f"{acceptance_rules}\n"
         f"---\n\n## [1] 步骤执行 SOP (`{step_rel}`)\n\n{step_text.strip()}\n\n"

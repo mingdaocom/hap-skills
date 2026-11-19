@@ -27,19 +27,7 @@
    - `components` 数组中先排列被引用的 `chart` / `view` 组件，最后输出 `filtersGroup`（其坐标 `position` 仍置顶于 `y: 0`）；
    - 按 `page.type` 应用页面规范对应的 Dashboard 或 Workspace 新建规则，依据真实数据源完成本页组件与布局：**其中 `Dashboard` 转换 `charts` 并配齐 `filtersGroup`、核心 KPI 与分析图；`Workspace` 除转换 `Text / Button / View / Carousel` 外，必须按 `hap-domain-custom-page-spec.md` §3.2 基于 `worksheetContextSlice` 默认补充 KPI 卡片（2～6 个）、业务 `section` 分段与每个 `View` 右侧上下排列的 2 张辅助图（View `w=32`，右图各 `w=16`、同一父级对齐），仅当方案/`requirements` 显式排除统计或缺少真实统计依据时不添加**。
    - 每张图分别核实事实表、筛选、维度、聚合、单位和时间范围，分配独立的组件/图表配置，不能复制第一个图的指标冒充其他图。数据为空时保留真实查询及空状态，禁止制造零值或示例结果作为真实统计；无法可靠表达的指标记入 `notes` 与 `issues`。
-   - **主题色呼应与数值卡图标**：富文本使用指南（多阶段/多角色工作台优先采用多场景分栏卡片，自带外层圆角底色时将 `text` 组件顶层 `appearance` 设为 `"transparent"`）与快捷按钮（主动作优先使用 `appColor`）须结合当前应用主题色 `appColor` 设计；数值卡需显示图标时从 `references/hap-icon-palette.md` 选带 `sys_` 前缀的合法 `fileName` 写入 `components[].config.config.numberCard` 并显式开启图标显示开关，量级/小数位/单位写入 `values[]`。
-   - **快捷按钮组件（`componentType: "button"`）折叠 Schema 极简参考骨架**（新建记录用 `action: 1`、`value: "<worksheetId>"`，无需手造 `buttonId` UUID 或包一层 `data.worksheetId`；存在差异以实时 MCP Schema 为准）：
-```json
-{
-  "componentType": "button", "name": "快捷入口", "position": {"x": 0, "y": 0, "w": 48, "h": 6},
-  "config": {
-    "title": "快捷操作", "buttonStyle": "round", "count": 2, "mobileCount": 2,
-    "buttons": [
-      {"name": "新建记录", "icon": "add", "color": "#3054EB", "action": 1, "value": "<worksheetId>"}
-    ]
-  }
-}
-```
+   - **主题色呼应与数值卡/按钮高频防错键名（核对实时 Schema 优先，防静默丢键）**：富文本使用指南（多阶段/多角色工作台优先采用多场景分栏卡片，自带外层圆角底色时将 `text` 组件顶层 `appearance` 设为 `"transparent"`）与快捷按钮（主动作优先使用 `appColor`）须结合当前应用主题色 `appColor` 设计；数值卡需显示图标时从 `references/hap-icon-palette.md` 选带 `sys_` 前缀的合法 `fileName` 写入 `components[].config.config.numberCard`（注意精准键名防静默忽略：`icon.visible: true` 而非 `show`、`icon.color` 为图标底色且图形固定白色、`icon.shape` 为 `square`/`circle`、`value.valueColor` 而非 `color`），量级/小数位/单位写入 `values[]`；快捷按钮组件（`componentType: "button"`）通过 `config.count` / `mobileCount` 控制每行列数，新建记录按钮项使用 `action: 1` + `value: "<worksheetId>"`（无 `data` 嵌套，无需手造 `buttonId`，其余动作枚举与属性以实时 Schema 为准）。
 
 ### 2. 一次全量保存 + 摘要布局检查 + 局部补丁校正
 1. **一次全量保存（全新构建免写前探查）**：全新构建（无 `previousReceipt`）已知 `pageId` 为 Step 1 新建空壳，**直接组装组件树调用 1 次 `update_custom_page(appId, page_id: pageId, components)` 保存整页，无需写前调用 `get_custom_page_structure` 探查空壳**（若写入前参数校验报错未落库，一次集中修正全部错误路径后重提，最多 3 次；若确认线上页面已有组件树落库或本次保存已成功，**严禁再次调用 `update_custom_page`**）。

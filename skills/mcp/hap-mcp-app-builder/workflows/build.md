@@ -122,7 +122,7 @@ python3 {SKILL_DIR}/scripts/build_runtime.py finalize --app-dir {APP_DIR} --prog
 import asyncio
 SCHEMA = {"type": "object", "properties": {"taskId": {"type": "string"}, "status": {"type": "string"}}, "required": ["taskId", "status"]}
 async def run_one(t):
-    prompt = f'执行 {t["taskName"]}（step = "{t["step"]}"）。完整读取预编译包 {t["bundleFiles"]}（已内联全部规则与数据，勿读外部规范、勿用 find/jq/python 搜本地 JSON），完成后写入 {t["receiptPath"]} 并直接结束。'
+    prompt = f'执行 {t["taskName"]}（step = "{t["step"]}"）。完整读取预编译包 {t["bundleFiles"]}（已内联全部规则与数据，勿读外部规范、勿跨目录搜本地 JSON），完成后写入 {t["receiptPath"]} 并直接结束。'
     return await agent(prompt, schema=SCHEMA, role=t["taskName"][:40], type_name="self")
 results = await asyncio.gather(*(run_one(t) for t in tasks), return_exceptions=True)
 ```
@@ -137,7 +137,7 @@ results = await asyncio.gather(*(run_one(t) for t in tasks), return_exceptions=T
   2. **Subagent 平台级报错中断（未生成回执）**：收到宿主系统消息提示执行器停止或失败时，使用 `reset-task` 或 `dispatch-failed` 清除挂起状态，并在可恢复且不重复写入的前提下重新 `prepare` 派发。后台 `Step 5` 可并发续作，失败或重试均不阻塞阶段推进及终态交付；若无法完成，报告实际示例数据缺口和原因，不要求主调度器串行补录，也不把未生成数据称为已完成。若用户明确要求示例数据作为交付核心，则按该要求如实标明未完成。
 
 ```markdown
-执行 {taskName}（step = "{step}"）。完整读取预编译包 {bundleFiles}（已内联全部规则与数据，勿读外部规范、勿用 find/jq/python 搜本地 JSON），完成后写入 {receiptPath} 并直接结束。
+执行 {taskName}（step = "{step}"）。完整读取预编译包 {bundleFiles}（已内联全部规则与数据，勿读外部规范、勿跨目录搜本地 JSON），完成后写入 {receiptPath} 并直接结束。
 ```
 
 ---
