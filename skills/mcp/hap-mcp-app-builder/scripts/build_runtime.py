@@ -2297,6 +2297,8 @@ def cmd_advance(app_dir: str) -> Dict[str, Any]:
         r_data = load_json(os.path.join(app_dir, ".build", "receipts", "step1-app-init.json")) or {}
         outputs = r_data.get("outputs", {})
         context["appId"] = outputs.get("appId")
+        if outputs.get("appUrl"):
+            context["appUrl"] = outputs["appUrl"]
         context["sectionIdByName"] = outputs.get("sectionIdByName", {})
         context["customPageIdByName"] = outputs.get("customPageIdByName", {})
         if plan.get("language"):

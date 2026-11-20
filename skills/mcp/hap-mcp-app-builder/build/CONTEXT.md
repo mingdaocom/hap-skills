@@ -7,6 +7,7 @@
 ```json
 {
   "appId": "string",
+  "appUrl": "string (create_app 返回的应用直达访问链接)",
   "appName": "string",
   "orgId": "string",
   "language": "zh-CN",

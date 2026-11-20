@@ -27,7 +27,7 @@
    - `color`：`appColor`（HEX 色值，注意参数名为 `color` 而非 `iconColor`）；
    - `navLayout` / `navColor`：按上述规则取值；
    - `enableExternalPortal`：创建时传入已确认 Plan 的布尔值；为 `true` 时随应用创建一并启用，未指定时默认 `false`；
-   - 提取并原样保留返回的真实 `appId`；应用 ID 的格式以服务返回为准，不按工作表的 24 位 ID 格式推断。
+   - 提取并原样保留返回的真实 `appId` 与 `appUrl`；应用 ID 与链接均以服务返回为准，不按工作表的 24 位 ID 格式推断，也无需按固定模板拼接域名。
 3. **批量创建导航分组 `create_app_sections`**：
    - 若 `navGroups` 非空，按 `navGroups` 原顺序（严禁重排）转为 `sections: [{ "name": "<分组名>" }, ...]`，调用一次 `create_app_sections(appId, sections)`；
    - 建立分组名称到真实 ID 的映射字典 `sectionIdByName`。
@@ -46,7 +46,7 @@
 
 ### Part C：写入应用直达链接并在首次播报直接给出
 
-根据当前 MCP 服务对应域名（如 `meihua.mingdao.com`、`sandbox.mingdao.com` 或 `www.mingdao.com`），在 `{PROJECT_ROOT}/.hap-copilot/apps/{appName}/overview.md` 顶部写入访问链接提示块 `https://{前端域名}/app/{appId}`；同时在阶段 1 完成后的**首次进度播报中直接把该直达访问链接发给用户**（不裸露内部 `appId`），方便用户边搭边看。
+直接使用 `create_app` 返回的 `data.appUrl`（无需手动拼接前端域名），写入 `{PROJECT_ROOT}/.hap-copilot/apps/{appName}/overview.md` 顶部访问链接提示块并持久化到 `hap-context.json.appUrl`；同时在阶段 1 完成后的**首次进度播报中直接把该 `appUrl` 发给用户**（不裸露内部 `appId`），方便用户边搭边看。
 
 ---
 
@@ -58,6 +58,7 @@
 {
   "appName": "<appName>",
   "appId": "<服务返回的真实appId>",
+  "appUrl": "<服务返回的真实appUrl>",
   "orgId": "<orgId>",
   "language": "<language>",
   "progress": "app_created",

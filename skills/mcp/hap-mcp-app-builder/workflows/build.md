@@ -38,12 +38,13 @@ python3 {SKILL_DIR}/scripts/build_runtime.py init --app-dir {APP_DIR} --skill-di
 
 ### 阶段 1：应用外壳与使用手册初始化（Step 1 + Step 1b 主调度器内联）
 1. 读取建壳（`../build/steps/1_create_app.md`）、应用说明（`../build/steps/1b_update_app_desc.md`）及其必读 reference（含 `../references/hap-domain-app-spec.md` 第六节「场景一：全新编写使用手册」），按规范生成完整 HTML 使用手册，勿未读规范直接简写；
-2. 内联调用 `create_app`、`create_app_sections`、`create_app_items` 创建应用、分组与自定义页面空壳，紧接调用一次 `update_app(appId, name, remark, desc)` 写入应用简介与 HTML 使用手册（**直接复用 `create_app` 返回的 `appId`，无需再调用 `get_app_info`**），并更新 `overview.md` 顶部访问链接；
+2. 内联调用 `create_app`、`create_app_sections`、`create_app_items` 创建应用、分组与自定义页面空壳，紧接调用一次 `update_app(appId, name, remark, desc)` 写入应用简介与 HTML 使用手册（**直接复用 `create_app` 返回的 `appId` 与 `appUrl`，无需再调用 `get_app_info`**），并将 `appUrl` 写入 `overview.md` 顶部访问链接；
 3. 直接按以下标准结构写入 `{APP_DIR}/hap-context.json`（**无需 `grep` 脚本源码**）：
 ```json
 {
   "appName": "<appName>",
   "appId": "<create_app返回的真实appId>",
+  "appUrl": "<create_app返回的真实appUrl>",
   "orgId": "<orgId>",
   "language": "<language>",
   "progress": "app_created",
@@ -52,7 +53,7 @@ python3 {SKILL_DIR}/scripts/build_runtime.py init --app-dir {APP_DIR} --skill-di
   "customPageIdByName": { "<页面名>": "<24位真实pageId>" }
 }
 ```
-4. **首次播报即给直达访问链接（不裸露 `appId`）**：完成阶段 1 并在同轮启动阶段 1.5 并发建表时，给用户的第一次进度播报**必须直接附上应用访问链接**（`https://{前端域名}/app/{appId}`，按当前环境域名如 `www.mingdao.com` / `meihua.mingdao.com` / `sandbox.mingdao.com` 拼接），方便用户随时打开查看实时搭建进展，严禁在播报中裸露 `appId: ...` 等技术字段。
+4. **首次播报即给直达访问链接（不裸露 `appId`）**：完成阶段 1 并在同轮启动阶段 1.5 并发建表时，给用户的第一次进度播报**必须直接附上 `create_app` 返回的 `appUrl`（已存入 `hap-context.json.appUrl`，无需手动按固定格式拼接域名）**，方便用户随时打开查看实时搭建进展，严禁在播报中裸露 `appId: ...` 等技术字段。
 
 ### 阶段 1.5：工作表两遍并发创建（Step 2a 基础表 ➔ Step 2b 跨表关联）
 ```bash
@@ -152,7 +153,7 @@ results = await asyncio.gather(*(run_one(t) for t in tasks), return_exceptions=T
      2. 运行 `python3 {SKILL_DIR}/scripts/build_runtime.py resolve-task --app-dir {APP_DIR} --task-id {taskId} --evidence "修复及回读核验依据" --outputs-json '{...}'` 将原失败/阻塞回执正式归并为 `succeeded`；如未业务实测，应在证据与交付中如实说明；
      3. 重新执行 `finalize --advance-and-prepare`，确保全局 `hap-context.json.progress` 推进至 `"completed"` 与线上实际状态 100% 一致。
 2. **终结交付总结规范**（`progress == "completed"` 后由主调度器直接基于本地 `hap-plan.json`、`hap-context.json` 与 `.build/phase-report.json` 输出，**无需再重复调用 `get_app_info`**，源自 `build-summary-sub-agent.yaml`）：
-   - 使用 `hap-plan.json` 的 `language` 输出约 300 字**正向、清晰的业务可用交付总结**，并附上应用直达访问链接（`https://{前端域名}/app/{appId}`）；
+   - 使用 `hap-plan.json` 的 `language` 输出约 300 字**正向、清晰的业务可用交付总结**，并直接附上 `hap-context.json` 中记录的应用直达访问链接（`appUrl`，无需手动拼接域名）；
    - 总结聚焦已建成的核心业务闭环（工作表、自定义页面看板/工作台、自定义动作、自动化工作流与业务角色）及推荐使用动线；若存在仍处于 `draft` 的工作流或未启用的规划按钮，在总结前先补调 `publish_process` / `update_custom_action(enabled: true)` 完成上线收口；
    - **严禁展示内部 24 位 ID、`biz_` 别名或技术参数**，**严禁将平台声明式机制边界或运行态未实测事项包装成“验收缺口”，也严禁输出“尚未完成搭建验收，不建议投入正式使用”等自我否定话术**；
    - **角色成员温和提醒**：后台 `Step 5` 仍在运行时说明示例数据正在后台写入；**若应用创建了业务角色（特别是参与审批节点或站内通知的角色），在交付总结末尾固定温和提示用户前往应用「用户与角色」分配实际组织成员，以确保审批流转与通知正常送达。**
