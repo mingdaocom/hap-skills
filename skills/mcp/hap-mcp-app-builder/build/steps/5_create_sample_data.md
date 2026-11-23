@@ -10,7 +10,7 @@
   - `contextSlice`：`appId`、`worksheetIdByName`；
   - `worksheetContextSlice`：已自动过滤只读衍生字段（如自动编号、公式、日期公式、函数公式、汇总、他表字段、内联子表占位）的工作表可写字段切片，每个字段含 `{ id, name, alias?, type, dataSource?, options? }`（其中 `Relation` 字段的 `dataSource` 为目标表的 24 位 `worksheetId` 或 `"selfRelation"`，单多选/下拉的 `options` 为有效选项文本数组）。
 - **必读领域规范**：`references/hap-sample-data-spec.md`（预设虚拟成员 ID、文档与分类图片资源）
-- **主要业务工具**：`["batch_create_records", "get_worksheet_structure", "get_record_details"]`
+- **主要业务工具**：`["batch_create_records", "get_worksheet_structure", "get_record_details", "update_record"]`（`update_record` 仅用于抽查发现本步刚写入记录存在字段 ID 误填或关联遗漏时的原位修正，同样固定传 `triggerWorkflow: false`）
 
 ---
 

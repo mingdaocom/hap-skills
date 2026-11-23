@@ -169,6 +169,7 @@ BOUNDARY_ROW_DOMAINS = {
     "自定义页面背景": {"custom_page"},
     "自定义页面内容与外链": {"custom_page"},
     "统计图表": {"custom_page", "worksheet_chart"},
+    "页面按钮、字段前端事件调用流程": {"custom_page", "worksheet", "workflow"},
     "自定义动作": {"view_action", "workflow"},
     "AI 智能助手": {"chatbot"},
     "打印模板": {"print_template"},

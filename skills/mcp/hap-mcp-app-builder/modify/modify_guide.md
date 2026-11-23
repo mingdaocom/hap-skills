@@ -37,7 +37,7 @@
   - **单任务新增/编辑账本铁律**：`update_worksheet.addFields` 成功创建字段后，若后续仍需微调该字段属性，**必须改用 `editFields` 并传真实字段 `id`/`fieldId`**，严禁对已建字段再次发 `addFields` 撞别名唯一约束；新字段 `alias` 带 `biz_` 前缀。
   - **新增字段语义就近排版**：未指定位置时，按业务分段、相关字段与录入动线就近插入并协调同行 `span`（不把“未指定位置”机械等同于“塞到表单最末尾”），保留其他未受影响字段的相对顺序。
   - **主从子表与跨表衍生顺序**：建子表（`displayType: 2`）先于主表 `SubTable` + `showFields` + `Rollup`；多表双向关联先建主动关联使服务端生成真实反向字段后，再写引用反向关联的 `Lookup/Rollup`。已有子表新增字段时，同步将新字段补入主表对应 `SubTable` 的 `showFields`。
-  - **专项能力要点**：① `CustomField`（`type: 48`）必读 `../references/hap-domain-custom-field-spec.md`，`customWidget.script` 为无 import 纯函数源码（禁带 Markdown 代码围栏），引用的真实 `controlId` 全量声明在 `reference` 数组；② 业务规则停用须先读完整详情保留条件和动作，仅改 `enabled: false`；③ 索引仅改名使用 `rename_worksheet_index`；④ 工具栏漏斗已保存筛选器使用 `save_worksheet_filter` / `delete_worksheet_filter`（勿与视图筛选混淆）。
+  - **专项能力要点**：① `CustomField`（`type: 48`）必读 `../references/hap-domain-custom-field-spec.md`，`customWidget.script` 为无 import 纯函数源码（禁带 Markdown 代码围栏），引用的真实 `controlId` 全量声明在 `reference` 数组；② 业务规则停用须先读完整详情保留条件和动作，仅改 `enabled: false`；③ 索引仅改名使用 `rename_worksheet_index`；④ 工具栏漏斗已保存筛选器使用 `save_worksheet_filter` / `delete_worksheet_filter`（勿与视图筛选混淆）；⑤ 字段前端事件 `runWorkflow` 新建或更换绑定时，仅可绑定当前应用已发布且启用的封装业务流程（PBP，缺少 ID 时按 `get_workflow_list(triggerType: "pbc", published: true)` 定位；仅有未发布流程时说明缺口，不代为发布，当前 MCP 不支持新建 PBP）。
 - **验证要点**：布局调整与全量数组替换在最后一次写入后用 `dsl` 或对应详情接口集中核对一次；索引构建异步受理如实报告“已提交构建”。
 
 ---
@@ -77,7 +77,7 @@
   - **定制前端代码需求前置拦截**：若需求本质是需要后端/随机算法逻辑的定制交互页（如点击随机抽奖写库）且无真实外部 URL，直接说明需由网站开发能力承接，**严禁先建空白画布页面或用普通新建按钮冒充**。
   - **外链页面分流 (`pageType: url`)**：新建外链页调 `create_app_items(type: "customPage", pageType: "url", url: ...)` 一次完成；修改外链地址、打开方式、标题栏及同页名称/图标/说明调 `update_custom_page_config` 增量提交，不走画布组件树接口，也不跨类型互转。
   - **画布局部维护优先用补丁**：已有画布页面的组件增删改与布局调整默认先读 `get_custom_page_structure(detail: "summary")` 取组件身份、坐标与 `version`（需保留某组件原配置时点读 `get_custom_page_component`），合并为 1～20 项 `operations` 调用 `patch_custom_page_components`（同一 `componentId` 每批仅出现一次；纯移位/缩放省略 `config`；删除图表前同批先更新引用它的 `filtersGroup`）。仅新建空页首次填充或用户明确批准整页重做（且 `detail: "full"` 回读无裁剪）时才用 `update_custom_page` 全量写入。
-  - **页面设置、单图更新与跨页复制/移动**：页面背景/刷新/屏幕适配/分享开关用 `get_custom_page_settings` + `update_custom_page_settings`（带 `version`）；仅改页面内某张已有图表配置用 `update_chart`（必传真实 `customPageId`、`worksheet_id`、`chart_id`，严禁调 `create_chart`）；将工作表或页面已有图表复制/移动到目标页面使用 `move_chart`（仅明确从 A 页移到 B 页时用移动模式；若要求“把工作表图移入页面并删原图”，先 `move_chart` 复制到页面拿新身份，再走 `worksheet_chart` 调 `delete_chart` 删原图）。
+  - **页面设置、单图更新、工作流按钮与跨页复制/移动**：页面背景/刷新/屏幕适配/分享开关用 `get_custom_page_settings` + `update_custom_page_settings`（带 `version`）；页面工作流按钮（`action=6`）与扫码执行流程（`action=5`、`scan.textAction="workflow"`）新建或更换绑定时，仅可绑定当前应用已发布且启用的封装业务流程（PBP，传流程父 ID，缺少 ID 时按 `get_workflow_list(triggerType: "pbc", published: true)` 定位；仅有未发布流程时说明缺口，不代为发布，当前 MCP 不支持新建 PBP）；仅改页面内某张已有图表配置用 `update_chart`（必传真实 `customPageId`、`worksheet_id`、`chart_id`，严禁调 `create_chart`）；将工作表或页面已有图表复制/移动到目标页面使用 `move_chart`（仅明确从 A 页移到 B 页时用移动模式；若要求“把工作表图移入页面并删原图”，先 `move_chart` 复制到页面拿新身份，再走 `worksheet_chart` 调 `delete_chart` 删原图）。
   - **主题色视觉呼应与数值卡片图标铁律**：新建或调整富文本使用指南（多阶段/多角色工作台优先采用多场景分栏卡片，自带外层圆角底色时将 `text` 组件顶层 `appearance` 设为 `"transparent"`）与快捷按钮时，复用 `get_app_info` 已读的应用主题色（`appColor`）保持视觉统一；数值卡 `icon.icon` 必须从 `../references/hap-icon-palette.md` 选取带 `sys_` 前缀的合法名称，严禁使用无前缀示例值。
 - **验证要点**：新建/重建页面或增删调整组件布局后，必须调一次 `get_custom_page_structure(detail: "summary")` 检查重叠、错位与同排对齐，有问题用 `patch_custom_page_components` 做一轮局部校正。
 

@@ -26,14 +26,14 @@
     - `config.isMultiple`：含“人/员/负责人”单数语义设 `false`，含“团队/参与人/协同人”复数语义设 `true`；
     - **`config.userPermission`（决定角色 `recordDataScope: 20` 能否看到/编辑记录！）**：结合 `planSlice.worksheetUsage.roles` 判断——**凡业务上需要被指派人查看并编辑/执行动作的责任成员字段（如「执行人」「巡检人」「维修人员」「经办人」「负责人」），必须显式设 `config.userPermission: 2`（拥有者权限）**；仅需知悉抄送的设 `1`（只读权限）；纯展示登记设 `0`（无权限）。
 - 从本表要完成的一次业务操作反推：缺什么信息会使记录无法识别、执行或追溯？按工作表规范补齐必要字段，区分草稿可空与提交时必需。无条件约束优先落字段属性；需按条件交互、校验或通过 `rcid` 跨表带值（如选设备/地块自动同步所属站点、选站点自动同步负责人）的意图记入回执 `outputs.businessRulesNotes` 交 Step 3。尊重明确取舍，按适用性分段。
-- **标题字段（`isTitle`）唯一性兜底**：每表有且仅有一个合法标题字段（优先选识别度最高的 `Text` 或 `Concatenate`）；若全表均为人员/选项/关联等非法标题类型，**必须主动新建一个 `Text` 或 `AutoNumber` 字段设为 `isTitle: true`**。
+- **标题字段（`isTitle`）唯一性兜底**：每表有且仅有一个合法标题字段（优先选识别度最高的 `Text` 或 `Concatenate`）；若选定的组合标题依赖 `Lookup/Rollup` 需留到 Pass 2，先从本次实际创建的合法字段中选一个作为临时标题（Pass 2 补建组合标题时传 `isTitle: true` 自动替换原标题）。若全表均为人员/选项/关联等非法标题类型，**必须主动新建一个 `Text` 或 `AutoNumber` 字段设为 `isTitle: true`**。
 
 ### 2. 两遍建表（Two-Pass）排版三步法
 1. **Step A — 过滤不占网格项并统一排布 12 列栅格**：
    - 先剔除 `:reverse` 反向承接端字段（由对端 `:bi` 自动在标签页带出，不占表单网格）以及子表中指向 `parentWorksheet` 主表的父级关联字段；
    - 对剩余**全部表单字段**（基础字段 + `selfRelation` 自关联 + 待补跨表 `Relation` `:bi/:uni` + `SubTable` + `Lookup/Rollup` + 公式）统一分配 `rowIndex` 与 `span`（推荐 `3 / 6 / 12` 栅格：同行 2 个字段用 `6 + 6 = 12` 消灭右侧留白；`SubTable` 与 `inlineTable` 独占整行 `span: 12`；单条关联无摘要用 `"dropdown"`，需摘要用 `"card"`）。
 2. **Step B — 剥离跨表与衍生字段并保留原行号间隙**：
-   - 从发送给 `create_worksheet` 的 `fields` 中剔除：① 所有跨表 `Relation:目标表` 与 `SubTable` 字段；② 所有 `Lookup` 与 `Rollup` 字段；③ 引用了跨表关联的 `Concatenate` 及引用了 `Lookup/Rollup` 的 `Formula`；
+   - 从发送给 `create_worksheet` 的 `fields` 中剔除：① 所有跨表 `Relation:目标表` 与 `SubTable` 字段；② 所有 `Lookup` 与 `Rollup` 字段；③ 依赖上述 `Lookup` 或 `Rollup` 的 `Concatenate` 和 `Formula`（表达式使用本表衍生字段的 `alias`）；
    - **唯一自关联红线**：仅原文写为 `(selfRelation)` 的字段随本步直接创建（`dataSource: "selfRelation"`）；任何跨表 `(Relation:xxx)` **严禁伪造为 `selfRelation` 规避**！
    - 保留下来的基础字段保持 Step A 的 `rowIndex / span` **原封不动**（允许行号跳号如 `0, 1, 3`，供 Pass 2 精准插回预留行）。
 3. **Step C — 构造完整 `relationLayout` 待办数组**：

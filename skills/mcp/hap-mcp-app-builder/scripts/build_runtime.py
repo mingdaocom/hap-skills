@@ -264,17 +264,17 @@ def extract_action_workflows(plan: Dict[str, Any], context: Dict[str, Any]) -> L
     ws_id_by_name = context.get("worksheetIdByName", {})
     proc_id_by_key = context.get("actionProcessIdByKey", {})
 
-    def add_action_item(ws_name: str, act: Dict[str, Any]):
+    def add_action_item(ws_name: str, act: Dict[str, Any], force_wf: bool = False):
         act_name = act.get("name") or act.get("actionName", "")
         if not act_name:
             return
         comp_key = f"{ws_name}::{act_name}"
         act_type = str(act.get("type") or act.get("clickType", "")).lower()
         is_wf = (
-            act_type in ("triggerworkflow", "workflow", "2")
+            force_wf
+            or act_type in ("triggerworkflow", "workflow", "2")
             or act.get("actionType") == 2
             or act.get("runWorkflowAfterSubmit") is True
-            or bool(act.get("intentHints"))
             or bool(act.get("processId"))
             or bool(act.get("workflowId"))
             or bool(proc_id_by_key.get(comp_key))
@@ -329,7 +329,7 @@ def extract_action_workflows(plan: Dict[str, Any], context: Dict[str, Any]) -> L
     for wf in (plan.get("customActionWorkflows") or context.get("customActionWorkflows") or []):
         if isinstance(wf, dict):
             ws_name = wf.get("worksheet") or wf.get("worksheetName", "")
-            add_action_item(ws_name, wf)
+            add_action_item(ws_name, wf, force_wf=True)
 
     return action_wfs
 
@@ -360,15 +360,20 @@ def _extract_referenced_worksheets(ws: Dict[str, Any], rel_layout: List[Dict[str
 
 
 def _sort_relation_group_items(grp: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """组内主从拓扑排序：确保子表（subTable）及被 SubTable/Lookup/Rollup 依赖的目标表排在父表/源表之前，避免父表配置 showFields 时子表跨表列尚未创建。"""
+    """组内主从拓扑排序：确保子表（subTable）、被 SubTable/Lookup/Rollup 依赖的目标表，以及向含 Lookup 表发起 :bi 的源表排在前面。"""
     if len(grp) <= 1:
         return grp
     names_in_grp = {item["name"] for item in grp}
     # 依赖关系：若 parent 依赖 child 先完成（如 child 是 subTable，或 parent 有 SubTable/Lookup/Rollup 指向 child），则 child -> parent
     deps_on: Dict[str, set] = {item["name"]: set() for item in grp}
+    has_lookup: Dict[str, bool] = {}
+    active_rel_targets: Dict[str, set] = {item["name"]: set() for item in grp}
+    bi_targets: Dict[str, set] = {item["name"]: set() for item in grp}
+
     for item in grp:
         name = item["name"]
         ws = item.get("ws") or {}
+        lookup_found = False
         if ws.get("worksheetType") == "subTable":
             parent_ws = ws.get("parentWorksheet")
             if isinstance(parent_ws, str) and parent_ws in names_in_grp and parent_ws != name:
@@ -378,13 +383,39 @@ def _sort_relation_group_items(grp: List[Dict[str, Any]]) -> List[Dict[str, Any]
                 continue
             ftype = str(rel.get("type") or rel.get("fieldType") or "")
             target_ws = rel.get("targetWorksheet")
+            if ftype == "Lookup":
+                lookup_found = True
+            if ftype == "Relation" and isinstance(target_ws, str) and target_ws in names_in_grp and target_ws != name:
+                active_rel_targets[name].add(target_ws)
+                if rel.get("bidirectional") is True:
+                    bi_targets[name].add(target_ws)
             if ftype in ("SubTable", "Lookup", "Rollup") and isinstance(target_ws, str) and target_ws in names_in_grp and target_ws != name:
                 deps_on[name].add(target_ws)
         for f in (ws.get("fields") or ws.get("customFields") or []):
-            if isinstance(f, str) and "(SubTable:" in f:
+            if not isinstance(f, str):
+                continue
+            if "(Lookup:" in f:
+                lookup_found = True
+            if "(SubTable:" in f:
                 sub_name = f.split("(SubTable:", 1)[1].rstrip(")").split(":", 1)[0].strip()
                 if sub_name in names_in_grp and sub_name != name:
                     deps_on[name].add(sub_name)
+            if "(Relation:" in f:
+                spec = f.split("(Relation:", 1)[1].rstrip(")")
+                parts = [p.strip() for p in spec.split(":")]
+                target_name = parts[0] if parts else ""
+                direction = parts[2].lower() if len(parts) >= 3 else ""
+                if target_name in names_in_grp and target_name != name and direction != "reverse":
+                    active_rel_targets[name].add(target_name)
+                    if direction == "bi":
+                        bi_targets[name].add(target_name)
+        has_lookup[name] = lookup_found
+
+    # 若源表 A 主动向目标表 B 发 :bi，且 B 含 Lookup 但未主动建 Relation 指向 A，则 A 需先于 B 执行以生成反向关联
+    for src, targets in bi_targets.items():
+        for dst in targets:
+            if has_lookup.get(dst) and src not in active_rel_targets.get(dst, set()):
+                deps_on[dst].add(src)
 
     item_by_name = {item["name"]: item for item in grp}
     orig_order = [item["name"] for item in grp]
@@ -611,22 +642,28 @@ def get_stage_tasks_definitions(app_dir: str, stage: str) -> List[Dict[str, Any]
             name = ws.get("name", "")
             rel_layout = rel_layout_by_ws.get(name)
             fields = ws.get("fields") or ws.get("customFields") or []
+            ws_reqs = ws.get("requirements") or []
             has_relations = bool(rel_layout) or any(
                 isinstance(f, str) and any(kw in f for kw in ("Relation:", "SubTable:", "Rollup:", "Lookup:"))
                 for f in fields
             )
-            if not has_relations:
+            if not has_relations and not ws_reqs:
                 continue
             legacy_rel_receipt = f".build/receipts/step2b-rel-{normalize_name(name)}.json"
             if os.path.exists(os.path.join(app_dir, legacy_rel_receipt)):
+                s2b_refs = ["references/hap-domain-worksheet-spec.md"]
+                s2b_tools = ["update_worksheet"]
+                if ws_reqs:
+                    s2b_refs.append("references/hap-domain-worksheet-index-spec.md")
+                    s2b_tools.extend(["get_worksheet_index_list", "create_worksheet_index"])
                 tasks.append({
                     "taskId": f"step2b-rel-{normalize_name(name)}",
                     "taskName": f"[Step 2b] 关联回填 - {name}",
                     "step": "2b",
                     "target": {"type": "worksheet", "id": ws_id_by_name.get(name, ""), "name": name},
                     "stepFile": "build/steps/2b_create_relations.md",
-                    "references": ["references/hap-domain-worksheet-spec.md"],
-                    "allowedTools": ["update_worksheet"],
+                    "references": s2b_refs,
+                    "allowedTools": s2b_tools,
                     "receiptPath": legacy_rel_receipt,
                     "taskContextPath": f".build/task-context/step2b-rel-{normalize_name(name)}.json",
                     "planSlice": {
@@ -695,6 +732,13 @@ def get_stage_tasks_definitions(app_dir: str, stage: str) -> List[Dict[str, Any]
                 })
                 ctx_slice["worksheetId"] = ws_id_by_name.get(only["name"], "")
 
+            has_group_reqs = any(bool((item["ws"] or {}).get("requirements")) for item in grp)
+            grp_refs = ["references/hap-domain-worksheet-spec.md"]
+            grp_tools = ["update_worksheet"]
+            if has_group_reqs:
+                grp_refs.append("references/hap-domain-worksheet-index-spec.md")
+                grp_tools.extend(["get_worksheet_index_list", "create_worksheet_index"])
+
             tasks.append({
                 "taskId": f"step2b-rel-group-{idx}",
                 "taskName": f"[Step 2b] 关联回填第 {idx} 组 ({joined_names})",
@@ -706,8 +750,8 @@ def get_stage_tasks_definitions(app_dir: str, stage: str) -> List[Dict[str, Any]
                     "worksheetIds": {n: ws_id_by_name.get(n, "") for n in group_names},
                 },
                 "stepFile": "build/steps/2b_create_relations.md",
-                "references": ["references/hap-domain-worksheet-spec.md"],
-                "allowedTools": ["update_worksheet"],
+                "references": grp_refs,
+                "allowedTools": grp_tools,
                 "receiptPath": f".build/receipts/step2b-rel-group-{idx}.json",
                 "taskContextPath": f".build/task-context/step2b-rel-group-{idx}.json",
                 "planSlice": plan_slice,
@@ -907,7 +951,7 @@ def get_stage_tasks_definitions(app_dir: str, stage: str) -> List[Dict[str, Any]
             "target": {"type": "sample_data", "name": "全局示例数据"},
             "stepFile": "build/steps/5_create_sample_data.md",
             "references": ["references/hap-sample-data-spec.md"],
-            "allowedTools": ["batch_create_records", "get_worksheet_structure", "get_record_details"],
+            "allowedTools": ["batch_create_records", "get_worksheet_structure", "get_record_details", "update_record"],
             "receiptPath": ".build/receipts/step5-sample-data.json",
             "taskContextPath": ".build/task-context/step5-sample-data.json",
             "isBackground": True,
@@ -1132,7 +1176,7 @@ def get_stage_tasks_definitions(app_dir: str, stage: str) -> List[Dict[str, Any]
                 "target": {"type": "sample_data", "name": "全局示例数据"},
                 "stepFile": "build/steps/5_create_sample_data.md",
                 "references": ["references/hap-sample-data-spec.md"],
-                "allowedTools": ["batch_create_records", "get_worksheet_structure", "get_record_details"],
+                "allowedTools": ["batch_create_records", "get_worksheet_structure", "get_record_details", "update_record"],
                 "receiptPath": ".build/receipts/step5-sample-data.json",
                 "taskContextPath": ".build/task-context/step5-sample-data.json",
                 "isBackground": True,
@@ -2146,8 +2190,19 @@ def receipt_delivery_notes(app_dir: str, run_id: str) -> List[Dict[str, Any]]:
             continue
         outputs = data.get("outputs")
         outputs = outputs if isinstance(outputs, dict) else {}
-        entry = {"taskId": data["taskId"], "issues": data.get("issues") or []}
         step = str(data.get("step") or filename.split("-", 1)[0][4:])
+        target_name = (
+            (data.get("target") or {}).get("name")
+            or outputs.get("worksheetName")
+            or outputs.get("pageName")
+            or ""
+        )
+        entry = {
+            "taskId": data["taskId"],
+            "step": step,
+            "targetName": target_name,
+            "issues": data.get("issues") or [],
+        }
         if step == "3":
             name = outputs.get("worksheetName") or (data.get("target") or {}).get("name")
             if not has_rule_evidence(app_dir, outputs, planned.get(name, []) + rule_notes.get(name, [])):
@@ -2224,8 +2279,12 @@ def cmd_finalize(app_dir: str, progress: Optional[str]) -> Dict[str, Any]:
             })
 
         elif stage in ("app_created", "step2a"):
+            plan_ws = (load_json(os.path.join(app_dir, "hap-plan.json")) or {}).get("worksheets") or []
             ws_id_by_name = dict(context.get("worksheetIdByName", {}))
-            has_relation_todo = False
+            has_relation_todo = any(
+                isinstance(w, dict) and bool(w.get("requirements"))
+                for w in plan_ws
+            )
             for t in all_tasks:
                 if t["step"] == "2a":
                     r_data = load_json(os.path.join(app_dir, t["receiptPath"])) or {}

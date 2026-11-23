@@ -104,11 +104,11 @@ python3 {SKILL_DIR}/scripts/build_runtime.py finalize --app-dir {APP_DIR} --adva
 | **Step 1** | 主调度器内联 | 应用实体、导航分组与页面空壳 | `["create_app", "create_app_sections", "create_app_items"]` |
 | **Step 1b** | 主调度器内联 | 应用简介与按角色 HTML 使用手册 | `["update_app"]` |
 | **Step 2a** | 并发 Subagent | 建表、基础字段排版与表单设置 | `["create_worksheet", "update_worksheet", "update_worksheet_settings"]` |
-| **Step 2b** | 按关联组并发 Subagent | 按预留行号逐表顺序回填关联与衍生字段（每组 ≤5 表） | `["update_worksheet"]` |
+| **Step 2b** | 按关联组并发 Subagent | 按预留行号逐表顺序回填关联与衍生字段（每组 ≤5 表），按需建全表唯一索引 | `["update_worksheet"]`（本组含表级 `requirements` 时额外开放 `get_worksheet_index_list`、`create_worksheet_index`） |
 | **Step 3** | 并发 Subagent | 结构采集、动作、视图与业务规则 | `get_worksheet_structure` 等，需补子表显示列的父表任务额外获 `update_worksheet`，以任务实际 `allowedTools` 为准 |
 | **Step 4a** | 并发 Subagent | AI 助手实体创建 | `["create_chatbot"]` |
 | **Step 4b** | 并发 Subagent | AI 助手 `ai_agent` 节点资源绑定与发布 | `["get_workflow_structure", "get_workflow_node", "update_workflow_node", "publish_process", "get_app_ai_models", "get_app_knowledge_list", "get_worksheet_structure", "get_view_structure"]` |
-| **Step 5** | 后台异步 Subagent | 拓扑感知示例数据批量填报（`isBackground: true`，全程不阻塞阶段 3→4 及终态交付） | `["batch_create_records", "get_worksheet_structure", "get_record_details"]` |
+| **Step 5** | 后台异步 Subagent | 拓扑感知示例数据批量填报（`isBackground: true`，全程不阻塞阶段 3→4 及终态交付） | `["batch_create_records", "get_worksheet_structure", "get_record_details", "update_record"]` |
 | **Step 6** | 并发 Subagent | 自定义页面组装与摘要局部校正 | `["update_custom_page", "get_custom_page_structure", "patch_custom_page_components"]` |
 | **Step 7** | 主调度器内联 | 分组内应用项智能排序 | `["sort_app_items"]` |
 | **Step 8** | 并发 Subagent | 角色精细权限构建、回读与重名恢复 | `create_role`、`get_role_list`、`get_role_details`、`get_role_worksheet_permission`、`update_role` |
@@ -155,5 +155,6 @@ results = await asyncio.gather(*(run_one(t) for t in tasks), return_exceptions=T
 2. **终结交付总结规范**（`progress == "completed"` 后由主调度器直接基于本地 `hap-plan.json`、`hap-context.json` 与 `.build/phase-report.json` 输出，**无需再重复调用 `get_app_info`**，源自 `build-summary-sub-agent.yaml`）：
    - 使用 `hap-plan.json` 的 `language` 输出约 300 字**正向、清晰的业务可用交付总结**，并直接附上 `hap-context.json` 中记录的应用直达访问链接（`appUrl`，无需手动拼接域名）；
    - 总结聚焦已建成的核心业务闭环（工作表、自定义页面看板/工作台、自定义动作、自动化工作流与业务角色）及推荐使用动线；若存在仍处于 `draft` 的工作流或未启用的规划按钮，在总结前先补调 `publish_process` / `update_custom_action(enabled: true)` 完成上线收口；
+   - **核对 `deliveryNotes` 实质缺口（不漏报、不夸大）**：输出交付总结前须检查 `.build/phase-report.json` 中的 `deliveryNotes`（已汇总全流程所有携带非空 `issues` / `pageNotes` / 未发布状态的回执）；若存在明确未落地的核心业务缺口（如跳过未建的关联/Lookup 字段、必要图表或唯一索引），优先核实补齐，确实受平台能力限制的以简洁业务语言在文末如实说明，同时严禁将运行态未实测事项包装成“未完成验收”；
    - **严禁展示内部 24 位 ID、`biz_` 别名或技术参数**，**严禁将平台声明式机制边界或运行态未实测事项包装成“验收缺口”，也严禁输出“尚未完成搭建验收，不建议投入正式使用”等自我否定话术**；
    - **角色成员温和提醒**：后台 `Step 5` 仍在运行时说明示例数据正在后台写入；**若应用创建了业务角色（特别是参与审批节点或站内通知的角色），在交付总结末尾固定温和提示用户前往应用「用户与角色」分配实际组织成员，以确保审批流转与通知正常送达。**

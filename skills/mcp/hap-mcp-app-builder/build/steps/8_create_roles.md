@@ -9,7 +9,7 @@
   - `planSlice`：`role`（含 `name`、`description`、`roleScope`: `"general" | "externalPortal"`、`permissions` 紧凑数组、`requirements`）、`appLanguage`；
   - `contextSlice`：`appId`、`worksheetIdByName`、`viewsByWorksheet`（或 `viewIdByName`）、`actionIdByName`、`customPageIdByName`、`chatbotIdByName`。`actionIdByName` 仅投影角色已授权表的真实动作 ID，键为 `表名/动作名`；缺失时按目标表只读查询动作列表，不推测 ID。字段和子表关系可从 `worksheetContextSlice` 或 `sourceFiles.worksheetContext` 读取，缺失时定向查结构。
 - **必读领域规范**：`references/hap-domain-role-spec.md`、`references/hap-app-design-guide.md`（「角色权限」章节）
-- **主要业务工具**：`["create_role", "get_role_list"]`；恢复已存在的本工程角色时，按实际授权和实时 Schema 使用 `get_role_details`、`get_role_worksheet_permission` 读取基线，必要时使用 `update_role` 精确补齐。不能确认完整覆盖基线时不写入。
+- **主要业务工具**：`["create_role", "get_role_list"]`；恢复已存在的本工程角色或核验精细权限角色的单表真实权限时，**必须以 `get_role_worksheet_permission` 为准**（严禁用 `get_role_details` 的合成或默认空值直接判定单表权限），必要时使用 `update_role` 精确补齐。不能确认完整覆盖基线时不写入。
 
 ---
 

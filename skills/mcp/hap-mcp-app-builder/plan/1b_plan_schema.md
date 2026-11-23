@@ -50,6 +50,7 @@
 
 - **`name`（去“表”后缀规范）**：使用纯粹业务实体名词（如 `客户`、`采购订单`、`中奖名单`），自动剔除口语中的“表/工作表”后缀（仅 `资产负债表`、`利润表`、`课程表` 等专有名词或用户显式强调保留时例外）。
 - **`worksheetType` 与主子表双向闭环硬约束**：普通表为 `"normal"`（默认），明细子表为 `"subTable"` 且必填 `parentWorksheet`（主表名称）。**凡声明 `worksheetType: "subTable"` 的子表，其主表 `fields` 中必须 100% 包含对应的 `"子表名(SubTable:子工作表名)"` 字段，严禁出现孤立子表！**
+- **全表无条件唯一索引声明**：明确要求某组字段在全表无条件唯一时，在本表 `requirements` 写明字段组合及必填要求；仅提交后按状态防重、允许多条空值草稿等条件约束按原业务条件规划（不由唯一索引承接）。
 - **`icon`**：从 `../references/hap-icon-palette.md` 选取带 `sys_` 前缀的合法图标，同组内避免雷同。
 - **`businessRulesNotes`**：字符串数组，用“意图 + 举例”的自然语言描述显隐、只读、动态赋值（含通过关联字段 `rcid` 自动带出所属站点/负责人）、本表字段对比校验（如“结束时间不早于开始时间”）或终态锁定规则（注意：关联候选框 `resultFilter` 不支持动态引用当前表单字段，跨表归属一致优先规划为“选子对象后自动带出归属站点/部门”或配合 `Lookup` 字段做同表校验）。
 - **`consistencyNotes`（必填）**：简述本表选项字段如何支撑视图筛选、业务规则、动作条件与工作流流转。
@@ -62,7 +63,7 @@
    - `:bi`（双向主创建端）：仅由单边主动发起（`bidirectional: true`），服务端自动在对端生成反向 Tab 表格；
    - `:reverse`（双向反向承接端）：对端已声明 `:bi` 时，本表如需透视标记 `:reverse`，建表引擎自动跳过 API 调用，**严禁双边重复声明 `:bi`**。
 3. **自关联与子表**：自关联 `"上级部门(selfRelation)"`；子表挂载 `"采购明细(SubTable:采购明细)"`。
-4. **衍生计算字段**：主子表或多条关联主表必配 1～2 个汇总 `"总金额(Rollup:采购明细.金额.sum)"`（`sum/count/avg/max/min`）；按需配置他表字段 `"参考单价(Lookup:关联商品.销售单价)"`；数值计算使用 `"金额小计(Formula)"`、日期差值/加减使用 `"剩余天数(DateFormula)"`、业务单据标题推荐组合文本 `"借阅摘要(Concatenate)"`（`Formula` / `DateFormula` / `Concatenate` 括号内仅写类型名，具体计算表达式与单位写入该表 `requirements`，无需去翻阅构建脚本源码）。
+4. **衍生计算字段**：主子表或多条关联主表必配 1～2 个汇总 `"总金额(Rollup:采购明细.金额.sum)"`（`sum/count/avg/max/min`）；按需配置他表字段 `"参考单价(Lookup:关联商品.销售单价)"`（**新建关系时由使用 `Lookup` 的单条端声明 `:bi` 或 `:uni`，使用同批关联别名创建 `Lookup`**）；数值计算使用 `"金额小计(Formula)"`、日期差值/加减使用 `"剩余天数(DateFormula)"`、业务单据标题推荐组合文本 `"单据全称(Concatenate)"`（需拼接他表名称时，在本表规划开启存储 `storeData: true` 的标量 `Lookup` 供表达式引用，严禁直接引用关联字段；`Formula` / `DateFormula` / `Concatenate` 括号内仅写类型名，具体计算表达式与单位写入该表 `requirements`，无需去翻阅构建脚本源码）。
 5. **字段丰富度**：主数据表 ≥ 15 个、业务单据表 ≥ 12 个、过程流水表 ≥ 8 个、子表 ≥ 3 个，覆盖主标识、核心属性、状态分类、时间、责任人、数量金额、说明凭证、计算衍生 8 个维度。
 
 ### 2. `views` 紧凑字符串语法
@@ -75,7 +76,7 @@
 1. **`customPages`（自定义页面数组）**：
    - 公共属性：`name`、`groupName`、`type`（`"dashboard"` 或 `"workspace"`）、`description`、`icon`（从 `../references/hap-icon-palette.md` 选取带 `sys_` 前缀的合法图标，如 `"sys_control-panel_traffic"`、`"sys_hr_workbench"`）、`color`、`requirements`?。
    - `type: "dashboard"` 必填 `charts`（紧凑格式 `"名称(chartType)"`，建议 6～10 项：1 个 `"全局筛选(FiltersGroup:维度1,维度2)"` + 4～6 个 `numberChart` + 趋势/占比/排行图 + `pivotTable`，图表类型严格使用小驼峰标准 MCP `chartType`）。
-   - `type: "workspace"` 必填 `components`（紧凑格式 `"名称(Type)"`，`Type` ∈ `Button | View | Text | Carousel | Section`）；有实际展示需求和可用内容时才规划 `Carousel`（并在 `description` 写明面向整页还是特定业务区），明确需要跨组件联动筛选时在页面 `requirements` 写明筛选条件与受影响组件。
+   - `type: "workspace"` 必填 `components`（紧凑格式 `"名称(Type)"`，`Type` ∈ `Button | View | Text | Carousel | Section`）；新建应用若没有对应的已发布且启用的封装业务流程（PBP），页面按钮按实际操作规划新建记录或打开待处理视图等入口（需要执行审批等动作时，由相应业务流程或工作表自定义动作承接）；有实际展示需求和可用内容时才规划 `Carousel`（并在 `description` 写明面向整页还是特定业务区），明确需要跨组件联动筛选时在页面 `requirements` 写明筛选条件与受影响组件。
    - 可选 `viewBindings` 用于明确 View 组件到工作表与视图的绑定，例如 `{"待出库": {"worksheet": "出库单", "view": "待出库"}}`；键为 `components` 中的组件名称，两个值必须逐字匹配已规划对象。此映射兼容旧方案：缺省时根据已确认的方案和真实视图语义解析，不新增必填键。
    - 在页面 `requirements` 中明确每个待办组件的数据源及筛选口径，每个图表的数据源、指标、聚合、维度与时间范围；不能将不同语义映射为同一个无筛选视图或同一指标。旧方案缺少该信息时从已确认总览和字段、视图语义推导，无法确定的标记缺口，不新增固定确认门禁。
 2. **`customActions`（按工作表分组的自定义动作数组）**：
