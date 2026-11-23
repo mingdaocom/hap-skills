@@ -5,8 +5,8 @@
 ## 一、 本地宿主输入与参考映射
 
 - **执行方式**：**主调度器内联执行**（在阶段 2 结束拿到全量页面、工作表与 AI 助手真实 ID 后，由主调度器内联按分组调用 `sort_app_items`，无需单独拉起 Subagent 或写回执文件）。
-- **输入来源**：`hap-plan.json`（`navGroups`、`worksheets`、`customPages`、`aiAssistants`）与 `hap-context.json`（`appId`、`sectionIdByName`、`worksheetIdByName`、`customPageIdByName`、`chatbotIdByName`）。
-- **必读领域规范**：`references/hap-domain-app-spec.md`
+- **输入来源**：优先直接使用阶段 3 `prepare`（或阶段 2 `nextStagePrepare`）返回的 **`sortAppItemsHints`**（已按 `navGroups` 汇总真实 `sectionId` 与全部 ≥2 项分组的真实 `id` 及初始结构顺序 `suggestedItemIds`，无需再调 `get_app_info`）；必要时回退读取 `hap-plan.json` 与 `hap-context.json`。
+- **必读领域规范**：`../../references/hap-domain-app-spec.md`
 - **主要业务工具**：`["sort_app_items"]`
 
 ---

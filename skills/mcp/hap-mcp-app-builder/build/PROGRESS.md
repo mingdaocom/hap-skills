@@ -6,7 +6,7 @@
 
 ## 一、 全局阶段状态机 (`hap-context.json.progress`)
 
-所有阶段推进均由 `scripts/build_runtime.py advance` 在 `finalize` 生成的 `.build/phase-report.json` 放行（`canAdvance: true`）后独占原子写入。
+所有阶段推进均由 `../scripts/build_runtime.py advance` 在 `finalize` 生成的 `.build/phase-report.json` 放行（`canAdvance: true`）后独占原子写入。
 
 `progress` 记录已完整验收的全局阶段进度。除后台异步任务 `Step 5`（示例数据）与主链路并行重叠外，其余阶段严格按门禁顺序完成校验后再原子推进；局部失败任务的回执与已完成产物均予以保留，修复续作规则见 [Build 调度流程](../workflows/build.md)，严禁手工涂改进度或将未完成任务伪造为成功。
 

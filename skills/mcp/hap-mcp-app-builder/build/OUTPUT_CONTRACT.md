@@ -20,7 +20,7 @@
 
 ## 二、 任务上下文与原始资料 (`Task Context Schema`)
 
-由 `scripts/build_runtime.py prepare` 自动生成至 `.build/task-context/{taskId}.json`：
+由 `../scripts/build_runtime.py prepare` 自动生成至 `.build/task-context/{taskId}.json`：
 
 ```json
 {

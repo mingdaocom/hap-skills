@@ -6,10 +6,11 @@
 
 - **开工前必查实时 MCP Schema（唯一能力真值源，严禁未查先降级）**：
   - **真值源定位**：Skill 中的 `references/hap-*.md` 与 `modify_guide.md` 仅提供业务建模原则与高频防坑约束，**绝非平台参数全集**；**当前连接环境的实时 MCP 工具 Schema 才是判断平台支持哪些子能力与合法参数结构的唯一权威真值源**。
-  - **按宿主 Schema 暴露机制高效核对（不硬编码客户端名，严禁跨目录 `find` 或多轮盲拆）**：
-    - **全量内联或按需展开宿主（如 `ToolSearch` / 摘要展开模式）**：工具定义已随会话内联提供，或首轮按 `allowedTools` 一次性并行加载齐所需工具（严禁逐个串行试探）后直接结合本包内联的 `references/hap-*.md` 构造参数；
-    - **本地文件懒加载宿主（如将工具 Schema 落盘为 `<toolName>.json`）**：优先用文件读取工具核对 `required` 与子配置；若遇超长单行 Schema（如工作流节点、自定义页面/图表类 >100 KB 文件）被单次读取上限截断，用字节偏移续读或**对该已知单个 Schema 文件做 1 次精准关键字切片定位目标字段**（仍**绝对禁止跨目录 `find /Users` 搜索其他客户端文件，或编写多轮 `jq`/`python` 脚本盲目拆解**）。
-  - **严禁主观断定不支持而绕路**：只要实时 MCP Schema 支持对应原生参数（例如 `Rollup` 的 `config.relationFilter` 条件汇总、`Relation` 的 `resultFilter` 等），必须优先采用原生能力并结合真实表结构主动补全合理过滤口径；**绝对禁止仅因 Skill 文档未提及，在未查实时 MCP Schema 前就主观认定“平台不支持”并擅自降级为普通字段 + 绕路工作流**，也严禁跳过 Schema 凭印象盲猜入参。
+  - **按宿主 Schema 暴露机制高效核对（不硬编码客户端名，严禁翻日志或盗读令牌 `curl`）**：
+    - **全量内联或按需展开宿主（如 `ToolSearch` / 摘要展开模式）**：工具定义已随会话内联提供，或首轮按 `allowedTools` 一次性并行加载齐所需工具（严禁逐个串行试探）后直接结合本包内联的 `references/hap-*.md` 构造参数；**仅当宿主把深层 `properties`/`$defs` 折叠为空壳且无本地完整 `.json` Schema 可读时，直接结合内联规范与步骤高频键名构造最小合法参数调用 1 次 MCP 工具，依据精确校验报错一次性修正**；
+    - **本地文件懒加载宿主（如将工具 Schema 落盘为 `<toolName>.json`）**：优先用文件读取工具核对 `required` 与子配置；若遇超长单行 Schema（如工作流节点、自定义页面/图表类 >100 KB 文件）被单次读取上限截断，用字节偏移续读或**对该已知单个 Schema 文件做 1 次精准关键字切片定位目标字段**；
+    - **凭证与防暴走安全红线（全宿主无条件生效）**：**绝对禁止翻找客户端 `traces/` 历史日志或缓存目录逆向搜参数；绝对禁止读取本机配置文件提取 PAT/Token 用 `curl` 或脚本直连远端 MCP 接口；绝对禁止跨目录 `find /Users` 搜索其他客户端文件或编写多轮 `jq`/`python` 拆解脚本**。
+  - **严禁主观断定不支持而绕路**：只要实时 MCP Schema 支持对应原生参数（例如 `Rollup` 的 `config.relationFilter` 条件汇总、`Relation` 的 `resultFilter` 等），必须优先采用原生能力并结合真实表结构主动补全合理过滤口径；**绝对禁止仅因 Skill 文档未提及，在未核对实时 Schema 前就主观认定“平台不支持”并擅自降级为普通字段 + 绕路工作流**；有完整 Schema 可读时严禁跳过核对盲猜入参。
 - **文档简写与 `appId` 必传铁律**：文档中的 `tool_name(...)` 均为重点业务参数示意简写。除 `get_org_list`、`get_org_detail`、`get_app_list`、`create_app`、`find_member`、`find_department`、`get_current_user`、`get_regions` 以及个人跨应用审批工具（`get_approve_list`、`get_approve_details`、`batch_process_approves`、`return_approve`、`revoke_approve`、`terminate_approve`、`urge_approve`）外，**所有应用内读写接口（即使已传全局唯一的 `worksheet_id` / `workflow_id` / `page_id` / `role_id` / `chatbot_id`）调用时必须始终显式传入当前目标 `"appId"`**；遇到 `10001` 或单点 `401` 报错时，第一时间核查是否漏传 `"appId"` 或写错参数键名。
 - **按场景分层读取规则**：
   - **Modify 场景**：优先运行 `scripts/resolve_context.py --mode modify --assets {domain1,domain2} --render` 一次性加载裁剪后的公共底线与目标领域规则；仅在构造复杂底层参数时按需点读 `references/hap-*.md` 对应章节。
@@ -17,7 +18,7 @@
   - **Build 子代理场景**：Subagent 首轮只需直接读取 `prepare` 预编译生成的 `bundleFiles`（`.build/task-bundles/{taskId}*.md`，单卷已控制在单次读取上限内，首部已内联宿主调用规则、步骤 SOP、专属 `taskContext` 与本步必读领域规范章节，**无需再单独读取 `HOST_ADAPTER.md` 或外部 `references/*.md`**），在 Codex 中，每次工具返回只读一个任务的一卷。若返回提示截断或缺尾部，用行号分段续读至该卷末行；多个执行器仍可并行。**严禁仅用 `grep` 搜索代替阅读，也严禁 `grep/Read` `scripts/build_runtime.py` 等脚本源码**；`sourceFiles` 仅在异常恢复或核对跨表补充细节时按需查阅，正常执行不扫描无关表或他表回执。
   - **跨宿主子代理派发与完成收口规范**：
     - **子代理侧**：子代理为短平快原子执行器，**严禁调用 `TaskCreate` / `TaskUpdate` / `TodoWrite` 自建内部待办卡片**；完成任务并将标准 JSON 回执写入 `receiptPath` 后，直接输出简短文本总结结束当前会话，**严禁调用 `send_message` 等跨代理通信工具向父会话 ID 发送消息**（各宿主均会在子代理结束时自动将结果回传主调度器，手动发消息反而易触发 `recipient not found` 报错）；
-    - **主调度器侧（按工具原生能力 3 档自选，不硬编码宿主名）**：
+    - **主调度器侧（按工具原生能力 3 档自选，不硬编码宿主名；阶段进度已由 `build_runtime.py` 状态机托管，主调度器无需高频调用 `TaskCreate` / `TaskUpdate` / `TodoWrite` 重复记账）**：
       1. **第 1 档 · 具备批量脚本编排工具（如 `run_workflow`）**：同阶段全部阻塞型子任务必须通过脚本编排一次性并发拉起并统一等待收齐（用 `asyncio.gather(..., return_exceptions=True)` 防单点失败取消整批，整批完结只唤醒主调度器 1 次，0 刷屏）；`isBackground: true` 的后台任务（如 `Step 5`）仍单独异步起跑不阻塞；
       2. **第 2 档 · 子代理工具天生异步返回 ID 或带有后台开关参数（如 `run_in_background` / `background` / `async`）**：**所有并发阶段的 Subagent 派发一律显式开启后台/异步模式**，让每次派发立即返回 ID 并在后台同时运行（彻底免疫轻量模型单轮只吐 1 个工具调用导致的串行退化）；全批起跑后**直接结束当前轮次（停止调用工具），等待系统后台完成通知自动唤醒**，**严禁使用 `Bash(sleep ...)` 循环轮询**；中途被单个回调唤醒时先查 1 次 `build_runtime.py status`（或核对 `.build/receipts/` 数量），未全部收齐前再次直接结束本轮等待下一通知，严禁提前 `finalize` 或逐条刷屏播报；
       3. **第 3 档 · 仅有纯同步阻塞型子代理工具（无脚本编排也无异步参数）**：严控单条派发 `prompt` 在 150 字以内，按每波 4～5 个在同一条助手消息内并列发出并行调用。

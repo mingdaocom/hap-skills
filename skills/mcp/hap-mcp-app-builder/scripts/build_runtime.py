@@ -1300,7 +1300,7 @@ def compile_task_bundles(
         f"- **准许工具白名单 (`allowedTools`)**: `{json.dumps(task_ctx_data.get('allowedTools', []), ensure_ascii=False)}`\n"
         f"- **回执落盘路径 (`receiptPath`)**: `{task_ctx_data.get('receiptPath', '')}`\n"
         "- **执行范围**：Plan 给出本步的业务目标、对象和用户明确的取舍。开工前读齐任务包中的领域规范正文，结合真实字段、用途与状态落实适用条款。Plan 未逐项列出的配置也按规范补全；区分必须、默认、按需及例外，新增业务政策或权限仍以用户授权为准。\n"
-        f"- **接口调用**：配置目标依领域规范确定，参数和可用能力以当前服务的实时 MCP Schema 为准；内联工具或首轮按 `allowedTools` 一次性并行加载齐后结合本包规范调用（严禁逐个串行试探，无需额外读取 `HOST_ADAPTER.md` 或外部规范；本地文件懒加载宿主遇超长单行 Schema 截断时，可用偏移量续读或对该已知单文件做 1 次精准关键字定位，**严禁跨目录 `find` 搜索外部 `.json` 或多轮拆解**）。写入限于本步白名单，必要时只读核对。应用内调用显式携带 `appId`（`{app_id_val}`）。分卷读取及 Schema 定位遵循 `{os.path.join(skill_root, 'HOST_ADAPTER.md')}`。\n"
+        f"- **接口调用**：配置目标依领域规范确定，参数和可用能力以当前服务的实时 MCP Schema 为准；内联工具或首轮按 `allowedTools` 一次性并行加载齐后结合本包规范调用（严禁逐个串行试探，无需额外读取 `HOST_ADAPTER.md` 或外部规范；本地文件懒加载宿主遇超长单行 Schema 截断时，可用偏移量续读或对该已知单文件做 1 次精准关键字定位；**若宿主把深层 `properties`/`$defs` 折叠为空壳且无本地 `.json` 可读，直接结合本包规范与高频键名构造最小合法参数调 1 次 MCP 工具，按精确报错一次修正**；**绝对禁止翻找客户端 `traces/` 日志、绝对禁止读取本机配置提取 PAT 用 `curl` 直连远端 MCP、严禁跨目录 `find` 搜索外部 `.json` 或多轮拆解**）。写入限于本步白名单，必要时只读核对。应用内调用显式携带 `appId`（`{app_id_val}`）。分卷读取及 Schema 定位遵循 `{os.path.join(skill_root, 'HOST_ADAPTER.md')}`。\n"
         "- **完成与续作**：子代理为短平快原子执行器，**严禁调用 `TaskCreate` / `TaskUpdate` / `TodoWrite` 自建进度清单**。保留规划类型及已建 ID，用写入结果或定向回读核对核心配置。在现有回执记录具体证据及有影响的缺项；已有对象在原对象补齐，续作先核对 previousReceipt 和线上状态。回执写入 `receiptPath` 后直接输出简短总结并结束当前轮次，切勿调用 `send_message` 等跨代理通信工具向父会话发送消息。\n\n"
         f"{acceptance_rules}\n"
         f"---\n\n## [1] 步骤执行 SOP (`{step_rel}`)\n\n{step_text.strip()}\n\n"
@@ -1537,7 +1537,7 @@ def cmd_prepare(app_dir: str, progress: Optional[str], include_pending_capacity:
     }
     save_json(os.path.join(app_dir, ".build", "task-manifest.json"), manifest_data)
 
-    return {
+    result: Dict[str, Any] = {
         "runId": run_id,
         "progress": current_progress,
         "stage": stage,
@@ -1558,6 +1558,97 @@ def cmd_prepare(app_dir: str, progress: Optional[str], include_pending_capacity:
             "receipts": os.path.join(app_dir, ".build", "receipts"),
         },
     }
+    if stage in ("fields_refreshed", "phase3_configs", "page_shells_created", "phase3"):
+        plan = load_json(os.path.join(app_dir, "hap-plan.json")) or {}
+        result["sortAppItemsHints"] = build_sort_app_items_hints(plan, context)
+    return result
+
+
+def build_sort_app_items_hints(plan: Dict[str, Any], context: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """
+    为 Step 7 导航排序做 100% 确定性的结构预组装（不做关键词语义猜表）：
+    - 按 navGroups 聚合每个分组的真实 sectionId 与各应用项真实 ID（省去 get_app_info）；
+    - 按确定性结构预排 suggestedItemIds：customPages 置顶 -> worksheets（保持 Plan 顺序，
+      并把同组 subTable 自动紧排在 parentWorksheet 正后方）-> aiAssistants 置尾；
+    - 仅输出含 >= 2 个有效真实 ID 的分组，供主调度器核对普通表业务动线后直接调用 sort_app_items。
+    """
+    sec_id_by_name = context.get("sectionIdByName") or {}
+    ws_id_by_name = context.get("worksheetIdByName") or {}
+    page_id_by_name = context.get("customPageIdByName") or {}
+    bot_id_by_name = context.get("chatbotIdByName") or {}
+
+    nav_groups: List[str] = []
+    seen_groups = set()
+    for g in plan.get("navGroups") or []:
+        if isinstance(g, str) and g and g not in seen_groups:
+            nav_groups.append(g)
+            seen_groups.add(g)
+    for bucket in (plan.get("customPages") or [], plan.get("worksheets") or [], plan.get("aiAssistants") or []):
+        for obj in bucket:
+            if isinstance(obj, dict):
+                g = obj.get("groupName")
+                if isinstance(g, str) and g and g not in seen_groups:
+                    nav_groups.append(g)
+                    seen_groups.add(g)
+
+    hints: List[Dict[str, Any]] = []
+    for g in nav_groups:
+        sec_id = sec_id_by_name.get(g, "")
+        if not sec_id:
+            continue
+        ordered: List[Dict[str, Any]] = []
+        seen_ids = set()
+
+        def _append_item(item_id: str, name: str, kind: str, parent_ws: str = "") -> None:
+            if not item_id or item_id in seen_ids:
+                return
+            seen_ids.add(item_id)
+            entry: Dict[str, Any] = {"id": item_id, "name": name, "kind": kind}
+            if parent_ws:
+                entry["parentWorksheet"] = parent_ws
+            ordered.append(entry)
+
+        # 1. 自定义页面置顶（dashboard / workspace，保持 Plan 顺序）
+        for page in plan.get("customPages") or []:
+            if isinstance(page, dict) and page.get("groupName") == g:
+                pname = page.get("name", "")
+                _append_item(page_id_by_name.get(pname, ""), pname, page.get("type") or "customPage")
+
+        # 2. 工作表：保持 Plan 顺序，但把同组 subTable 紧贴在其 parentWorksheet 正后方
+        group_ws = [w for w in (plan.get("worksheets") or []) if isinstance(w, dict) and w.get("groupName") == g]
+        group_ws_names = {w.get("name", "") for w in group_ws}
+        subtables_by_parent: Dict[str, List[Dict[str, Any]]] = {}
+        attached_subs = set()
+        for w in group_ws:
+            if w.get("worksheetType") == "subTable":
+                p_name = w.get("parentWorksheet", "")
+                if p_name and p_name in group_ws_names and p_name != w.get("name", ""):
+                    subtables_by_parent.setdefault(p_name, []).append(w)
+                    attached_subs.add(w.get("name", ""))
+        for w in group_ws:
+            wname = w.get("name", "")
+            if wname in attached_subs:
+                continue
+            wkind = "subTable" if w.get("worksheetType") == "subTable" else "worksheet"
+            _append_item(ws_id_by_name.get(wname, ""), wname, wkind, w.get("parentWorksheet", "") if wkind == "subTable" else "")
+            for sub in subtables_by_parent.get(wname, []):
+                sname = sub.get("name", "")
+                _append_item(ws_id_by_name.get(sname, ""), sname, "subTable", wname)
+
+        # 3. AI 助手置尾（保持 Plan 顺序）
+        for bot in plan.get("aiAssistants") or []:
+            if isinstance(bot, dict) and bot.get("groupName") == g:
+                bname = bot.get("name", "")
+                _append_item(bot_id_by_name.get(bname, ""), bname, "aiAssistant")
+
+        if len(ordered) >= 2:
+            hints.append({
+                "sectionId": sec_id,
+                "sectionName": g,
+                "items": ordered,
+                "suggestedItemIds": [it["id"] for it in ordered],
+            })
+    return hints
 
 
 def cmd_record_dispatch(app_dir: str, task_id: str, agent_id: str, status: str, reason: str = "") -> Dict[str, Any]:

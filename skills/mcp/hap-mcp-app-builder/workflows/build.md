@@ -16,7 +16,7 @@
 >      1. **第 1 档（有批量脚本编排工具如 `run_workflow`）**：整批阻塞型并发任务必须用脚本编排一次并发跑完并统一等待收齐（单次唤醒、0 刷屏），后台 `Step 5` 单独异步拉起；
 >      2. **第 2 档（子代理工具自带后台/异步开关如 `run_in_background: true`，或天生异步返回 ID）**：**所有并发阶段的 Subagent 派发一律开启后台/异步模式**，全批迅速起跑并登记后**直接结束当前轮次（停止调用工具），等待系统后台完成通知自动唤醒**，**严禁 `Bash(sleep ...)` 循环轮询**；被单个回调唤醒时先查 1 次 `status`，未收齐前直接再次结束本轮等待下一通知，严禁提前 `finalize` 或逐条刷屏；
 >      3. **第 3 档（纯同步阻塞型子代理工具）**：在同一条消息内并列发出 4～5 个极简 `prompt` 调用。任何模式下，**只要仍有同批阻塞型 Subagent 在运行，严禁提前调用 `finalize` 空跑或逐条刷屏播报**。
-> 3. **运行记录（严禁 `grep/Read` 脚本源码）**：工程目录默认位于 `{APP_DIR}` = `{PROJECT_ROOT}/.hap-copilot/apps/{appName}`（恢复时使用 `scan_apps.py` 返回的绝对路径）。主调度器直接按下方标准命令与 JSON 契约操作，**严禁使用 `grep` 或 `Read` 翻阅 `scripts/build_runtime.py` 等脚本源码反推字段格式**。
+> 3. **运行记录（严禁 `grep/Read` 脚本源码）**：工程目录默认位于 `{APP_DIR}` = `{PROJECT_ROOT}/.hap-copilot/apps/{appName}`（恢复时使用 `scan_apps.py` 返回的绝对路径）。主调度器直接按下方标准命令与 JSON 契约操作，**严禁使用 `grep` 或 `Read` 翻阅 `../scripts/build_runtime.py` 等脚本源码反推字段格式**。
 > 4. **完建优先与规划契约保真铁律（防中断 · 防乱替）**：
 >    - **本步验收与原对象续作**。按已批准方案回读本步核心配置。页面已有 ID 但缺主图、动作已有流程 ID 但缺节点、角色已有 ID 但缺必要授权时，继续在原对象补齐。可选微调或需下游验证的事项写入 `issues`，成功与失败回执遵循 [输出契约](../build/OUTPUT_CONTRACT.md)。
 >    - **配置态完建即发布**（详见 [宿主适配](../HOST_ADAPTER.md)「零代码建模与配置态交付原则」）：在实时 MCP Schema 与领域规范范围内落地声明式配置；只要工作流节点配置齐全且 `validate_process` 校验通过（`valid: true`），必须立即调用 `publish_process` 发布上线，不因运行态事项（成员未分配、未真机试跑）或底层定制代码假设而留草稿、停用入口。
@@ -26,7 +26,7 @@
 
 ## 一、 构建阶段驱动流水线
 
-> **阶段流转 `--progress` 合法枚举速查**：`app_created`（阶段 1.5 Pass 1：Step 2a） ➔ `step2a_done`（阶段 1.5 Pass 2：Step 2b，无跨表关联时自动跳至 `worksheets_created`） ➔ `worksheets_created`（阶段 2：Step 3 + Step 4a） ➔ `fields_refreshed`（阶段 3：Step 7 + 4b + 5 + 6 + 8） ➔ `config_completed`（阶段 4：Step 10 + 11） ➔ `completed`（终态交付）。
+> **阶段流转 `--progress` 说明**：常规流转直接省略 `--progress`（`prepare` / `finalize` 默认自动读取 `hap-context.json.progress`）；仅在断点定点续作或重跑历史阶段时按需显式传入：`app_created`（Step 2a） ➔ `step2a_done`（Step 2b，无跨表关联自动跳过） ➔ `worksheets_created`（Step 3 + 4a） ➔ `fields_refreshed`（Step 7 + 4b + 5 + 6 + 8） ➔ `config_completed`（Step 10 + 11） ➔ `completed`。
 
 ### 初始化或核对运行目录
 
@@ -57,42 +57,42 @@ python3 {SKILL_DIR}/scripts/build_runtime.py init --app-dir {APP_DIR} --skill-di
 
 ### 阶段 1.5：工作表两遍并发创建（Step 2a 基础表 ➔ Step 2b 跨表关联）
 ```bash
-# Pass 1: Step 2a 全表并发建表与基础字段排版
-python3 {SKILL_DIR}/scripts/build_runtime.py prepare --app-dir {APP_DIR} --progress app_created
+# Pass 1: Step 2a 全表并发建表与基础字段排版（省略 --progress，自动读取当前阶段）
+python3 {SKILL_DIR}/scripts/build_runtime.py prepare --app-dir {APP_DIR}
 # -> 批量派发 readyTasks 中的 Subagent 后，按需登记已派发（无需运行 --help 查参数）：
 # python3 {SKILL_DIR}/scripts/build_runtime.py dispatched --app-dir {APP_DIR} --task-id <taskId> --agent-id <agentId>
 # -> 查状态直接用 build_runtime.py status --app-dir {APP_DIR}（无需 ls .build/receipts/）-> 等待完成
 # -> 一键完成本阶段汇总、推进与下一阶段任务准备（若无跨表关联自动跳至 worksheets_created）：
-python3 {SKILL_DIR}/scripts/build_runtime.py finalize --app-dir {APP_DIR} --progress app_created --advance-and-prepare
+python3 {SKILL_DIR}/scripts/build_runtime.py finalize --app-dir {APP_DIR} --advance-and-prepare
 
 # Pass 2: 若推进至 step2a_done（存在跨表 Relation/SubTable/Lookup/Rollup），直接派发返回的 nextStagePrepare.readyTasks
 # -> 按关联连通组并发派发 Step 2b Subagent（每组 ≤5 表，组内逐表顺序回填预留行号关联，消除反向关联锁冲突） -> 等待完成
-python3 {SKILL_DIR}/scripts/build_runtime.py finalize --app-dir {APP_DIR} --progress step2a_done --advance-and-prepare
+python3 {SKILL_DIR}/scripts/build_runtime.py finalize --app-dir {APP_DIR} --advance-and-prepare
 ```
 
 ### 阶段 2：单表全要素配置与 AI 助手创建（Step 3 单表动作/视图/规则 + Step 4a 助手创建）
 ```bash
-# 直接使用上一阶段返回的 nextStagePrepare.readyTasks（或单独执行 prepare --progress worksheets_created）
+# 直接使用上一阶段返回的 nextStagePrepare.readyTasks（或单独执行 prepare --app-dir {APP_DIR}）
 # -> 并发派发 readyTasks (3_create_actions_views_rules.md + 4_create_chatbots.md#Step4a) -> 等待完成
-# -> finalize 自动触发 merge_worksheet_context.py 校验归并，并一键推进生成阶段 3 readyTasks：
-python3 {SKILL_DIR}/scripts/build_runtime.py finalize --app-dir {APP_DIR} --progress worksheets_created --advance-and-prepare
+# -> finalize 自动触发 merge_worksheet_context.py 校验归并，并一键推进生成阶段 3 readyTasks 与 sortAppItemsHints：
+python3 {SKILL_DIR}/scripts/build_runtime.py finalize --app-dir {APP_DIR} --advance-and-prepare
 ```
 
 ### 阶段 3：全分组导航排序 + 助手节点、自定义页面、角色权限与后台示例数据全并发（Step 5 全程非阻塞！）
-1. **全分组导航排序（`../build/steps/7_sort_app_items.md`）**：按 6 级优先级顺序（自定义页面置顶 ➔ 主业务表 ➔ 紧随主表的明细子表 ➔ 台账/流水表 ➔ 基础字典表 ➔ AI 助手置尾），**不跳过纯工作表分组**（并发建表顺序不定，子表与明细表也必须紧排在所属主表后面）；主调度器遍历所有包含 **≥ 2 项**应用的导航分组，依次/并发调用 `sort_app_items(appId, sectionId, itemIds)`（仅 0～1 项分组跳过）；
+1. **全分组导航排序（`../build/steps/7_sort_app_items.md`）**：直接读取阶段 3 `prepare`（或上一阶段 `nextStagePrepare`）返回的 **`sortAppItemsHints`**（已按 `navGroups` 汇总真实 `sectionId` 与全部 ≥2 项分组的真实 `id`，并按「页面置顶 ➔ 工作表含紧随主表的子表 ➔ AI 助手置尾」给出 `suggestedItemIds`，**无需调用 `get_app_info`**）；主调度器核对同组普通表的业务动线（主业务表 ➔ 台账流水 ➔ 基础字典）后微调或直接采用 `suggestedItemIds`，依次/并发调用 `sort_app_items(appId, sectionId, itemIds)`（不跳过纯工作表分组，仅 0～1 项分组跳过）；
 2. 并发派发本阶段 Subagent（含后台任务 `Step 5`）：
 ```bash
-# 直接使用上一阶段返回的 nextStagePrepare.readyTasks（或执行 prepare --progress fields_refreshed）
+# 直接使用上一阶段返回的 nextStagePrepare.readyTasks（或执行 prepare --app-dir {APP_DIR}）
 # -> 同一轮次并发派发：Step 4b(助手Agent节点绑定发布) + Step 5(后台示例数据, isBackground=true) + Step 6(页面组件与summary校正) + Step 8(角色精细权限)
 # -> ⚡ 非阻塞推进铁律：若宿主 Agent/Task 工具支持 run_in_background: true，派发 Step 5 时必须显式设为 true！只要阻塞型任务（Step 4b / 6 / 8）全部完成，严禁傻等后台任务 Step 5 结束，立即执行下方命令一键推进启动阶段 4：
-python3 {SKILL_DIR}/scripts/build_runtime.py finalize --app-dir {APP_DIR} --progress fields_refreshed --advance-and-prepare
+python3 {SKILL_DIR}/scripts/build_runtime.py finalize --app-dir {APP_DIR} --advance-and-prepare
 ```
 
 ### 阶段 4：单条系统流与动作流「设计+创建+校验发布」一体化并发上线（Step 10 系统流 + Step 11 动作流）
 ```bash
-# 直接使用上一阶段返回的 nextStagePrepare.readyTasks（或执行 prepare --progress config_completed）
+# 直接使用上一阶段返回的 nextStagePrepare.readyTasks（或执行 prepare --app-dir {APP_DIR}）
 # -> 按单条流程并发派发 Step 10 与 Step 11 Subagent（每条流程在单子代理内一气呵成完成节点设计、创建/注入、校验与发布） -> 等待完成
-python3 {SKILL_DIR}/scripts/build_runtime.py finalize --app-dir {APP_DIR} --progress config_completed --advance-and-prepare
+python3 {SKILL_DIR}/scripts/build_runtime.py finalize --app-dir {APP_DIR} --advance-and-prepare
 ```
 
 ---
