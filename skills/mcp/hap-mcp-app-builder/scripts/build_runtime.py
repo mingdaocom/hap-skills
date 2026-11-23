@@ -406,6 +406,308 @@ def extract_action_workflows(plan: Dict[str, Any], context: Dict[str, Any]) -> L
 MAX_RELATION_GROUP_SIZE = 5
 
 
+def _parse_relation_direction(spec: str) -> Tuple[str, str]:
+    """解析 Relation:目标表名[:single|multiple][:uni|bi|reverse]（兼容省略基数的双段简写）。"""
+    parts = [p.strip() for p in spec.split(":") if p.strip()]
+    target = parts[0] if parts else ""
+    direction = ""
+    if len(parts) >= 2 and parts[-1].lower() in ("uni", "bi", "reverse"):
+        direction = parts[-1].lower()
+    elif len(parts) >= 3:
+        direction = parts[2].lower()
+    return target, direction
+
+
+def _worksheet_needs_step2b(ws: Dict[str, Any], rel_layout: Optional[List[Any]] = None) -> bool:
+    """判定工作表是否真正需要在 Step 2b 发起 API 写入；自动剔除仅含 :reverse 被动关联且无衍生字段/无 requirements 的空表。"""
+    if rel_layout:
+        return True
+    if ws.get("requirements"):
+        return True
+    for f in (ws.get("fields") or ws.get("customFields") or []):
+        if not isinstance(f, str):
+            continue
+        if any(kw in f for kw in ("(SubTable:", "(Rollup:", "(Lookup:")):
+            return True
+        if "(Relation:" in f:
+            spec = f.split("(Relation:", 1)[1].rstrip(")")
+            _, direction = _parse_relation_direction(spec)
+            if direction != "reverse":
+                return True
+    return False
+
+
+def _extract_step2b_worksheet_meta(
+    ws: Dict[str, Any],
+    rel_layout: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """从工作表 Plan 字段声明与 Step 2a relationLayout 中提取确定性的跨表关联、子表与衍生字段依赖元数据。"""
+    active_rels: Dict[str, Tuple[str, bool]] = {}
+    active_rel_by_alias: Dict[str, Tuple[str, bool]] = {}
+    reverse_rels: Dict[str, str] = {}
+    subtables: Dict[str, str] = {}
+    subtable_by_alias: Dict[str, str] = {}
+    step2b_field_names: set = set()
+    rel_layout_alias_by_name: Dict[str, str] = {}
+    derived_by_name: Dict[str, Dict[str, str]] = {}
+    derived_extra: List[Dict[str, str]] = []
+
+    for f in (ws.get("fields") or ws.get("customFields") or []):
+        if not isinstance(f, str) or "(" not in f:
+            continue
+        fname = f.split("(", 1)[0].strip()
+        spec = f.split("(", 1)[1].rstrip(")").strip()
+        if spec.startswith("Relation:"):
+            target, direction = _parse_relation_direction(spec[len("Relation:"):])
+            if not target:
+                continue
+            if direction == "reverse":
+                reverse_rels[fname] = target
+            else:
+                active_rels[fname] = (target, direction == "bi")
+                if fname:
+                    step2b_field_names.add(fname)
+        elif spec.startswith("SubTable:"):
+            target = spec[len("SubTable:"):].split(":", 1)[0].strip()
+            if target:
+                subtables[fname] = target
+                if fname:
+                    step2b_field_names.add(fname)
+        elif spec.startswith("Rollup:"):
+            segs = [s.strip() for s in spec[len("Rollup:"):].split(".") if s.strip()]
+            rel_ref = segs[0] if segs else ""
+            src_field = segs[1] if len(segs) >= 3 else (
+                segs[1] if len(segs) == 2 and segs[1].lower() not in ("count", "sum", "avg", "max", "min") else ""
+            )
+            entry = {"kind": "Rollup", "name": fname, "relRef": rel_ref, "targetHint": "", "sourceField": src_field}
+            if fname:
+                step2b_field_names.add(fname)
+                derived_by_name[fname] = entry
+            else:
+                derived_extra.append(entry)
+        elif spec.startswith("Lookup:"):
+            segs = [s.strip() for s in spec[len("Lookup:"):].split(".") if s.strip()]
+            rel_ref = segs[0] if segs else ""
+            src_field = segs[1] if len(segs) >= 2 else ""
+            entry = {"kind": "Lookup", "name": fname, "relRef": rel_ref, "targetHint": "", "sourceField": src_field}
+            if fname:
+                step2b_field_names.add(fname)
+                derived_by_name[fname] = entry
+            else:
+                derived_extra.append(entry)
+        elif spec in ("Formula", "DateFormula", "Concatenate") or spec.startswith(("Formula:", "DateFormula:", "Concatenate:")):
+            if fname:
+                step2b_field_names.add(fname)
+
+    for item in rel_layout or []:
+        if not isinstance(item, dict):
+            continue
+        ftype = str(item.get("fieldType") or item.get("type") or "").strip()
+        fname = str(item.get("name") or "").strip()
+        alias = str(item.get("alias") or "").strip()
+        target = str(item.get("targetWorksheet") or "").strip()
+        if fname:
+            step2b_field_names.add(fname)
+            if alias:
+                rel_layout_alias_by_name[fname] = alias
+        if alias:
+            step2b_field_names.add(alias)
+        if ftype == "Relation" and target:
+            is_bi = bool(item.get("bidirectional"))
+            if fname:
+                active_rels[fname] = (target, is_bi)
+            if alias:
+                active_rel_by_alias[alias] = (target, is_bi)
+        elif ftype == "SubTable" and target:
+            if fname:
+                subtables[fname] = target
+            if alias:
+                subtable_by_alias[alias] = target
+        elif ftype in ("Rollup", "Lookup"):
+            rel_ref = str(item.get("relationField") or "").strip()
+            src_field = str(item.get("sourceFieldName") or item.get("sourceField") or "").strip()
+            if fname and fname in derived_by_name:
+                existing = derived_by_name[fname]
+                if target and not existing["targetHint"]:
+                    existing["targetHint"] = target
+                if src_field and not existing["sourceField"]:
+                    existing["sourceField"] = src_field
+                if rel_ref and not existing["relRef"]:
+                    existing["relRef"] = rel_ref
+            else:
+                entry = {"kind": ftype, "name": fname, "relRef": rel_ref, "targetHint": target, "sourceField": src_field}
+                if fname:
+                    derived_by_name[fname] = entry
+                else:
+                    derived_extra.append(entry)
+
+    return {
+        "active_rels": active_rels,
+        "active_rel_by_alias": active_rel_by_alias,
+        "reverse_rels": reverse_rels,
+        "subtables": subtables,
+        "subtable_by_alias": subtable_by_alias,
+        "step2b_field_names": step2b_field_names,
+        "rel_layout_alias_by_name": rel_layout_alias_by_name,
+        "derived_refs": list(derived_by_name.values()) + derived_extra,
+    }
+
+
+def plan_step2b_waves(
+    pending_items: List[Dict[str, Any]],
+    all_ws_by_name: Dict[str, Dict[str, Any]],
+    rel_layout_by_ws: Dict[str, Any],
+) -> List[Dict[str, Any]]:
+    """
+    为 Step 2b 待处理工作表构建确定性有向依赖图并自动分波（Wave 1 / Wave 2 / ...）：
+    1. 反向关联依赖（:bi -> 反向 Rollup/Lookup）：从表先建 :bi，主表下一波写前 1 次 get_worksheet_structure 取反向关联 ID；
+    2. 跨表二次衍生依赖（目标表 Step 2b 新建的 Rollup/Lookup/Formula -> 本表 Rollup/Lookup）：目标表先于引用表；
+    3. 主子表列依赖（子表 Step 2b 关联列 -> 父表 SubTable）：子表先于父表；
+    4. 环路自动破环保护，保证绝不死锁。
+    """
+    if not pending_items:
+        return []
+
+    pending_order = [item["name"] for item in pending_items]
+    pending_set = set(pending_order)
+    item_by_name = {item["name"]: item for item in pending_items}
+
+    # 提取全应用所有表的结构元数据（即使某表不在 pending_set，也能识别关联目标）
+    meta_by_ws: Dict[str, Dict[str, Any]] = {}
+    for wname, ws in all_ws_by_name.items():
+        rl = rel_layout_by_ws.get(wname)
+        meta_by_ws[wname] = _extract_step2b_worksheet_meta(ws, rl if isinstance(rl, list) else [])
+    for item in pending_items:
+        if item["name"] not in meta_by_ws:
+            meta_by_ws[item["name"]] = _extract_step2b_worksheet_meta(item["ws"], item.get("rel_layout") or [])
+
+    # 收集每个主表 B 收到的主动 :bi 源表集合
+    bi_sources_to: Dict[str, set] = {n: set() for n in all_ws_by_name}
+    for src_name, meta in meta_by_ws.items():
+        for target_ws, is_bi in list(meta["active_rels"].values()) + list(meta["active_rel_by_alias"].values()):
+            if is_bi and target_ws and target_ws != src_name:
+                bi_sources_to.setdefault(target_ws, set()).add(src_name)
+
+    deps_on: Dict[str, set] = {n: set() for n in pending_order}
+    needs_pre_read: Dict[str, bool] = {n: False for n in pending_order}
+    related_ws_map: Dict[str, set] = {n: {n} for n in pending_order}
+
+    for name in pending_order:
+        ws = item_by_name[name]["ws"]
+        meta = meta_by_ws[name]
+
+        # 记录本表相关表（用于精准裁剪单表任务包的 worksheetFieldsByName / fieldOptionsContext）
+        for target_ws, _ in list(meta["active_rels"].values()) + list(meta["active_rel_by_alias"].values()):
+            if target_ws:
+                related_ws_map[name].add(target_ws)
+        for target_ws in meta["reverse_rels"].values():
+            if target_ws:
+                related_ws_map[name].add(target_ws)
+        for target_ws in list(meta["subtables"].values()) + list(meta["subtable_by_alias"].values()):
+            if target_ws:
+                related_ws_map[name].add(target_ws)
+        for src_ws in bi_sources_to.get(name, set()):
+            related_ws_map[name].add(src_ws)
+
+        # 依赖类 3：主子表列依赖（子表在 pending_set 中时，父表排在子表之后）
+        if ws.get("worksheetType") == "subTable":
+            parent_ws = ws.get("parentWorksheet")
+            if isinstance(parent_ws, str) and parent_ws in pending_set and parent_ws != name:
+                deps_on[parent_ws].add(name)
+                related_ws_map[parent_ws].add(name)
+        for sub_target in set(meta["subtables"].values()) | set(meta["subtable_by_alias"].values()):
+            if sub_target in pending_set and sub_target != name:
+                deps_on[name].add(sub_target)
+
+        # 依赖类 1 & 2：解析每条 Rollup / Lookup 的真实前置依赖
+        active_targets = {t for t, _ in list(meta["active_rels"].values()) + list(meta["active_rel_by_alias"].values())}
+        subtable_targets = set(meta["subtables"].values()) | set(meta["subtable_by_alias"].values())
+        bi_srcs = bi_sources_to.get(name, set())
+
+        for dref in meta["derived_refs"]:
+            rel_ref = dref.get("relRef", "")
+            target_hint = dref.get("targetHint", "")
+            src_field = dref.get("sourceField", "")
+            resolved_target = ""
+            is_reverse_dep = False
+
+            if rel_ref in meta["active_rels"]:
+                resolved_target = meta["active_rels"][rel_ref][0]
+            elif rel_ref in meta["active_rel_by_alias"]:
+                resolved_target = meta["active_rel_by_alias"][rel_ref][0]
+            elif rel_ref in meta["subtables"]:
+                resolved_target = meta["subtables"][rel_ref]
+            elif rel_ref in meta["subtable_by_alias"]:
+                resolved_target = meta["subtable_by_alias"][rel_ref]
+            elif rel_ref in meta["reverse_rels"]:
+                resolved_target = meta["reverse_rels"][rel_ref]
+                is_reverse_dep = True
+            elif target_hint and target_hint in bi_srcs and target_hint not in active_targets and target_hint not in subtable_targets:
+                resolved_target = target_hint
+                is_reverse_dep = True
+            elif rel_ref and rel_ref in bi_srcs and rel_ref not in active_targets and rel_ref not in subtable_targets:
+                resolved_target = rel_ref
+                is_reverse_dep = True
+            elif target_hint:
+                resolved_target = target_hint
+            elif bi_srcs and rel_ref not in active_targets and rel_ref not in subtable_targets:
+                # 未能定位到本表任何主动关联/子表，且存在指向本表的 :bi 源表
+                for bsrc in sorted(bi_srcs):
+                    if bsrc not in active_targets and bsrc not in subtable_targets:
+                        related_ws_map[name].add(bsrc)
+                        if bsrc in pending_set and bsrc != name:
+                            deps_on[name].add(bsrc)
+                        needs_pre_read[name] = True
+
+            if resolved_target:
+                related_ws_map[name].add(resolved_target)
+                if is_reverse_dep:
+                    needs_pre_read[name] = True
+                    if resolved_target in pending_set and resolved_target != name:
+                        deps_on[name].add(resolved_target)
+                # 依赖类 2：目标表在 Step 2b 待新建该源字段（如二次 Rollup / Lookup）
+                if resolved_target in pending_set and resolved_target != name and src_field:
+                    target_meta = meta_by_ws.get(resolved_target) or {}
+                    if src_field in (target_meta.get("step2b_field_names") or set()):
+                        deps_on[name].add(resolved_target)
+                        # 若目标表 relationLayout 未预留该字段的明确 alias，开放 write 前只读 1 次结构取真实字段 ID
+                        if not (target_meta.get("rel_layout_alias_by_name") or {}).get(src_field):
+                            needs_pre_read[name] = True
+
+    # 拓扑分层分波（带环路自动破环保护）
+    assigned_wave: Dict[str, int] = {}
+    effective_deps: Dict[str, List[str]] = {}
+    remaining = list(pending_order)
+    wave_num = 1
+    while remaining:
+        ready = [n for n in remaining if deps_on[n].issubset(assigned_wave.keys())]
+        if not ready:
+            # 检测到环路：取 Plan 顺序最前的一项破环，仅保留已就绪依赖
+            breaker = remaining[0]
+            deps_on[breaker] = deps_on[breaker] & set(assigned_wave.keys())
+            ready = [breaker]
+        for n in ready:
+            assigned_wave[n] = wave_num
+            ordered_deps = [d for d in pending_order if d in deps_on[n]]
+            effective_deps[n] = ordered_deps
+            remaining.remove(n)
+        wave_num += 1
+
+    # 按 (waveIndex, Plan 原始顺序) 输出
+    planned_names = sorted(pending_order, key=lambda n: (assigned_wave[n], pending_order.index(n)))
+    result: List[Dict[str, Any]] = []
+    for n in planned_names:
+        item = dict(item_by_name[n])
+        dep_ws = effective_deps[n]
+        item["waveIndex"] = assigned_wave[n]
+        item["dependsOnWorksheets"] = dep_ws
+        item["dependsOnTaskIds"] = [f"step2b-rel-{normalize_name(d)}" for d in dep_ws]
+        item["needsPreReadStructure"] = bool(needs_pre_read[n])
+        item["relatedWorksheets"] = related_ws_map[n]
+        result.append(item)
+    return result
+
+
 def _extract_referenced_worksheets(ws: Dict[str, Any], rel_layout: List[Dict[str, Any]], known_names: set) -> set:
     refs = set()
     parent_ws = ws.get("parentWorksheet")
@@ -701,9 +1003,20 @@ def get_stage_tasks_definitions(app_dir: str, stage: str) -> List[Dict[str, Any]
                 "desc": f"创建工作表与基础字段排版: {name}",
             })
 
-    # 阶段 1.5 Pass 2: Step 2b 关联与衍生字段按组回填（连通聚类 + 保序分箱，兼容历史单表回执）
+    # 阶段 1.5 Pass 2: Step 2b 关联与衍生字段回填（默认单表并发 + 依赖图自动分波；若历史工程已有分组回执则保持兼容）
     elif stage in ("step2a_done", "step2b"):
         all_ws_order = [ws.get("name", "") for ws in worksheets if isinstance(ws, dict) and ws.get("name")]
+        all_ws_by_name = {ws.get("name", ""): ws for ws in worksheets if isinstance(ws, dict) and ws.get("name")}
+        receipts_dir = os.path.join(app_dir, ".build", "receipts")
+        dispatch_reg = load_json(os.path.join(app_dir, ".build", "dispatch-registry.json")) or {}
+        has_legacy_group_state = (
+            (os.path.isdir(receipts_dir) and any(
+                fn.startswith("step2b-rel-group-") and fn.endswith(".json")
+                for fn in os.listdir(receipts_dir)
+            ))
+            or any(isinstance(k, str) and k.startswith("step2b-rel-group-") for k in dispatch_reg)
+        )
+
         pending_rel_items: List[Dict[str, Any]] = []
         for ws in worksheets:
             if not isinstance(ws, dict):
@@ -711,123 +1024,157 @@ def get_stage_tasks_definitions(app_dir: str, stage: str) -> List[Dict[str, Any]
             name = ws.get("name", "")
             rel_layout = rel_layout_by_ws.get(name)
             fields = ws.get("fields") or ws.get("customFields") or []
-            ws_reqs = ws.get("requirements") or []
-            has_relations = bool(rel_layout) or any(
-                isinstance(f, str) and any(kw in f for kw in ("Relation:", "SubTable:", "Rollup:", "Lookup:"))
-                for f in fields
-            )
-            if not has_relations and not ws_reqs:
+            if not _worksheet_needs_step2b(ws, rel_layout if isinstance(rel_layout, list) else None):
                 continue
-            legacy_rel_receipt = f".build/receipts/step2b-rel-{normalize_name(name)}.json"
-            if os.path.exists(os.path.join(app_dir, legacy_rel_receipt)):
+            pending_rel_items.append({
+                "name": name,
+                "ws": ws,
+                "fields": fields,
+                "rel_layout": rel_layout or [],
+            })
+
+        if has_legacy_group_state:
+            rel_groups = group_relation_worksheets(pending_rel_items, all_ws_order)
+            for idx, grp in enumerate(rel_groups, start=1):
+                group_names = [item["name"] for item in grp]
+                joined_names = "、".join(group_names)
+                plan_slice: Dict[str, Any] = {
+                    "groupIndex": idx,
+                    "items": [
+                        {
+                            "worksheetName": item["name"],
+                            "worksheetId": ws_id_by_name.get(item["name"], ""),
+                            "worksheet": item["ws"],
+                            "fields": item["fields"],
+                            "relationLayout": item["rel_layout"],
+                            "requirements": item["ws"].get("requirements", []),
+                        }
+                        for item in grp
+                    ],
+                    "allWorksheetOrder": all_ws_order,
+                    "allRelationLayouts": rel_layout_by_ws,
+                    "appLanguage": app_lang,
+                }
+                ctx_slice: Dict[str, Any] = {
+                    "appId": app_id,
+                    "worksheetIds": {item["name"]: ws_id_by_name.get(item["name"], "") for item in grp},
+                    "worksheetIdByName": ws_id_by_name,
+                    "worksheetFieldsByName": ws_fields_preview,
+                    "fieldOptionsContext": field_options_ctx,
+                }
+                if len(grp) == 1:
+                    only = grp[0]
+                    plan_slice.update({
+                        "worksheet": only["ws"],
+                        "worksheetName": only["name"],
+                        "fields": only["fields"],
+                        "relationLayout": only["rel_layout"],
+                        "requirements": only["ws"].get("requirements", []),
+                    })
+                    ctx_slice["worksheetId"] = ws_id_by_name.get(only["name"], "")
+
+                has_group_reqs = any(bool((item["ws"] or {}).get("requirements")) for item in grp)
+                grp_refs = ["references/hap-domain-worksheet-spec.md"]
+                grp_tools = ["update_worksheet"]
+                if has_group_reqs:
+                    grp_refs.append("references/hap-domain-worksheet-index-spec.md")
+                    grp_tools.extend(["get_worksheet_index_list", "create_worksheet_index"])
+
+                tasks.append({
+                    "taskId": f"step2b-rel-group-{idx}",
+                    "taskName": f"[Step 2b] 关联回填第 {idx} 组 ({joined_names})",
+                    "step": "2b",
+                    "target": {
+                        "type": "worksheet_group",
+                        "name": f"group-{idx}",
+                        "worksheets": group_names,
+                        "worksheetIds": {n: ws_id_by_name.get(n, "") for n in group_names},
+                    },
+                    "stepFile": "build/steps/2b_create_relations.md",
+                    "references": grp_refs,
+                    "allowedTools": grp_tools,
+                    "receiptPath": f".build/receipts/step2b-rel-group-{idx}.json",
+                    "taskContextPath": f".build/task-context/step2b-rel-group-{idx}.json",
+                    "planSlice": plan_slice,
+                    "contextSlice": ctx_slice,
+                    "worksheetContextSlice": {},
+                    "desc": f"按预留行号逐表顺序补充跨表关联与衍生字段（第 {idx} 组：{joined_names}）",
+                })
+        else:
+            planned_waves = plan_step2b_waves(pending_rel_items, all_ws_by_name, rel_layout_by_ws)
+            total_waves = max((it["waveIndex"] for it in planned_waves), default=0)
+            for item in planned_waves:
+                name = item["name"]
+                ws = item["ws"]
+                fields = item["fields"]
+                rel_layout = item["rel_layout"]
+                ws_reqs = ws.get("requirements") or []
+                wave_idx = item["waveIndex"]
+                dep_ws = item["dependsOnWorksheets"]
+                dep_task_ids = item["dependsOnTaskIds"]
+                needs_pre_read = item["needsPreReadStructure"]
+                rel_ws_set = item["relatedWorksheets"]
+
                 s2b_refs = ["references/hap-domain-worksheet-spec.md"]
                 s2b_tools = ["update_worksheet"]
+                if needs_pre_read:
+                    s2b_tools.append("get_worksheet_structure")
                 if ws_reqs:
                     s2b_refs.append("references/hap-domain-worksheet-index-spec.md")
                     s2b_tools.extend(["get_worksheet_index_list", "create_worksheet_index"])
+
+                sliced_fields_preview = (
+                    {k: v for k, v in ws_fields_preview.items() if k in rel_ws_set}
+                    if isinstance(ws_fields_preview, dict) else {}
+                )
+                if not sliced_fields_preview and isinstance(ws_fields_preview, dict):
+                    sliced_fields_preview = ws_fields_preview
+                sliced_options_ctx = (
+                    [entry for entry in field_options_ctx if isinstance(entry, dict) and entry.get("name") in rel_ws_set]
+                    if isinstance(field_options_ctx, list) else field_options_ctx
+                )
+                sliced_rel_layouts = (
+                    {k: v for k, v in rel_layout_by_ws.items() if k in rel_ws_set}
+                    if isinstance(rel_layout_by_ws, dict) else {}
+                )
+
+                wave_label = f"第{wave_idx}波/" if total_waves > 1 else ""
                 tasks.append({
                     "taskId": f"step2b-rel-{normalize_name(name)}",
-                    "taskName": f"[Step 2b] 关联回填 - {name}",
+                    "taskName": f"[Step 2b] {wave_label}关联回填 - {name}",
                     "step": "2b",
+                    "waveIndex": wave_idx,
+                    "dependsOnTaskIds": dep_task_ids,
                     "target": {"type": "worksheet", "id": ws_id_by_name.get(name, ""), "name": name},
                     "stepFile": "build/steps/2b_create_relations.md",
                     "references": s2b_refs,
                     "allowedTools": s2b_tools,
-                    "receiptPath": legacy_rel_receipt,
+                    "receiptPath": f".build/receipts/step2b-rel-{normalize_name(name)}.json",
                     "taskContextPath": f".build/task-context/step2b-rel-{normalize_name(name)}.json",
                     "planSlice": {
                         "worksheetName": name,
+                        "worksheet": ws,
                         "fields": fields,
-                        "relationLayout": rel_layout or [],
+                        "relationLayout": rel_layout,
+                        "waveIndex": wave_idx,
+                        "totalWaves": total_waves,
+                        "dependsOnWorksheets": dep_ws,
+                        "needsPreReadStructure": needs_pre_read,
                         "allWorksheetOrder": all_ws_order,
-                        "allRelationLayouts": rel_layout_by_ws,
-                        "requirements": ws.get("requirements", []),
+                        "allRelationLayouts": sliced_rel_layouts,
+                        "requirements": ws_reqs,
                         "appLanguage": app_lang,
                     },
                     "contextSlice": {
                         "appId": app_id,
                         "worksheetId": ws_id_by_name.get(name, ""),
                         "worksheetIdByName": ws_id_by_name,
-                        "worksheetFieldsByName": ws_fields_preview,
-                        "fieldOptionsContext": field_options_ctx,
+                        "worksheetFieldsByName": sliced_fields_preview,
+                        "fieldOptionsContext": sliced_options_ctx,
                     },
                     "worksheetContextSlice": {},
                     "desc": f"按预留行号补充跨表关联与衍生字段: {name}",
                 })
-            else:
-                pending_rel_items.append({
-                    "name": name,
-                    "ws": ws,
-                    "fields": fields,
-                    "rel_layout": rel_layout or [],
-                })
-
-        rel_groups = group_relation_worksheets(pending_rel_items, all_ws_order)
-        for idx, grp in enumerate(rel_groups, start=1):
-            group_names = [item["name"] for item in grp]
-            joined_names = "、".join(group_names)
-            plan_slice: Dict[str, Any] = {
-                "groupIndex": idx,
-                "items": [
-                    {
-                        "worksheetName": item["name"],
-                        "worksheetId": ws_id_by_name.get(item["name"], ""),
-                        "worksheet": item["ws"],
-                        "fields": item["fields"],
-                        "relationLayout": item["rel_layout"],
-                        "requirements": item["ws"].get("requirements", []),
-                    }
-                    for item in grp
-                ],
-                "allWorksheetOrder": all_ws_order,
-                "allRelationLayouts": rel_layout_by_ws,
-                "appLanguage": app_lang,
-            }
-            ctx_slice: Dict[str, Any] = {
-                "appId": app_id,
-                "worksheetIds": {item["name"]: ws_id_by_name.get(item["name"], "") for item in grp},
-                "worksheetIdByName": ws_id_by_name,
-                "worksheetFieldsByName": ws_fields_preview,
-                "fieldOptionsContext": field_options_ctx,
-            }
-            if len(grp) == 1:
-                only = grp[0]
-                plan_slice.update({
-                    "worksheet": only["ws"],
-                    "worksheetName": only["name"],
-                    "fields": only["fields"],
-                    "relationLayout": only["rel_layout"],
-                    "requirements": only["ws"].get("requirements", []),
-                })
-                ctx_slice["worksheetId"] = ws_id_by_name.get(only["name"], "")
-
-            has_group_reqs = any(bool((item["ws"] or {}).get("requirements")) for item in grp)
-            grp_refs = ["references/hap-domain-worksheet-spec.md"]
-            grp_tools = ["update_worksheet"]
-            if has_group_reqs:
-                grp_refs.append("references/hap-domain-worksheet-index-spec.md")
-                grp_tools.extend(["get_worksheet_index_list", "create_worksheet_index"])
-
-            tasks.append({
-                "taskId": f"step2b-rel-group-{idx}",
-                "taskName": f"[Step 2b] 关联回填第 {idx} 组 ({joined_names})",
-                "step": "2b",
-                "target": {
-                    "type": "worksheet_group",
-                    "name": f"group-{idx}",
-                    "worksheets": group_names,
-                    "worksheetIds": {n: ws_id_by_name.get(n, "") for n in group_names},
-                },
-                "stepFile": "build/steps/2b_create_relations.md",
-                "references": grp_refs,
-                "allowedTools": grp_tools,
-                "receiptPath": f".build/receipts/step2b-rel-group-{idx}.json",
-                "taskContextPath": f".build/task-context/step2b-rel-group-{idx}.json",
-                "planSlice": plan_slice,
-                "contextSlice": ctx_slice,
-                "worksheetContextSlice": {},
-                "desc": f"按预留行号逐表顺序补充跨表关联与衍生字段（第 {idx} 组：{joined_names}）",
-            })
 
     # 阶段 2: Step 3 单表全要素 + Step 4a AI 助手实体创建
     elif stage in ("worksheets_created", "phase2_single_table"):
@@ -1162,7 +1509,6 @@ def get_stage_tasks_definitions(app_dir: str, stage: str) -> List[Dict[str, Any]
                     "workflow": wf,
                     "workflowIndex": wf_index,
                     "customActionIndex": act_index,
-                    "relationLayouts": rel_layout_by_ws,
                     "appLanguage": app_lang,
                 },
                 "contextSlice": {
@@ -1197,7 +1543,6 @@ def get_stage_tasks_definitions(app_dir: str, stage: str) -> List[Dict[str, Any]
                     "actionWorkflow": act,
                     "workflowIndex": wf_index,
                     "customActionIndex": act_index,
-                    "relationLayouts": rel_layout_by_ws,
                     "appLanguage": app_lang,
                 },
                 "contextSlice": {
@@ -1277,7 +1622,19 @@ def get_stage_tasks_definitions(app_dir: str, stage: str) -> List[Dict[str, Any]
             worksheet = worksheets_by_name.get(task["target"].get("name"))
             if worksheet is not None:
                 task["planSlice"]["worksheet"] = worksheet
-    return unique_task_paths(app_dir, tasks)
+    tasks = unique_task_paths(app_dir, tasks)
+    # 若发生罕见任务文件名冲突重命名，按工作表名同步修正 Step 2b 波次依赖 ID
+    step2b_id_by_ws = {
+        t["target"].get("name"): t["taskId"]
+        for t in tasks
+        if t.get("step") == "2b" and t.get("target", {}).get("type") == "worksheet" and t["target"].get("name")
+    }
+    if step2b_id_by_ws:
+        for t in tasks:
+            dep_ws = (t.get("planSlice") or {}).get("dependsOnWorksheets")
+            if isinstance(dep_ws, list) and dep_ws:
+                t["dependsOnTaskIds"] = [step2b_id_by_ws[w] for w in dep_ws if w in step2b_id_by_ws]
+    return tasks
 
 
 def extract_h2_sections(md_text: str, keywords: List[str]) -> str:
@@ -1298,7 +1655,7 @@ def extract_h2_sections(md_text: str, keywords: List[str]) -> str:
 
 
 def _slim_worksheet_list(ws_list: List[ Any ]) -> List[Dict[str, Any]]:
-    """无损剥离下游（页面/助手/角色/工作流）无需使用的纯 UI 分段 Divider、栅格 layout、advancedSettings 与默认 false/空属性。"""
+    """无损剥离下游（页面/助手/角色/工作流）无需使用的纯 UI 分段 Divider、栅格 layout、advancedSettings 与默认 false/空属性，保留关键结构元数据与选项 key/value。"""
     out = []
     for w in ws_list:
         if not isinstance(w, dict):
@@ -1319,6 +1676,28 @@ def _slim_worksheet_list(ws_list: List[ Any ]) -> List[Dict[str, Any]]:
                 for flag in ("required", "isTitle", "isReadOnly", "isHidden", "isHiddenOnCreate", "isUnique"):
                     if f.get(flag) is True:
                         sf[flag] = True
+                for meta_key in ("dataSource", "relationField", "sourceField"):
+                    val = f.get(meta_key)
+                    if isinstance(val, str) and val.strip():
+                        sf[meta_key] = val.strip()
+                raw_opts = f.get("options")
+                if isinstance(raw_opts, list) and raw_opts:
+                    slim_opts = []
+                    for opt in raw_opts:
+                        if isinstance(opt, dict):
+                            if opt.get("isDelete") is True or opt.get("isDeleted") is True:
+                                continue
+                            o_entry: Dict[str, Any] = {}
+                            if opt.get("key") is not None and opt.get("key") != "":
+                                o_entry["key"] = opt["key"]
+                            if opt.get("value") is not None and opt.get("value") != "":
+                                o_entry["value"] = opt["value"]
+                            if o_entry:
+                                slim_opts.append(o_entry)
+                        elif isinstance(opt, str) and opt.strip():
+                            slim_opts.append(opt.strip())
+                    if slim_opts:
+                        sf["options"] = slim_opts
                 if f.get("defaultValue"):
                     sf["defaultValue"] = f["defaultValue"]
                 raw_cfg = f.get("config")
@@ -1333,7 +1712,8 @@ def _slim_worksheet_list(ws_list: List[ Any ]) -> List[Dict[str, Any]]:
 
 
 def _format_task_context_for_bundle(task_ctx_data: Dict[str, Any]) -> str:
-    """将 taskContext 转为紧凑易读的 JSON 文本：对 worksheetContextSlice 中的每个字段对象采用单行 JSON 表示，避免 1 个字段展开成 30 行撑爆分卷数。"""
+    """将 taskContext 转为紧凑易读的 JSON 文本：对 worksheetContextSlice 与 contextSlice.worksheetFieldsByName 的字段条目采用单行 JSON 表示，避免展开撑爆分卷数。"""
+    _INLINE_FIELD_REGISTRY.clear()
     ctx_copy = dict(task_ctx_data)
     ws_slice = ctx_copy.get("worksheetContextSlice")
     if isinstance(ws_slice, list):
@@ -1342,6 +1722,23 @@ def _format_task_context_for_bundle(task_ctx_data: Dict[str, Any]) -> str:
         ws_dict = dict(ws_slice)
         ws_dict["worksheets"] = _slim_worksheet_context_marker(ws_slice["worksheets"])
         ctx_copy["worksheetContextSlice"] = ws_dict
+
+    inner_ctx = ctx_copy.get("contextSlice")
+    if isinstance(inner_ctx, dict) and isinstance(inner_ctx.get("worksheetFieldsByName"), dict):
+        inner_copy = dict(inner_ctx)
+        compact_preview: Dict[str, Any] = {}
+        for wname, flist in inner_ctx["worksheetFieldsByName"].items():
+            if isinstance(flist, list):
+                markers = []
+                for f in flist:
+                    idx = len(_INLINE_FIELD_REGISTRY)
+                    _INLINE_FIELD_REGISTRY.append(json.dumps(f, ensure_ascii=False))
+                    markers.append(f"__INLINE_FIELD_{idx}__")
+                compact_preview[wname] = markers
+            else:
+                compact_preview[wname] = flist
+        inner_copy["worksheetFieldsByName"] = compact_preview
+        ctx_copy["contextSlice"] = inner_copy
 
     dumped = json.dumps(ctx_copy, ensure_ascii=False, indent=2)
     # 将标记占位符还原为单行字段 JSON
@@ -1352,7 +1749,6 @@ _INLINE_FIELD_REGISTRY: List[str] = []
 
 
 def _slim_worksheet_context_marker(ws_list: List[Any]) -> List[Dict[str, Any]]:
-    _INLINE_FIELD_REGISTRY.clear()
     slimmed = _slim_worksheet_list(ws_list)
     for w in slimmed:
         fields = w.get("fields")
@@ -1556,22 +1952,43 @@ def cmd_prepare(app_dir: str, progress: Optional[str], include_pending_capacity:
     ready_tasks = []
     running_tasks = []
     pending_capacity_tasks = []
+    waiting_dependency_tasks = []
     completed_task_ids = []
     blocked_tasks = []
     failed_task_ids = []
 
+    task_states: Dict[str, Tuple[str, str]] = {}
     for t in all_tasks:
         task_id = t["taskId"]
         abs_receipt = os.path.join(app_dir, t["receiptPath"])
         state, issue = task_state(abs_receipt, task_id, run_id, registry.get(task_id, {}), t.get("target"))
+        task_states[task_id] = (state, issue)
+        if state == "succeeded":
+            completed_task_ids.append(task_id)
+
+    completed_set = set(completed_task_ids)
+
+    for t in all_tasks:
+        task_id = t["taskId"]
+        abs_receipt = os.path.join(app_dir, t["receiptPath"])
+        state, issue = task_states[task_id]
         if state == "blocked":
             blocked_tasks.append({"taskId": task_id, "receiptPath": abs_receipt, "reason": issue})
             continue
         if state == "succeeded":
-            completed_task_ids.append(task_id)
             continue
         if state == "running":
             running_tasks.append(task_id)
+            continue
+        dep_ids = [d for d in (t.get("dependsOnTaskIds") or []) if isinstance(d, str) and d]
+        unmet_deps = [d for d in dep_ids if d not in completed_set]
+        if unmet_deps:
+            waiting_dependency_tasks.append({
+                "taskId": task_id,
+                "taskName": t.get("taskName", task_id),
+                "waveIndex": t.get("waveIndex"),
+                "waitingOn": unmet_deps,
+            })
             continue
         if state == "failed":
             failed_task_ids.append(task_id)
@@ -1631,6 +2048,8 @@ def cmd_prepare(app_dir: str, progress: Optional[str], include_pending_capacity:
             "desc": t.get("desc", ""),
             "resume": state == "failed",
         }
+        if t.get("waveIndex") is not None:
+            ready_entry["waveIndex"] = t["waveIndex"]
         ready_tasks.append(ready_entry)
 
     blocking_ids = [t["taskId"] for t in all_tasks if not t.get("isBackground", False)]
@@ -1643,6 +2062,7 @@ def cmd_prepare(app_dir: str, progress: Optional[str], include_pending_capacity:
         "readyCount": len(ready_tasks),
         "runningCount": len(running_tasks),
         "pendingCapacityCount": len(pending_capacity_tasks),
+        "waitingDependencyCount": len(waiting_dependency_tasks),
         "completedCount": len(completed_task_ids),
         "failedCount": len(failed_task_ids),
         "blockedCount": len(blocked_tasks),
@@ -1658,6 +2078,8 @@ def cmd_prepare(app_dir: str, progress: Optional[str], include_pending_capacity:
         "readyTaskCount": len(ready_tasks),
         "runningTaskCount": len(running_tasks),
         "pendingCapacityCount": len(pending_capacity_tasks),
+        "waitingDependencyCount": len(waiting_dependency_tasks),
+        "waitingDependencyTasks": waiting_dependency_tasks,
         "completedCount": len(completed_task_ids),
         "failedCount": len(failed_task_ids),
         "blockedCount": len(blocked_tasks),
@@ -1671,6 +2093,13 @@ def cmd_prepare(app_dir: str, progress: Optional[str], include_pending_capacity:
             "receipts": os.path.join(app_dir, ".build", "receipts"),
         },
     }
+    if waiting_dependency_tasks and ready_tasks:
+        cur_waves = sorted({r["waveIndex"] for r in ready_tasks if r.get("waveIndex") is not None})
+        wave_tag = f"第 {cur_waves[0]} 波" if cur_waves else "当前波次"
+        result["waveHint"] = (
+            f"当前释放 {wave_tag}（{len(ready_tasks)} 项单表并发），尚有 {len(waiting_dependency_tasks)} 项依赖前置波次；"
+            f"本波全部完成后再次运行 prepare（或直接执行 finalize --advance-and-prepare）自动释放下一波。"
+        )
     if stage in ("fields_refreshed", "phase3_configs", "page_shells_created", "phase3"):
         plan = load_json(os.path.join(app_dir, "hap-plan.json")) or {}
         result["sortAppItemsHints"] = build_sort_app_items_hints(plan, context)
@@ -2171,17 +2600,28 @@ def cmd_refresh(app_dir: str) -> Dict[str, Any]:
     all_tasks = get_stage_tasks_definitions(app_dir, stage)
     registry = load_json(os.path.join(app_dir, ".build", "dispatch-registry.json")) or {}
 
-    counts = {"succeeded": 0, "running": 0, "pending_capacity": 0, "failed": 0, "blocked": 0, "planned": 0}
+    counts = {"succeeded": 0, "running": 0, "pending_capacity": 0, "failed": 0, "blocked": 0, "planned": 0, "waiting_dependency": 0}
     succeeded_ids = set()
+    states_by_id: Dict[str, str] = {}
     for t in all_tasks:
         tid = t["taskId"]
         r_path = os.path.join(app_dir, t["receiptPath"])
         state, _ = task_state(r_path, tid, run_id, registry.get(tid, {}), t.get("target"))
-        counts[state if state in counts else "planned"] += 1
+        states_by_id[tid] = state
         if state == "succeeded":
             succeeded_ids.add(tid)
 
+    for t in all_tasks:
+        tid = t["taskId"]
+        state = states_by_id[tid]
+        dep_ids = [d for d in (t.get("dependsOnTaskIds") or []) if isinstance(d, str) and d]
+        if state in ("planned", "failed", "pending_capacity") and any(d not in succeeded_ids for d in dep_ids):
+            counts["waiting_dependency"] += 1
+        else:
+            counts[state if state in counts else "planned"] += 1
+
     blocking_ids = [t["taskId"] for t in all_tasks if not t.get("isBackground", False)]
+    phase_complete = all(tid in succeeded_ids for tid in blocking_ids)
 
     return {
         "stage": stage,
@@ -2189,10 +2629,12 @@ def cmd_refresh(app_dir: str) -> Dict[str, Any]:
         "succeeded": counts["succeeded"],
         "running": counts["running"],
         "pendingCapacity": counts["pending_capacity"],
+        "waitingDependency": counts["waiting_dependency"],
         "failed": counts["failed"],
         "blocked": counts["blocked"],
         "ready": counts["planned"],
-        "phaseComplete": all(tid in succeeded_ids for tid in blocking_ids),
+        "currentWaveComplete": phase_complete or (counts["running"] == 0 and counts["failed"] == 0 and counts["blocked"] == 0 and counts["planned"] == 0 and counts["waiting_dependency"] > 0),
+        "phaseComplete": phase_complete,
     }
 
 
@@ -2391,11 +2833,9 @@ def cmd_finalize(app_dir: str, progress: Optional[str]) -> Dict[str, Any]:
 
         elif stage in ("app_created", "step2a"):
             plan_ws = (load_json(os.path.join(app_dir, "hap-plan.json")) or {}).get("worksheets") or []
+            plan_ws_by_name = {w.get("name"): w for w in plan_ws if isinstance(w, dict) and w.get("name")}
             ws_id_by_name = dict(context.get("worksheetIdByName", {}))
-            has_relation_todo = any(
-                isinstance(w, dict) and bool(w.get("requirements"))
-                for w in plan_ws
-            )
+            has_relation_todo = False
             for t in all_tasks:
                 if t["step"] == "2a":
                     r_data = load_json(os.path.join(app_dir, t["receiptPath"])) or {}
@@ -2404,7 +2844,8 @@ def cmd_finalize(app_dir: str, progress: Optional[str]) -> Dict[str, Any]:
                     ws_id = outputs.get("worksheetId")
                     if ws_name and ws_id:
                         ws_id_by_name[ws_name] = ws_id
-                    if outputs.get("relationLayout"):
+                    ws_def = plan_ws_by_name.get(ws_name, {})
+                    if _worksheet_needs_step2b(ws_def, outputs.get("relationLayout")):
                         has_relation_todo = True
             next_progress = "step2a_done" if has_relation_todo else "worksheets_created"
             stage_outputs["worksheetsCreated"] = len(ws_id_by_name)
@@ -2859,12 +3300,21 @@ def main():
         res = cmd_refresh(args.app_dir)
     elif args.command == "finalize":
         res = cmd_finalize(args.app_dir, args.progress if args.progress else None)
-        if args.advance_and_prepare and res.get("canAdvance"):
-            adv_res = cmd_advance(args.app_dir)
-            res["advancedResult"] = adv_res
-            next_prog = adv_res.get("newProgress") or res.get("nextProgress") or ""
-            if adv_res.get("advanced") and next_prog and next_prog != "completed":
-                res["nextStagePrepare"] = cmd_prepare(args.app_dir, next_prog, True)
+        if args.advance_and_prepare:
+            if res.get("canAdvance"):
+                adv_res = cmd_advance(args.app_dir)
+                res["advancedResult"] = adv_res
+                next_prog = adv_res.get("newProgress") or res.get("nextProgress") or ""
+                if adv_res.get("advanced") and next_prog and next_prog != "completed":
+                    res["nextStagePrepare"] = cmd_prepare(args.app_dir, next_prog, True)
+            elif (
+                not res.get("failedTaskIds")
+                and not res.get("runningTaskIds")
+                and res.get("plannedTaskIds")
+            ):
+                next_wave = cmd_prepare(args.app_dir, res.get("phase") or None, True)
+                if next_wave.get("readyTasks"):
+                    res["nextWavePrepare"] = next_wave
     elif args.command == "advance":
         res = cmd_advance(args.app_dir)
     elif args.command == "status":

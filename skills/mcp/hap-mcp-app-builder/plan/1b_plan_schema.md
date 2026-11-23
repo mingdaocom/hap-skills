@@ -39,6 +39,7 @@
 ### 2. 对象级 `requirements?: string[]` 补充要求通道
 应用顶层、`worksheets[]`、`customPages[]`、`roles[]`、`aiAssistants[]`、`workflows[]` 以及 `customActions[].actions[]` 均可携带可选的 `requirements: string[]` 数组：
 - 用于结构化传递紧凑字符串无法表达的用户定制细节（如顶层 `["采用顶部导航"]`，页面 `["四张指标卡均不显示图标"]`）；
+- **跨对象要求按配置归属拆分**：引用方写清使用哪个对象，负责配置的一方优先用已有字段定义它（如 `views`、`fields`、`businessRulesNotes`、`intentHints`），其余细节写入该对象的 `requirements`。例如，销售工作台引用「销售订单」表的「我的草稿订单」视图，该表在 `views` 中声明 `我的草稿订单(Table)`，在 `requirements` 中写明该视图按「负责人是当前用户，且订单状态为草稿」筛选；流程要写入的字段和选项也应在目标表的 `fields` 中定义；
 - 原有字段（如 `businessRulesNotes`、`intentHints`）能表达的内容直接写原字段，不在 `requirements` 重复；
 - 按实际作用对象精准归属，严禁将具体表、页面或流程的要求笼统堆在顶层 `app.requirements`，无补充要求时省略该键。
 
@@ -60,8 +61,8 @@
 1. **选项字段**：`"状态(SingleSelect:待处理/进行中/已完成)"`（支持 `SingleSelect` / `MultipleSelect` / `Dropdown`，选项以 `/` 分隔）。
 2. **跨表关联三态单边声明铁律**：`"字段名(Relation:目标表名:single|multiple:uni|bi|reverse)"`：
    - `:uni`（单向引用）：本表建选择框，目标表不生反向字段（用于选字典、仓库、商品主数据）；
-   - `:bi`（双向主创建端）：仅由单边主动发起（`bidirectional: true`），服务端自动在对端生成反向 Tab 表格；
-   - `:reverse`（双向反向承接端）：对端已声明 `:bi` 时，本表如需透视标记 `:reverse`，建表引擎自动跳过 API 调用，**严禁双边重复声明 `:bi`**。
+   - `:bi`（双向主创建端）：仅由单边主动发起（`bidirectional: true`），服务端自动在对端生成反向 Tab 表格；**1:N 主从关系必须由 N 端从属表（`single` 单条端，尤其是需要 `Lookup` 的一端）主动声明 `:bi`**（如 `借阅记录` 写 `"关联图书(Relation:图书:single:bi)"`，`销售订单` 写 `"所属客户(Relation:客户:single:bi)"`）；
+   - `:reverse`（双向反向承接端）：对端已声明 `:bi` 时，**1 端主表/聚合表（`multiple` 多条端）**如需透视标 `:reverse`（如 `图书` 写 `"借阅记录(Relation:借阅记录:multiple:reverse)"`），建表引擎自动跳过 API 调用，**严禁双边重复声明 `:bi`，也严禁在 `:reverse` 端挂 `Lookup`**。
 3. **自关联与子表**：自关联 `"上级部门(selfRelation)"`；子表挂载 `"采购明细(SubTable:采购明细)"`。
 4. **衍生计算字段**：主子表或多条关联主表必配 1～2 个汇总 `"总金额(Rollup:采购明细.金额.sum)"`（`sum/count/avg/max/min`）；按需配置他表字段 `"参考单价(Lookup:关联商品.销售单价)"`（**新建关系时由使用 `Lookup` 的单条端声明 `:bi` 或 `:uni`，使用同批关联别名创建 `Lookup`**）；数值计算使用 `"金额小计(Formula)"`、日期差值/加减使用 `"剩余天数(DateFormula)"`、业务单据标题推荐组合文本 `"单据全称(Concatenate)"`（需拼接他表名称时，在本表规划开启存储 `storeData: true` 的标量 `Lookup` 供表达式引用，严禁直接引用关联字段；`Formula` / `DateFormula` / `Concatenate` 括号内仅写类型名，具体计算表达式与单位写入该表 `requirements`，无需去翻阅构建脚本源码）。
 5. **字段丰富度**：主数据表 ≥ 15 个、业务单据表 ≥ 12 个、过程流水表 ≥ 8 个、子表 ≥ 3 个，覆盖主标识、核心属性、状态分类、时间、责任人、数量金额、说明凭证、计算衍生 8 个维度。
@@ -78,7 +79,7 @@
    - `type: "dashboard"` 必填 `charts`（紧凑格式 `"名称(chartType)"`，建议 6～10 项：1 个 `"全局筛选(FiltersGroup:维度1,维度2)"` + 4～6 个 `numberChart` + 趋势/占比/排行图 + `pivotTable`，图表类型严格使用小驼峰标准 MCP `chartType`）。
    - `type: "workspace"` 必填 `components`（紧凑格式 `"名称(Type)"`，`Type` ∈ `Button | View | Text | Carousel | Section`）；新建应用若没有对应的已发布且启用的封装业务流程（PBP），页面按钮按实际操作规划新建记录或打开待处理视图等入口（需要执行审批等动作时，由相应业务流程或工作表自定义动作承接）；有实际展示需求和可用内容时才规划 `Carousel`（并在 `description` 写明面向整页还是特定业务区），明确需要跨组件联动筛选时在页面 `requirements` 写明筛选条件与受影响组件。
    - 可选 `viewBindings` 用于明确 View 组件到工作表与视图的绑定，例如 `{"待出库": {"worksheet": "出库单", "view": "待出库"}}`；键为 `components` 中的组件名称，两个值必须逐字匹配已规划对象。此映射兼容旧方案：缺省时根据已确认的方案和真实视图语义解析，不新增必填键。
-   - 在页面 `requirements` 中明确每个待办组件的数据源及筛选口径，每个图表的数据源、指标、聚合、维度与时间范围；不能将不同语义映射为同一个无筛选视图或同一指标。旧方案缺少该信息时从已确认总览和字段、视图语义推导，无法确定的标记缺口，不新增固定确认门禁。
+   - 页面 `requirements` 写明待办组件引用的目标工作表与视图，以及每个图表的数据源、指标、聚合、维度与时间范围；被引用视图的具体筛选口径与定义归属对应工作表的 `views` 与 `requirements`，不能将不同语义映射为同一个无筛选视图或同一指标。旧方案缺少该信息时从已确认总览和字段、视图语义推导，无法确定的标记缺口，不新增固定确认门禁。
 2. **`customActions`（按工作表分组的自定义动作数组）**：
    - 元素结构：`{ "worksheet": "工作表名", "requirements"?, "actions": [{ "name", "description", "type", "runWorkflowAfterSubmit"?, "targetWorksheet"?, "relateFieldName"?, "enableCondition"?, "intentHints"?, "requirements"? }] }`。
    - 每个动作在已有 `enableCondition`、`intentHints` 或 `requirements` 中明确执行角色、可执行状态、成功结果及失败/重复执行边界；审批发起、审批结果与库存执行分开表述，不把共同模板机械套用到所有动作。已有方案字段保持兼容，不因补全新增强制协议键。

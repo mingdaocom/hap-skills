@@ -7,7 +7,7 @@
 
 - **执行方式**：独立 Subagent 按**单条系统工作流**并发执行，在同一子代理上下文内一气呵成完成 **「7 维闭环节点设计 ➔ 真实 ID 与身份映射 ➔ 物理建流与节点注入 ➔ 校验修复与发布」**，消除双阶段 JSON 传话失真与重复读表开销。
 - **输入切片**：读取 `.build/task-context/{taskId}.json`：
-  - `planSlice`：`workflow`（来自 `hap-plan.json` 的单条系统流定义，含 `name`、`description`、`trigger`、`intentHints`、`requirements`）、`workflowIndex`（全应用系统流职责索引）、`customActionIndex`（全应用动作流职责索引）、`relationLayouts`、`appLanguage`；
+  - `planSlice`：`workflow`（来自 `hap-plan.json` 的单条系统流定义，含 `name`、`description`、`trigger`、`intentHints`、`requirements`）、`workflowIndex`（全应用系统流职责索引）、`customActionIndex`（全应用动作流职责索引）、`appLanguage`；
   - `contextSlice`：`appId`、`orgId`（用于人员/部门查询）、`worksheetIdByName`、`roleContext`（`[{ name, id, roleScope }]`）、`viewIdByName`；
   - `worksheetContextSlice`：已建工作表真实 `worksheetId` 及字段 `{ name, id, alias, type, options }`（含选项 `{ key, value, index }`）。
 - **必读领域规范**：`references/hap-workflow-design-guide.md`、`references/hap-domain-workflow-spec.md`
@@ -26,7 +26,7 @@
    - **必须完整处理通过与驳回两种审批结果**：按当前 Schema 选择合法位置。父流程若支持读取审批块最终结果，可在块后使用支持该输出的普通条件分支；若 `approval_result` 仅接受 `approve` 前驱，须在审批块内部 `approve` 之后建立该分支，不能接在父流程 `approval_block` 后。路径首节点的 `prevNode` 指向分支、`parentNode` 指向对应路径，更新引用该作用域内真实记录节点：
      - **通过路径**：调用 `update_record` 将状态更新为业务约定的通过后状态（真实选项 `key`）+ 完成必要的下游关联写回/台账生成 + 使用当前 Schema 支持的通知节点通知发起人；
      - **驳回路径**：调用 `update_record` 将状态回退为“已驳回/待修改”（真实选项 `key`）+ 使用当前 Schema 支持的通知节点通知发起人驳回信息以便修改重提。
-4. **人员与通知语义保真**。确认应用角色真实存在，并从 `roleContext` 或 `roleIdByName` 绑定该角色真实 ID（`PersonRef { kind: "role", id }`）。角色成员为空或数量未知仅记入 `issues` 说明审批、通知可能无人接收；不追问成员、不自动加人、不因此阻止发布。角色身份无法确认则继续无依赖配置并如实报告身份缺口。固定人员或部门用 `find_member` / `find_department`，组织参数取 `contextSlice.orgId`。“通知我”用 `get_current_user`，运行时发起人用 `triggerUser`，短信签名用 `get_sms_signatures`。
+4. **人员与通知语义保真**。确认应用角色真实存在，并从 `roleContext` 或 `roleIdByName` 绑定该角色真实 ID（`PersonRef { kind: "role", id }`）。角色成员为空或数量未知属运行态常规事项，不追问成员、不自动加人、不阻止发布，也无需写入 `issues`（由终结交付总结统一提醒）。角色身份无法确认则继续无依赖配置并如实报告身份缺口。固定人员或部门用 `find_member` / `find_department`，组织参数取 `contextSlice.orgId`。“通知我”用 `get_current_user`，运行时发起人用 `triggerUser`，短信签名用 `get_sms_signatures`。
 
 ### 2. 物理创建、参数核实与发布流水线（源自 `workflow-build-sub-agent.yaml`）
 1. **高效参数核对与 `appId` 必传铁律**：
@@ -48,7 +48,7 @@
 
 > **顶层 `status` 与 `outputs.status` 严格区分铁律**：
 > - 顶层 `"status"` 表示**本搭建任务是否完成落库**（枚举仅 `"succeeded" | "failed"`）；`outputs.status` 表示**线上工作流的发布状态**（`"published" | "draft"`）。
-> - `validate_process` 通过并调用 `publish_process` 完成后，以 `status: "succeeded"` 和 `outputs.status: "published"` 记成功；角色成员为空或未知、尚未试跑仅记入 `issues`，不当作草稿理由。仅当接口报错或外部必需短信签名确实缺失导致服务端拒绝发布时，才保留真实 ID 与证据记录未完成。
+> - `validate_process` 通过并调用 `publish_process` 完成后，以 `status: "succeeded"`、`outputs.status: "published"` 且 `issues: []` 记成功；通用的角色未分配成员、尚未运行态业务试跑不写入 `issues`（终结交付总结已统一提醒），不当作草稿理由。仅当存在实际配置缺口、接口报错或外部必需短信签名确实缺失导致服务端拒绝发布时，才保留真实 ID 与证据记录未完成或写入 `issues`。
 
 执行完成后，写入 `receiptPath`（`.build/receipts/step10-sys-wf-{name}.json`）：
 

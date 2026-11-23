@@ -14,7 +14,7 @@
 >    `prepare`（准备任务） ➔ `dispatch & dispatched`（派发并登记） ➔ `wait`（收集回执） ➔ `finalize`（汇总）。`canAdvance: true` 时 `advance`；否则结合失败原因修复并重新 `prepare` 续作，不把阶段未完成当成结束会话的指令。
 >    - **按工具能力 3 档强制真并发与整批收齐铁律（详见 [宿主适配](../HOST_ADAPTER.md)）**：
 >      1. **第 1 档（有批量脚本编排工具如 `run_workflow`）**：整批阻塞型并发任务必须用脚本编排一次并发跑完并统一等待收齐（单次唤醒、0 刷屏），后台 `Step 5` 单独异步拉起；
->      2. **第 2 档（子代理工具自带后台/异步开关如 `run_in_background: true`，或天生异步返回 ID）**：**所有并发阶段的 Subagent 派发一律开启后台/异步模式**，全批迅速起跑并登记后**直接结束当前轮次（停止调用工具），等待系统后台完成通知自动唤醒**，**严禁 `Bash(sleep ...)` 循环轮询**；被单个回调唤醒时先查 1 次 `status`，未收齐前直接再次结束本轮等待下一通知，严禁提前 `finalize` 或逐条刷屏；
+>      2. **第 2 档（子代理工具自带后台/异步开关如 `run_in_background: true`，或天生异步返回 ID）**：**所有并发阶段的 Subagent 派发一律开启后台/异步模式，且不套用第 3 档的 4～5 个分波上限——同阶段全部 `readyTasks` 一次性全量后台起跑**，登记后**直接结束当前轮次（停止调用工具），等待系统后台完成通知自动唤醒**，**严禁 `Bash(sleep ...)` 循环轮询**；被单个回调唤醒时先查 1 次 `status`，未收齐前直接再次结束本轮等待下一通知，严禁提前 `finalize` 或逐条刷屏；
 >      3. **第 3 档（纯同步阻塞型子代理工具）**：在同一条消息内并列发出 4～5 个极简 `prompt` 调用。任何模式下，**只要仍有同批阻塞型 Subagent 在运行，严禁提前调用 `finalize` 空跑或逐条刷屏播报**。
 > 3. **运行记录（严禁 `grep/Read` 脚本源码）**：工程目录默认位于 `{APP_DIR}` = `{PROJECT_ROOT}/.hap-copilot/apps/{appName}`（恢复时使用 `scan_apps.py` 返回的绝对路径）。主调度器直接按下方标准命令与 JSON 契约操作，**严禁使用 `grep` 或 `Read` 翻阅 `../scripts/build_runtime.py` 等脚本源码反推字段格式**。
 > 4. **完建优先与规划契约保真铁律（防中断 · 防乱替）**：
@@ -65,8 +65,8 @@ python3 {SKILL_DIR}/scripts/build_runtime.py prepare --app-dir {APP_DIR}
 # -> 一键完成本阶段汇总、推进与下一阶段任务准备（若无跨表关联自动跳至 worksheets_created）：
 python3 {SKILL_DIR}/scripts/build_runtime.py finalize --app-dir {APP_DIR} --advance-and-prepare
 
-# Pass 2: 若推进至 step2a_done（存在跨表 Relation/SubTable/Lookup/Rollup），直接派发返回的 nextStagePrepare.readyTasks
-# -> 按关联连通组并发派发 Step 2b Subagent（每组 ≤5 表，组内逐表顺序回填预留行号关联，消除反向关联锁冲突） -> 等待完成
+# Pass 2: 若推进至 step2a_done（存在跨表 Relation/SubTable/Lookup/Rollup 或唯一索引要求），直接派发返回的 nextStagePrepare.readyTasks
+# -> 单表并发派发 Step 2b Subagent（按依赖图自动分波，Wave 1 无依赖全并发；若存在后续波次，本波收齐后执行下方命令会自动返回 nextWavePrepare.readyTasks，逐波并发派发直至全部波次完成自动推进至 worksheets_created）
 python3 {SKILL_DIR}/scripts/build_runtime.py finalize --app-dir {APP_DIR} --advance-and-prepare
 ```
 
@@ -104,7 +104,7 @@ python3 {SKILL_DIR}/scripts/build_runtime.py finalize --app-dir {APP_DIR} --adva
 | **Step 1** | 主调度器内联 | 应用实体、导航分组与页面空壳 | `["create_app", "create_app_sections", "create_app_items"]` |
 | **Step 1b** | 主调度器内联 | 应用简介与按角色 HTML 使用手册 | `["update_app"]` |
 | **Step 2a** | 并发 Subagent | 建表、基础字段排版与表单设置 | `["create_worksheet", "update_worksheet", "update_worksheet_settings"]` |
-| **Step 2b** | 按关联组并发 Subagent | 按预留行号逐表顺序回填关联与衍生字段（每组 ≤5 表），按需建全表唯一索引 | `["update_worksheet"]`（本组含表级 `requirements` 时额外开放 `get_worksheet_index_list`、`create_worksheet_index`） |
+| **Step 2b** | 单表分波并发 Subagent | 按依赖图自动分波、单表并发回填关联与衍生字段（跳过纯 `:reverse` 空表，写后禁回读），按需建全表唯一索引 | `["update_worksheet"]`（依赖反向关联/他表新建衍生字段时额外开放写前 1 次 `get_worksheet_structure`；本表含 `requirements` 时额外开放 `get_worksheet_index_list`、`create_worksheet_index`） |
 | **Step 3** | 并发 Subagent | 结构采集、动作、视图与业务规则 | `get_worksheet_structure` 等，需补子表显示列的父表任务额外获 `update_worksheet`，以任务实际 `allowedTools` 为准 |
 | **Step 4a** | 并发 Subagent | AI 助手实体创建 | `["create_chatbot"]` |
 | **Step 4b** | 并发 Subagent | AI 助手 `ai_agent` 节点资源绑定与发布 | `["get_workflow_structure", "get_workflow_node", "update_workflow_node", "publish_process", "get_app_ai_models", "get_app_knowledge_list", "get_worksheet_structure", "get_view_structure"]` |
@@ -127,7 +127,7 @@ async def run_one(t):
     return await agent(prompt, schema=SCHEMA, role=t["taskName"][:40], type_name="self")
 results = await asyncio.gather(*(run_one(t) for t in tasks), return_exceptions=True)
 ```
-2. **第 2 档（无编排工具，但子代理工具带后台/异步参数如 `run_in_background: true`，或天生异步返回 ID）**：**本阶段全部并发任务（含阻塞型与 `Step 5`）一律显式开启后台/异步模式派发**（每发 1 个立即返回 ID 并后台开跑，彻底杜绝轻量模型单轮只吐 1 个工具调用退化为串行）；全部起跑后（异步回调宿主可顺手登记 `dispatched`）**直接结束当前轮次（停止调用工具），等待系统后台完成通知自动唤醒**，**严禁在终端运行 `sleep` 循环轮询**；被单个通知唤醒后先调用 1 次 `build_runtime.py status --app-dir {APP_DIR}`，若 `phaseComplete` 为 `false` 则再次结束本轮等待下一通知；
+2. **第 2 档（无编排工具，但子代理工具带后台/异步参数如 `run_in_background: true`，或天生异步返回 ID）**：**本阶段全部 `readyTasks`（含阻塞型与 `Step 5`）一律显式开启后台/异步模式一次性全量起跑，严禁套用第 3 档的 4～5 个分波上限拆分无依赖任务**（每发 1 个立即返回 ID 并后台开跑，彻底杜绝串行退化与无谓拆波）；全部起跑后（异步回调宿主可顺手登记 `dispatched`）**直接结束当前轮次（停止调用工具），等待系统后台完成通知自动唤醒**，**严禁在终端运行 `sleep` 循环轮询**；被单个通知唤醒后先调用 1 次 `build_runtime.py status --app-dir {APP_DIR}`，若 `phaseComplete` 为 `false` 则再次结束本轮等待下一通知；
 3. **第 3 档（仅有纯同步阻塞型子代理工具）**：在同一条助手消息内并列发出 **4～5 个**子代理调用（超过 5 个分波次并行，严禁发 1 个等返回再发下 1 个）。
 
 - **极简派发 `prompt` 铁律（严禁扩写成小作文）**：直接原样套用下方单段模板（仅替换 `{taskName}`、`{step}`、`{bundleFiles}`、`{receiptPath}`，单条 `prompt` 严格控制在 **150 字以内**）；所有字段、业务要点、工具白名单与回执契约均已预编译在 `bundleFiles` 内，**严禁在派发 `prompt` 中自行复述字段、白名单或 SOP 细节**。

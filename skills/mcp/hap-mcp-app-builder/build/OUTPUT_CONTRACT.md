@@ -71,7 +71,7 @@
 
 ## 派发与回执共用的本步验收规则
 
-- **声明式原生落地与配置态完建**（遵循 [宿主适配](../HOST_ADAPTER.md)「零代码建模与配置态交付原则」）：在实时 MCP Schema 与本任务包领域规范支持的参数范围内落实业务意图，不套用底层数据库行锁或跨表 SQL 事务等定制代码假设。只要本步对象按原生能力完成落库，即记 `status: "succeeded"` 且 `verification.passed: true`；工作流 `validate_process` 通过（`valid: true`）必须立即调用 `publish_process` 发布上线。运行态事项（成员未分配、未真机试跑）仅按需记入 `issues`，绝不作为 `failed`、留草稿（`draft`）或停用入口的理由。
+- **声明式原生落地与配置态完建**（遵循 [宿主适配](../HOST_ADAPTER.md)「零代码建模与配置态交付原则」）：在实时 MCP Schema 与本任务包领域规范支持的参数范围内落实业务意图，不套用底层数据库行锁或跨表 SQL 事务等定制代码假设。只要本步对象按原生能力完成落库，即记 `status: "succeeded"` 且 `verification.passed: true`；工作流 `validate_process` 通过（`valid: true`）必须立即调用 `publish_process` 发布上线。配置态已完建并发布成功时 `issues` 留空 `[]`——通用的“角色成员未分配、未运行态业务试跑”已由终结交付总结统一提醒，绝不作为 `failed`、留草稿（`draft`）的理由，也不要写入 `issues` 污染交付提醒。
 - **按使用者视角核对配置**：从实际操作出发落实本步必读 reference 的适用条款，用写入返回结果或本步既有回读核对内容、呈现与真实引用；发现本步可修偏差原位修正，仅在现有结果不足时定向补读。
 - **失败边界收敛**：仅当工具调用报错未落库、本步核心对象确实未建成且授权范围内修复未果时，才记 `failed` 并在 `outputs` 保留已完成成果及真实 ID。若失败回执仅因误判平台机制边界或顾虑其他步骤所致，主调度器核实线上对象已建成后通过 `resolve-task` 归并推进。
 
@@ -79,7 +79,7 @@
 
 所有并发 Subagent 任务完成后，必须将符合以下结构的 JSON 写入 `receiptPath`。`runId` 必填且须与当前运行一致，`executor.kind` 为 `"subagent"`（或主调度器在线上返工修复并核验通过后通过 `resolve-task` 归并生成的 `"reconciled"`）且 `executor.agentId` 非空。
 
-- **本步验收**。按已确认方案核对核心配置和真实 ID。工作流角色身份真实、核心配置齐全且校验通过时发布并回读；角色成员为空或未知仅记送达限制，未业务试跑仅记验证限制，均不作为发布门禁。真实身份或核心配置缺失、必需签名无法取得、服务明确拒绝等具体障碍按实际状态报告，不以笼统外部条件代替证据。Step 11 记录已发布流程、精确匹配的动作 ID 及入口实际状态；仅恢复有证据属于本次搭建临时停用且规划可用的按钮。页面核对指标、筛选及视图，角色核对本步授权。可选微调和待下游验证事项写入 `issues`。
+- **本步验收**。按已确认方案核对核心配置和真实 ID。工作流角色身份真实、核心配置齐全且校验通过时即发布；角色成员为空或未业务试跑均不作为发布门禁，也不写入 `issues`（终结交付统一提醒）。真实身份或核心配置缺失、必需签名无法取得、服务明确拒绝等具体障碍按实际状态报告，不以笼统外部条件代替证据。Step 11 记录已发布流程、精确匹配的动作 ID 及入口实际状态；仅恢复有证据属于本次搭建临时停用且规划可用的按钮。页面核对指标、筛选及视图，角色核对本步授权。仅实际未落地的配置缺口或被迫调整项写入 `issues`。
 - **原对象续作**。恢复时读取 `previousReceipt`，回读已有对象，仅补齐缺项。
 
 ```json
@@ -112,7 +112,7 @@
 | :--- | :--- | :--- | :--- |
 | **Step 1 + 1b** | 应用、分组、页面空壳与使用手册（主调度器内联） | _(内联执行)_ | 写入 `hap-context.json` (`progress="app_created"`) |
 | **Step 2a** | 单表创建与基础字段（Subagent 并发） | `step2a-ws-{worksheetName}` | `.build/receipts/step2a-ws-{worksheetName}.json` |
-| **Step 2b** | 按关联组回填关联与衍生字段（Subagent 按组并发，每组 ≤5 表） | `step2b-rel-group-{N}` | `.build/receipts/step2b-rel-group-{N}.json` |
+| **Step 2b** | 单表按依赖波次回填关联与衍生字段（Subagent 单表分波并发） | `step2b-rel-{worksheetName}` | `.build/receipts/step2b-rel-{worksheetName}.json` |
 | **Step 3** | 单表结构采集+动作+视图+规则（Subagent 并发） | `step3-view-act-{worksheetName}` | `.build/receipts/step3-view-act-{worksheetName}.json` |
 | **Step 4a** | AI 智能助手实体创建（Subagent） | `step4-chatbot` | `.build/receipts/step4-chatbot.json` |
 | **Step 4b** | 单助手 `ai_agent` 节点配置发布（Subagent 并发） | `step4b-chatbot-config-{botName}` | `.build/receipts/step4b-chatbot-config-{botName}.json` |
