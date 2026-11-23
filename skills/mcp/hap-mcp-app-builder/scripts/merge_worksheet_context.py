@@ -19,8 +19,11 @@ HAP 工作表结构分片合并与多维度强校验引擎。
 import argparse
 import json
 import os
+import re
 import sys
 from pathlib import Path
+
+_PURE_HEX_RE = re.compile(r"^[0-9a-fA-F]+$")
 
 # HAP 数值类型到标准英文类型的映射字典
 TYPE_ID_TO_NAME = {
@@ -205,9 +208,22 @@ def normalize_worksheet_shard(raw_data, expected_id, expected_name, name_to_id=N
     return res_shard
 
 
+def _invalid_object_id_reason(val):
+    if not isinstance(val, str):
+        return None
+    s = val.strip()
+    if not s or s in SYSTEM_FIELD_IDS or s == "selfRelation":
+        return None
+    if ("<" in s and ">" in s) or "..." in s or "…" in s:
+        return f"包含未替换占位符或省略号（{s}）"
+    if _PURE_HEX_RE.match(s) and len(s) >= 12 and len(s) != 24:
+        return f"疑似截断的 24 位 ID（当前 {len(s)} 位：{s}）"
+    return None
+
+
 def validate_schema(worksheets, id_to_name, name_to_id, plan_data):
     """
-    执行 10 项强校验规则
+    执行强校验规则（含 24 位 ID 截断/占位符检测）
     返回: (passed: bool, errors: list, warnings: list)
     """
     errors = []
@@ -218,6 +234,14 @@ def validate_schema(worksheets, id_to_name, name_to_id, plan_data):
     for ws in worksheets:
         ws_id = ws["worksheetId"]
         ws_name = ws["worksheetName"]
+        ws_id_err = _invalid_object_id_reason(ws_id)
+        if ws_id_err:
+            errors.append({
+                "worksheet": ws_name,
+                "field": "",
+                "code": "INVALID_OBJECT_ID",
+                "message": f"工作表【{ws_name}】的 worksheetId 异常：{ws_id_err}"
+            })
         fields_by_id = {}
         fields_by_alias = {}
         title_fields = []
@@ -226,6 +250,15 @@ def validate_schema(worksheets, id_to_name, name_to_id, plan_data):
             fid = f.get("id")
             falias = f.get("alias")
             ftype = f.get("type")
+
+            fid_err = _invalid_object_id_reason(fid)
+            if fid_err:
+                errors.append({
+                    "worksheet": ws_name,
+                    "field": f.get("name"),
+                    "code": "INVALID_OBJECT_ID",
+                    "message": f"工作表【{ws_name}】字段【{f.get('name')}】的字段 ID 异常：{fid_err}"
+                })
 
             # 1. 字段 ID 重复检查
             if fid:

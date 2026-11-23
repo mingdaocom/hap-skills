@@ -189,6 +189,72 @@ def receipt_version(receipt_path: str) -> str:
     return hashlib.sha256(content + str(modified).encode()).hexdigest()
 
 
+_PURE_HEX_RE = re.compile(r"^[0-9a-fA-F]+$")
+_SYSTEM_FIELD_IDS = {"rowid", "ownerid", "caid", "ctime", "utime", "uaid"}
+
+
+def _invalid_hap_id_reason(val: Any) -> Optional[str]:
+    """检测明显损坏的 HAP 对象 ID：未替换占位符（<...> / ...）或被截断/多抄的纯 hex ObjectId（长度 >= 12 且 != 24）。"""
+    if not isinstance(val, str):
+        return None
+    s = val.strip()
+    if not s or s in _SYSTEM_FIELD_IDS or s == "selfRelation":
+        return None
+    if ("<" in s and ">" in s) or "..." in s or "…" in s:
+        return f"包含未替换占位符或省略号（{s}）"
+    if _PURE_HEX_RE.match(s) and len(s) >= 12 and len(s) != 24:
+        return f"疑似截断的 24 位 ID（当前 {len(s)} 位：{s}）"
+    return None
+
+
+def _receipt_integrity_error(receipt: Dict[str, Any], task_id: str) -> Optional[str]:
+    """对 succeeded 回执执行确定性底线校验：1) 拦截截断/占位符 ID；2) Step 3 至少包含 1 个已创建的真实视图（reconciled 特批逃生口跳过视图计数）。"""
+    outputs = receipt.get("outputs") if isinstance(receipt.get("outputs"), dict) else {}
+    executor = receipt.get("executor") if isinstance(receipt.get("executor"), dict) else {}
+    is_reconciled = executor.get("kind") == "reconciled"
+
+    bad_ids: List[str] = []
+
+    def check_id(label: str, val: Any):
+        reason = _invalid_hap_id_reason(val)
+        if reason:
+            bad_ids.append(f"{label}: {reason}")
+
+    for key in ("appId", "worksheetId", "pageId", "roleId", "chatbotId", "processId", "workflowId"):
+        if key in outputs:
+            check_id(key, outputs.get(key))
+    for map_key in ("sectionIdByName", "customPageIdByName", "viewIdByName", "actionIdByName",
+                    "actionProcessIdByKey", "roleIdByName", "chatbotIdByName"):
+        mapping = outputs.get(map_key)
+        if isinstance(mapping, dict):
+            for k, v in mapping.items():
+                check_id(f"{map_key}[{k}]", v)
+    for list_key, id_keys in (
+        ("fields", ("id",)),
+        ("views", ("id",)),
+        ("actions", ("id", "processId", "workflowId")),
+        ("completedWorksheets", ("worksheetId",)),
+    ):
+        items = outputs.get(list_key)
+        if isinstance(items, list):
+            for idx, item in enumerate(items):
+                if isinstance(item, dict):
+                    item_name = item.get("name") or item.get("worksheetName") or str(idx)
+                    for ik in id_keys:
+                        if ik in item:
+                            check_id(f"{list_key}[{item_name}].{ik}", item.get(ik))
+    if bad_ids:
+        return f"回执包含非法/截断 ID（{'；'.join(bad_ids[:3])}）；请核对真实 24 位 ID 后修正或执行 reset-task。"
+
+    step = str(receipt.get("step") or (task_id.split("-", 1)[0][4:] if task_id.startswith("step") else ""))
+    if step == "3" and not is_reconciled:
+        views_list = [v for v in (outputs.get("views") or []) if isinstance(v, dict) and (v.get("id") or v.get("viewId"))]
+        view_map = {k: v for k, v in (outputs.get("viewIdByName") or {}).items() if isinstance(v, str) and v.strip()}
+        if not views_list and not view_map:
+            return "Step 3 回执未包含任何已创建的真实视图（outputs.views / outputs.viewIdByName 为空）；请补建至少 1 个视图或通过 resolve-task 说明。"
+    return None
+
+
 def _group_receipt_missing_worksheets(receipt: Dict[str, Any], expected_target: Optional[Dict[str, Any]]) -> Optional[str]:
     """校验 Step 2b 分组任务成功回执是否完整覆盖本组全部目标工作表。"""
     if not isinstance(expected_target, dict) or expected_target.get("type") != "worksheet_group":
@@ -239,6 +305,9 @@ def task_state(
                 grp_err = _group_receipt_missing_worksheets(receipt, expected_target)
                 if grp_err:
                     return "blocked", grp_err
+                int_err = _receipt_integrity_error(receipt, task_id)
+                if int_err:
+                    return "blocked", int_err
                 return "succeeded", ""
             return "blocked", "成功回执缺少有效执行者或验证证据；核实结果，不重复创建。"
         # 续作已派发，保留的旧失败回执不能把新执行器再次放入待派发列表。
@@ -1791,6 +1860,48 @@ def cmd_validate_plan(app_dir: str) -> Dict[str, Any]:
                 p_fields = [str(f) for f in (parent_ws.get("fields") or parent_ws.get("customFields") or [])]
                 if not any(f"(SubTable:{ws_name})" in f for f in p_fields):
                     errors.append(f"子表 [{ws_name}] 未在主表 [{parent_name}] 的 fields 中声明 (SubTable:{ws_name}) 挂载字段。")
+
+    # 2b. 跨表关联方向、Lookup 依赖与主子表 Rollup 闭环预检
+    bi_pairs: set = set()
+    rel_dir_by_ws: Dict[str, Dict[str, Tuple[str, str]]] = {}
+    for ws in worksheets:
+        ws_name = ws.get("name", "")
+        raw_fields = [str(f) for f in (ws.get("fields") or ws.get("customFields") or [])]
+        rel_dirs: Dict[str, Tuple[str, str]] = {}
+        has_subtable = False
+        has_rollup = False
+        for f in raw_fields:
+            if "(SubTable:" in f:
+                has_subtable = True
+            if "(Rollup:" in f:
+                has_rollup = True
+            if "(Relation:" in f:
+                fname, spec = f.split("(Relation:", 1)
+                fname = fname.strip()
+                parts = [p.strip() for p in spec.rstrip(")").split(":")]
+                target = parts[0] if parts else ""
+                direction = parts[2].lower() if len(parts) >= 3 else ""
+                rel_dirs[fname] = (target, direction)
+                if direction == "bi" and target:
+                    bi_pairs.add((ws_name, target))
+        rel_dir_by_ws[ws_name] = rel_dirs
+        if has_subtable and not has_rollup:
+            warnings.append(f"工作表 [{ws_name}] 声明了 SubTable 子表但未规划任何 Rollup 汇总字段，建议补充总金额/总数量汇总。")
+        for f in raw_fields:
+            if "(Lookup:" in f:
+                lname, spec = f.split("(Lookup:", 1)
+                rel_ref = spec.rstrip(")").split(".", 1)[0].strip()
+                if rel_ref in rel_dirs and rel_dirs[rel_ref][1] == "reverse":
+                    errors.append(
+                        f"工作表 [{ws_name}] 的 Lookup 字段 [{lname.strip()}] 依赖了标记为 :reverse 的被动关联 [{rel_ref}]："
+                        f"新建关系时必须由使用 Lookup 的单条端主动声明 :bi 或 :uni（对端改为 :reverse），避免并发竞态漏建。"
+                    )
+
+    reported_bi = set()
+    for src, dst in sorted(bi_pairs):
+        if (dst, src) in bi_pairs and (min(src, dst), max(src, dst)) not in reported_bi:
+            reported_bi.add((min(src, dst), max(src, dst)))
+            errors.append(f"工作表 [{src}] 与 [{dst}] 双方均声明了 :bi 双向主动关联，违反单边声明铁律；请仅在单条/从属端保留 :bi，对端改为 :reverse。")
 
     # 3. 自定义动作类型与人工输入入口检查（拦截错把需填表操作设为 triggerWorkflow）
     action_groups: List[Tuple[str, Dict[str, Any]]] = []

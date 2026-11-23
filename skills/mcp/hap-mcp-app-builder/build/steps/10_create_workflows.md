@@ -30,7 +30,7 @@
 
 ### 2. 物理创建、参数核实与发布流水线（源自 `workflow-build-sub-agent.yaml`）
 1. **高效参数核对与 `appId` 必传铁律**：
-   - 按 [宿主适配](../../HOST_ADAPTER.md) 与任务包内联的 `references/hap-domain-workflow-spec.md` 构造 `create_process`、`batch_create_process_nodes`、`update_workflow_node`、`validate_process`、`publish_process` 参数（实时 Schema 优先，严禁跨目录 `find` 搜索外部 `.json` 或多轮盲拆）；所有应用内流程接口调用时均须显式传入 `"appId": contextSlice.appId`。
+   - 按 [宿主适配](../../HOST_ADAPTER.md) 与任务包内联的 `references/hap-domain-workflow-spec.md` 构造 `create_process`、`batch_create_process_nodes`、`update_workflow_node`、`validate_process`、`publish_process` 参数；**预编译任务包已内联全部规则与字段，严禁使用 `Glob`/`find`/`ls`/`Grep` 翻找外部 skill 目录（含 `*.yaml`、`references/*.md`、其他步骤文档）或历史回执搜寻节点 Schema**，遇宿主折叠深层 Schema 时直接按 [宿主适配](../../HOST_ADAPTER.md) 受控试调 1 次并按服务端报错路径修参；所有应用内流程接口调用时均须显式传入 `"appId": contextSlice.appId`。
 2. **字段与选项铁律**：
    - 节点中引用业务 `fieldId` **必须使用 24 位真实 `id`，严禁传 `alias`**；
    - 给单选/多选/下拉字段赋值时，**必须且只能传选项的真实 `key`**，严禁传中文名 `value`！关联取数节点的目标表由来源关联字段自动推导，不传 `worksheetId`；严禁直接更新公式/汇总/他表只读衍生字段。

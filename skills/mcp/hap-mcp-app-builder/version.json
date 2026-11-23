@@ -1,9 +1,9 @@
 {
   "name": "hap-mcp-app-builder",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "schemaVersion": 1,
   "minToolsCount": 170,
-  "releaseNotes": "全新升级为全生命周期应用与数据助手：支持方案设计（Plan）、并发物理搭建（Build）、12 域存量应用修订（Modify）与日常业务数据/审批操作（Data）（更新完成后请立即重新读取根目录 SKILL.md 按新版工作流执行）",
+  "releaseNotes": "并发提速与防错全面升级：入口瘦身 60%、Step 2b 支持全表唯一索引与关联防竞态、新增 24 位 ID 截断门禁与 Plan 结构预检、对齐 PBP/存储型 Lookup/工作流子流程最新规范并优化 Step 3/6/10/11 执行效率（更新后请重新读取根目录 SKILL.md）",
   "repository": "https://github.com/mingdaocom/hap-skills",
   "branch": "main",
   "skillPath": "skills/mcp/hap-mcp-app-builder"

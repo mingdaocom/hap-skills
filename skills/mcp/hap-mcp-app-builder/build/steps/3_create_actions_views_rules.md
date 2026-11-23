@@ -44,7 +44,7 @@
    - **跨表归属一致与关联带值（`setFieldValue + rcid`）**：遇到“所选设备/地块必须与所属站点一致”或“选站点带出站点负责人”时，优先配置 `interaction` 规则的 `setFieldValue`，通过 `rcid` 从所选设备/地块自动读取其 `所属站点` 赋值给本表 `所属站点`（或从 `所属站点` 读取 `负责人` 赋值给本表 `负责人`），必要时配合 `readonly` 防止误改；若本表已有 `Lookup` 带出字段，也可直接用 `businessRuleDynamicValue` 与本表对应字段做一致性校验；
    - 对无需跨表动态查询即可由字段属性覆盖的条件（如 `required`），在 `outputs.ruleChecks` 记录对应字段属性依据；超出业务规则范围的停用前跨表统计提示等交由流程或说明承接，不作本步失败条件。
 2. 对每个适用条件核对全部受影响的真实字段，续作时先查同名及同义规则：
-   - 推导 `ruleType`（交互/校验/锁定/样式），纠正不严谨的动作表述（如子表行操作 `permissions` 仅用于 `editable` 动作，不得放入 `show/hide`），构造合法无冲突的 `conditions` 与动作配置块，逐条调用 `create_business_rule`。失败时按 [宿主适配](../../HOST_ADAPTER.md) 排查并继续其他独立规则。
+   - 推导 `ruleType`（交互/校验/锁定/样式），纠正不严谨的动作表述（如子表行操作 `permissions` 仅用于 `editable` 动作，不得放入 `show/hide`），构造合法无冲突的 `conditions` 与动作配置块调用 `create_business_rule`；**同表内并发提速**：在 `create_custom_actions` 完成后（或无动作时拿到真实结构后），将互不依赖的 `create_view` 与多条 `create_business_rule`（以及续跑所需的只读核对查询）在**同一轮消息内并列并发发出**，避免逐条串行来回多轮。单条规则失败时按 [宿主适配](../../HOST_ADAPTER.md) 排查并继续其他独立规则。
    - **条件值格式防错提示**：`conditions.children[].value` 的静态比较值须传**字符串数组**（如 `["0"]`），勿传标量 `0`/`"0"`；其余字段与动作结构以实时 `create_business_rule` Schema 为准。
 
 ---
