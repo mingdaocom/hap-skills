@@ -33,7 +33,7 @@
      3. **严禁只建孤立的 `approval_block` 漏写通过/驳回状态回写分支就发布上线！**
 
 ### 2. 参数核实、节点注入与校验上线（源自 `custom-action-workflow-sub-agent.yaml`）
-1. **高效参数核对与 `appId` 必传铁律**：按 [宿主适配](../../HOST_ADAPTER.md) 与任务包内联的 `references/hap-domain-workflow-spec.md` 构造 `get_workflow_structure`、`batch_create_process_nodes`、`update_workflow_node`、`validate_process`、`publish_process` 参数；**预编译任务包已内联全部规则与字段，严禁使用 `Glob`/`find`/`ls`/`Grep` 翻找外部 skill 目录（含 `10_create_workflows.md`、`*.yaml`、`references/*.md`）或历史回执搜寻节点 Schema**，遇宿主折叠深层 Schema 时直接按 [宿主适配](../../HOST_ADAPTER.md) 受控试调 1 次并按服务端报错路径修参；且所有应用内流程接口均须显式传入 `"appId": contextSlice.appId`。
+1. **高效参数核对**：按 [宿主适配](../../HOST_ADAPTER.md) 与任务包内联的 `references/hap-domain-workflow-spec.md` 构造 `get_workflow_structure`、`batch_create_process_nodes`、`update_workflow_node`、`validate_process`、`publish_process` 参数；**预编译任务包已内联全部规则与字段，严禁使用 `Glob`/`find`/`ls`/`Grep` 翻找外部 skill 目录（含 `10_create_workflows.md`、`*.yaml`、`references/*.md`）或历史回执搜寻节点 Schema**，遇宿主折叠深层 Schema 时直接按 [宿主适配](../../HOST_ADAPTER.md) 受控试调 1 次并按服务端报错路径修参。
 2. **组织身份解析**。确认规划角色真实存在，按 `roleContext` 或 `roleIdByName` 绑定真实角色 ID。角色成员为空或未知属运行态常规事项，不追问、不自动加人、不阻止发布，也无需写入 `issues`（终结交付总结已统一提醒）。身份无法确认则继续无依赖配置并报告具体缺口。只有方案指定固定人员、部门或签名时才解析对应身份。
 3. **批量创建节点（免注入后重复回读）**：调用 `batch_create_process_nodes(workflow_id: processId, nodes)` 注入完整节点链（流程内各 `nodeAlias` 保持唯一，不直接写只读衍生字段）；注入成功后直接进入下一步 `validate_process`，**无需在注入后或发布后重复调用 `get_workflow_structure` 回读**。
 4. **内部块先内后外发布、等价自愈与主流程发布**：

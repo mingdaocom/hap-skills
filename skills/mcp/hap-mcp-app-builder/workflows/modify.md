@@ -58,7 +58,7 @@ python3 {SKILL_DIR}/scripts/resolve_context.py \
 
 ## 4. 实时探查、风险判断与执行闭环
 
-> **工具调用约定**：参数核实、技术问题自主恢复及应用内 `appId` 必传要求统一遵循 [宿主适配](../HOST_ADAPTER.md)。
+> **工具调用约定**：参数核实、技术问题自主恢复与文档简写说明统一遵循 [宿主适配](../HOST_ADAPTER.md)。
 
 1. **按决策缺口最小读取**：
    - 工作表概览默认用 `get_worksheet_structure(responseFormat: "md")`（涉及表单栅格排版或写后核对布局时直接用 `"dsl"`）；

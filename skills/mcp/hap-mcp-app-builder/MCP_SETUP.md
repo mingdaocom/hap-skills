@@ -26,7 +26,7 @@
 
 ## 场景二：已检测到 HAP MCP 服务，但连通性/鉴权失败（令牌不通）
 
-当检测到 `{MCP_SERVER_NAME}` 服务，但调用全局接口（如 `get_org_list`）返回 `401`、令牌失效或无权限时（注意：若仅单个应用内接口报 `10001 Http Headers verification failed`，属于调用漏传 `appId`，由 Agent 自愈补传，严禁误报为令牌失效），输出以下引导：
+当检测到 `{MCP_SERVER_NAME}` 服务，但调用全局接口（如 `get_org_list`）返回 `401`、令牌失效或无权限时（注意：若仅单个应用内接口报 `10001 Http Headers verification failed`，通常为 `appId` 传了空串，由 Agent 自愈补传，严禁误报为令牌失效），输出以下引导：
 
 ```markdown
 🔑 **已检测到 `{MCP_SERVER_NAME}` 服务，但个人访问令牌（PAT）已失效或无法通过鉴权**

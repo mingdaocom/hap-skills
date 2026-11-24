@@ -11,7 +11,7 @@
     - **本地文件懒加载宿主（如将工具 Schema 落盘为 `<toolName>.json`）**：优先用文件读取工具核对 `required` 与子配置；若遇超长单行 Schema（如工作流节点、自定义页面/图表类 >100 KB 文件）被单次读取上限截断，用字节偏移续读或**对该已知单个 Schema 文件做 1 次精准关键字切片定位目标字段**；
     - **凭证与防暴走安全红线（全宿主无条件生效）**：**绝对禁止翻找客户端 `traces/` 历史日志或缓存目录逆向搜参数；绝对禁止读取本机配置文件提取 PAT/Token 用 `curl` 或脚本直连远端 MCP 接口；绝对禁止跨目录 `find /Users` 搜索其他客户端文件或编写多轮 `jq`/`python` 拆解脚本**。
   - **严禁主观断定不支持而绕路**：只要实时 MCP Schema 支持对应原生参数（例如 `Rollup` 的 `config.relationFilter` 条件汇总、`Relation` 的 `resultFilter` 等），必须优先采用原生能力并结合真实表结构主动补全合理过滤口径；**绝对禁止仅因 Skill 文档未提及，在未核对实时 Schema 前就主观认定“平台不支持”并擅自降级为普通字段 + 绕路工作流**；有完整 Schema 可读时严禁跳过核对盲猜入参。
-- **文档简写与 `appId` 必传铁律**：文档中的 `tool_name(...)` 均为重点业务参数示意简写。除 `get_org_list`、`get_org_detail`、`get_app_list`、`create_app`、`find_member`、`find_department`、`get_current_user`、`get_regions` 以及个人跨应用审批工具（`get_approve_list`、`get_approve_details`、`batch_process_approves`、`return_approve`、`revoke_approve`、`terminate_approve`、`urge_approve`）外，**所有应用内读写接口（即使已传全局唯一的 `worksheet_id` / `workflow_id` / `page_id` / `role_id` / `chatbot_id`）调用时必须始终显式传入当前目标 `"appId"`**；遇到 `10001` 或单点 `401` 报错时，第一时间核查是否漏传 `"appId"` 或写错参数键名。
+- **文档简写说明**：文档中的 `tool_name(...)` 仅示意重点业务参数，完整必填项以实时 MCP Schema 为准；应用内接口按 Schema 显式传入非空 `appId`（遇 `10001 Http Headers verification failed` 优先检查 `appId` 是否为空，勿误判 PAT 失效）。
 - **按场景分层读取规则**：
   - **Modify 场景**：优先运行 `scripts/resolve_context.py --mode modify --assets {domain1,domain2} --render` 一次性加载裁剪后的公共底线与目标领域规则；仅在构造复杂底层参数时按需点读 `references/hap-*.md` 对应章节。
   - **Data 场景**：完整读取 `workflows/data.md`，遵循其中的视图平铺与降维取数准则、分级确认门禁、`fields[].type` 防坑规则及审批/PBP 流转规范。
