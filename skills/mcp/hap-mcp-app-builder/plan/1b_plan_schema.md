@@ -50,7 +50,7 @@
 每个元素结构：`{ "name", "groupName", "description", "worksheetType"?, "parentWorksheet"?, "icon", "color", "fields", "views", "businessRulesNotes"?, "consistencyNotes", "requirements"? }`
 
 - **`name`（去“表”后缀规范）**：使用纯粹业务实体名词（如 `客户`、`采购订单`、`中奖名单`），自动剔除口语中的“表/工作表”后缀（仅 `资产负债表`、`利润表`、`课程表` 等专有名词或用户显式强调保留时例外）。
-- **`worksheetType` 与主子表双向闭环硬约束**：普通表为 `"normal"`（默认），明细子表为 `"subTable"` 且必填 `parentWorksheet`（主表名称）。**凡声明 `worksheetType: "subTable"` 的子表，其主表 `fields` 中必须 100% 包含对应的 `"子表名(SubTable:子工作表名)"` 字段，严禁出现孤立子表！**
+- **`worksheetType` 与主子表双向闭环硬约束**：普通表为 `"normal"`（默认），明细子表为 `"subTable"` 且必填 `parentWorksheet`（主表名称）。**凡声明 `worksheetType: "subTable"` 的子表，其主表 `fields` 中必须 100% 包含对应的 `"子表名(SubTable:子工作表名)"` 字段，严禁出现孤立子表；且子表自身 `fields` 中严禁再重复声明回指 `parentWorksheet` 主表的 `Relation` 字段！**
 - **全表无条件唯一索引声明**：明确要求某组字段在全表无条件唯一时，在本表 `requirements` 写明字段组合及必填要求；仅提交后按状态防重、允许多条空值草稿等条件约束按原业务条件规划（不由唯一索引承接）。
 - **`icon`**：从 `../references/hap-icon-palette.md` 选取带 `sys_` 前缀的合法图标，同组内避免雷同。
 - **`businessRulesNotes`**：字符串数组，用“意图 + 举例”的自然语言描述显隐、只读、动态赋值（含通过关联字段 `rcid` 自动带出所属站点/负责人）、本表字段对比校验（如“结束时间不早于开始时间”）或终态锁定规则（注意：关联候选框 `resultFilter` 不支持动态引用当前表单字段，跨表归属一致优先规划为“选子对象后自动带出归属站点/部门”或配合 `Lookup` 字段做同表校验）。

@@ -2289,6 +2289,15 @@ def cmd_validate_plan(app_dir: str) -> Dict[str, Any]:
                 p_fields = [str(f) for f in (parent_ws.get("fields") or parent_ws.get("customFields") or [])]
                 if not any(f"(SubTable:{ws_name})" in f for f in p_fields):
                     errors.append(f"子表 [{ws_name}] 未在主表 [{parent_name}] 的 fields 中声明 (SubTable:{ws_name}) 挂载字段。")
+                for f_str in (ws.get("fields") or ws.get("customFields") or []):
+                    if isinstance(f_str, str) and "(Relation:" in f_str:
+                        rel_spec = f_str.split("(Relation:", 1)[1].rstrip(")")
+                        rel_target, _ = _parse_relation_direction(rel_spec)
+                        if rel_target == parent_name:
+                            errors.append(
+                                f"子表 [{ws_name}] 的字段 [{f_str}] 重复声明了回指主表 [{parent_name}] 的 Relation："
+                                f"主表挂载 SubTable(bidirectional: true) 已自动绑定主子表关系，子表 fields 中严禁再声明回指主表的 Relation 字段。"
+                            )
 
     # 2b. 跨表关联方向、Lookup 依赖与主子表 Rollup 闭环预检
     bi_pairs: set = set()
