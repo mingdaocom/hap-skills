@@ -198,7 +198,7 @@
 - `empty` 不传 staticValue 或 sourceField。
 - **`field` 支持两种取值范围**：
   1. **不带 `rcid`**：复制当前表单其他字段的值；
-  2. **携带 `rcid`（跨表关联读取赋值）**：`rcid` 传当前表单中已配置目标表的 `Relation` / `SubTable` / `CascadingSelect` 字段 ID 或 alias，`field` 传**该关联目标表**中的真实字段 ID 或 alias（关联记录类型赋值时两侧须指向同一目标工作表）。典型高价值场景：选择「设备」或「地块」后自动将其「所属站点」同步写入本单据的「所属站点」（配合只读即可从源头保证跨表归属 100% 一致）；选择「所属站点」后自动将该站点的「负责人」同步写入本单据 `userPermission: 2` 的「负责人」字段实现自动赋权。
+  2. **携带 `rcid`（跨表关联读取赋值）**：`rcid` 传当前表单中已配置目标表的 `Relation` / `SubTable` / `CascadingSelect` 字段 ID 或 alias，`field` 传**该关联目标表**中的真实字段 ID 或 alias（关联记录类型赋值时两侧须指向同一目标工作表）。**与字段默认值分工**：无条件“选单条关联带出可编辑初始值”优先由字段原生 `defaultValue(source="relation")` 承接，不重复建 `setFieldValue + rcid` 规则；`rcid` 赋值用于需条件触发、配合 `readonly` 强制锁定防篡改（如选择「设备」或「地块」后强制同步其「所属站点」并只读以保证跨表归属一致），或字段默认值不支持的场景。
 - 目标字段和来源字段类型应兼容。
 
 ## 五、Validation 验证规则

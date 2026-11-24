@@ -6,7 +6,7 @@
 
 - **执行方式**：独立 Subagent **单表并发执行，按依赖图自动分波**（两遍建表 Pass 2，此时全应用所有工作表均已创建）。无前置依赖的表在第 1 波全并发落地；依赖前序波次由对端 `:bi` 自动生成的反向关联、子表跨表列或他表衍生字段的表自动排入后续波次，由运行时引擎控制波次释放；纯 `:reverse` 且无衍生字段与 `requirements` 的表已自动跳过。
 - **输入切片**：读取预编译任务包或 `.build/task-context/{taskId}.json`：
-  - `planSlice`：`worksheetName`、`worksheet`（该表完整设计）、`fields`、`relationLayout`（Pass 1 预留的待补复杂字段数组）、`waveIndex` / `totalWaves`、`dependsOnWorksheets`、`needsPreReadStructure`、`requirements`、`appLanguage`、`allWorksheetOrder` 与 `allRelationLayouts`（供双边双向关联防重仲裁；兼容恢复历史分组工程时若存在 `planSlice.items` 则按组内逐表顺序处理）；
+  - `planSlice`：`worksheetName`、`worksheet`（该表完整设计）、`fields`、`relationLayout`（Pass 1 预留的待补复杂字段数组）、`relationDefaults`（可选：Pass 1 交接的跨表动态默认值待办数组）、`waveIndex` / `totalWaves`、`dependsOnWorksheets`、`needsPreReadStructure`、`requirements`、`appLanguage`、`allWorksheetOrder` 与 `allRelationLayouts`（供双边双向关联防重仲裁；兼容恢复历史分组工程时若存在 `planSlice.items` 则按组内逐表顺序处理）；
   - `contextSlice`：`appId`、`worksheetId`、`worksheetIdByName`（全应用表名→ID）、`worksheetFieldsByName`（本表及相关目标表在 Pass 1 已建的基础字段 `{ name, id, alias, type }` 轻量索引）、`fieldOptionsContext`（相关表选项字段的真实选项 `{ key, value }` 映射）。
 - **必读领域规范**：`references/hap-domain-worksheet-spec.md`（若本表含 `requirements` 时已自动附带 `references/hap-domain-worksheet-index-spec.md`）
 - **主要业务工具**：
@@ -20,7 +20,8 @@
 
 1. **前置核对与按需写前 1 次结构读取**：
    - `worksheetId` 缺失时先从 `contextSlice.worksheetIdByName`、前序回执或线上工作表定位真实 ID，无法定位时报告依赖缺口，不能伪造成功；若本表 `relationLayout` 为空、无待补非 `:reverse` 跨表/衍生字段且无需建全表唯一索引，直接写成功回执（`addedCount: 0`）。
-   - **仅当 `planSlice.needsPreReadStructure === true`（且白名单包含 `get_worksheet_structure`）时**：在调用 `update_worksheet` **之前**，调用 1 次 `get_worksheet_structure` 读取本表当前结构（定位前序波次由对端 `:bi` 自动生成的反向关联字段真实 24 位 `id`；若本表 `Rollup`/`Lookup` 引用的目标表字段在前序波次新建且 `allRelationLayouts` 未给出明确 `alias`，最多再读 1 次该目标表结构）。
+   - **环路分段边界（`planSlice.totalParts > 1` 时适用）**：当多张表存在跨表环路依赖时，运行时会自动将破环表按字段拆分为多段（如 `p1`/`p2` 或 `p1`/`p2`/`p3`）。本段**只创建 `planSlice.fields` / `planSlice.relationLayout` 中列出的字段子集**——严禁提前建 `deferredFields`，严禁重复建 `completedInPrevPartFields`（引用前段已建关联时直接用 `allRelationLayouts` 中的预留 `alias` 或写前读取的真实 ID）。
+   - **仅当 `planSlice.needsPreReadStructure === true`（且白名单包含 `get_worksheet_structure`）时**：在调用 `update_worksheet` **之前**，调用 1 次 `get_worksheet_structure(responseFormat: "md")` 读取本表精简 Markdown 结构（体积仅 ~3KB 可直接内联、避免 `dsl` 落盘多耗 1 轮读文件，已完整包含前序波次由对端 `:bi` 自动生成的反向关联真实 24 位 `id` 与 `dataSource`；若本表 `Rollup`/`Lookup` 引用的目标表字段在前序波次新建且 `allRelationLayouts` 未给出明确 `alias`，最多再以 `responseFormat: "md"` 读 1 次该目标表结构）。
    - **严禁写后回读铁律**：无论属于哪一波次，**一旦 `update_worksheet` 返回成功，严禁再调用 `get_worksheet_structure` 复核验货**（全应用最终完整结构统一在 Step 3 集中采集）。
 2. **双边 `:bi` 确定性防重仲裁**：
    - 若两张表在规划中均漏标 `:reverse` 而双向互指（均含 `bidirectional: true` 指向对方），仅由单条从属端（`isMultiple === false`）调用 API 创建，多条聚合端自动跳过；
@@ -31,9 +32,10 @@
    - **`Lookup`（他表字段）**：保留 `relationLayout.alias` 供同批表达式引用；`relationField` 填本表对应单条关联字段的真实 `alias`（若是前序波次对端 `:bi` 自动生成的反向关联则填其真实 24 位 `id`）；`sourceField` 匹配目标表真实 **`alias`**（或前序波次新建字段的真实 `alias`/`id`，严禁拼音编造）；`storeData` 按 [工作表规范 §9.2](../../references/hap-domain-worksheet-spec.md#92-lookup他表字段引用) 选择——仅显示用 `false`，本表文本组合（`Concatenate`）、公式计算、分组/筛选等确需引用存储值时设 `true`（不因工作流取值开启存储）；带原 `layout`。
    - **`Rollup`（汇总字段）**：保留 `relationLayout.alias` 供同批表达式引用；`relationField` 填本表主动 `Relation`/`SubTable` 的真实 **`alias`**，或写前 1 次 `get_worksheet_structure` 查到的**反向关联字段真实 24 位 `id`**（反向关联由服务端自动生成，通常无预定 `alias`）；`sourceField` 匹配目标表/子表字段的真实 **`alias`**（或前序波次新建字段的真实 `alias`/`id`，纯计数可省略）；结合字段名称与目标表结构判断业务统计口径（如“累计收款/累计出库/累计退货”需按目标表状态或类型过滤），对照 `update_worksheet` 实时 Schema 构造聚合配置与单层平铺过滤条件（选项 `key` 从 `contextSlice.fieldOptionsContext` 读取）；带原 `layout`。
    - **依赖衍生字段的 `Concatenate` / `Formula`**：按预留的 `name`、`alias`、`isTitle`（若为计划组合标题传 `isTitle: true`）、`precision`、`layout` 及 `config: { expression }` 构造。
-4. **单次提交 `update_worksheet`、按需建唯一索引与异常恢复**：
-   - 对本表 `addFields` 按 `(name, dataSource)` 去重（`inlineTable` / `tabTable` 强制 `layout.span = 12`）；若过滤后 `addFields` 为空则跳过字段写入；
-   - 一次调用 `update_worksheet(appId, worksheet_id, addFields)` 提交本表全部待补字段（注意工作表 ID 参数名为 `worksheet_id`），返回成功即完成字段写入（**严禁写后回读结构**）；
+4. **单次合并提交 `update_worksheet(addFields + editFields)`、按需建唯一索引与异常恢复**：
+   - 对本表 `addFields` 按 `(name, dataSource)` 去重（`inlineTable` / `tabTable` 强制 `layout.span = 12`）；
+   - **同请求合并回绑跨表动态默认值（`planSlice.relationDefaults` 非空时）**：构造 `editFields`——每项仅传接收字段真实 `id`（取自 `contextSlice.worksheetFieldsByName[worksheetName]`）和解析后的完整 `defaultValue` 数组（未传属性服务端自动保留）：其中 `source: "relation"` 的 `relationField` 填本表关联字段真实 `alias`（支持直接引用本批 `addFields` 新建的单条关联 `alias`，不支持多条关联）、`field` 填目标表来源字段真实 `alias`（取自 `contextSlice.worksheetFieldsByName[targetWorksheet]` 或 `allRelationLayouts`），同数组内若混有 `source: "field"` 则同步解析为本表 `alias`；缺依赖或无可用 `alias` 的单条跳过并记入 `issues`。
+   - **合并为 1 次 `update_worksheet(appId, worksheet_id, addFields?, editFields?)` 提交**（HAP 后端支持同请求 `editFields` 引用 `addFields` 新建关联的 `alias`，省去额外 1 轮工具往返；若 `addFields` 与 `editFields` 均为空则跳过写入；仅当合并提交因某条 `editFields` 报参错时再拆出 `addFields` 先写并对 `editFields` 单条容错），返回成功即完成字段写入（**严禁写后回读结构**）；
    - **按需配置全表唯一索引**：仅当本表 `requirements` 明确要求全表无条件唯一字段组合时，在字段就绪后按 `references/hap-domain-worksheet-index-spec.md` 调用 `get_worksheet_index_list` 与 `create_worksheet_index(type: "unique")`（复用等价唯一索引，已确认新建空表无需查重记录）；无此要求、按状态防重或允许重复草稿时完全跳过索引步骤（含查询）；
    - **别名冲突自愈**：若遇 `别名重复` 报错，剥离冲突字段的 `alias` 让系统自动生成（若同批 `Lookup/Rollup` 依赖该字段则按需分步用返回 ID 衔接），核实写入结果后修正并继续；成功或写入状态不明时不重放 `update_worksheet`。
 

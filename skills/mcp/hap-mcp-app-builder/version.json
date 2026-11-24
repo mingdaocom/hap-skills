@@ -1,9 +1,9 @@
 {
   "name": "hap-mcp-app-builder",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "schemaVersion": 1,
   "minToolsCount": 170,
-  "releaseNotes": "Step 2b 单表分波并发重构（剔除纯 :reverse 空表、写后禁回读、依赖图自动分波）、修复预编译任务包丢失选项 UUID 与 dataSource 导致下游反复回查的缺陷、消除第 2 档异步宿主误拆波，并同步跨对象 requirements 归属与图表事实表聚合规范（更新后请重新读取根目录 SKILL.md）",
+  "releaseNotes": "优化 Step 2b 关联回填与跨表动态默认值链路：遇环按边拆段并发、反向关联改用 md 精简回读、新增关联与 defaultValue(source=\"relation\") 同请求合并提交，明确动态默认值与 rcid 业务规则去重边界；同步移除 hap-plan 实体级 color 冗余字段并禁止 Step 2a 并发读兄弟回执（更新后请重新读取根目录 SKILL.md）",
   "repository": "https://github.com/mingdaocom/hap-skills",
   "branch": "main",
   "skillPath": "skills/mcp/hap-mcp-app-builder"

@@ -25,7 +25,7 @@
   - **`Collaborator` 成员单复数与记录权限联动（`config.userPermission` 核心配置！）**：
     - `config.isMultiple`：含“人/员/负责人”单数语义设 `false`，含“团队/参与人/协同人”复数语义设 `true`；
     - **`config.userPermission`（决定角色 `recordDataScope: 20` 能否看到/编辑记录！）**：结合 `planSlice.worksheetUsage.roles` 判断——**凡业务上需要被指派人查看并编辑/执行动作的责任成员字段（如「执行人」「巡检人」「维修人员」「经办人」「负责人」），必须显式设 `config.userPermission: 2`（拥有者权限）**；仅需知悉抄送的设 `1`（只读权限）；纯展示登记设 `0`（无权限）。
-- 从本表要完成的一次业务操作反推：缺什么信息会使记录无法识别、执行或追溯？按工作表规范补齐必要字段，区分草稿可空与提交时必需。无条件约束优先落字段属性；需按条件交互、校验或通过 `rcid` 跨表带值（如选设备/地块自动同步所属站点、选站点自动同步负责人）的意图记入回执 `outputs.businessRulesNotes` 交 Step 3。尊重明确取舍，按适用性分段。
+- 从本表要完成的一次业务操作反推：缺什么信息会使记录无法识别、执行或追溯？按工作表规范补齐必要字段，区分草稿可空与提交时必需。无条件约束与无条件“选单条关联带出可编辑初始值”优先落字段属性（跨表初始值走下方 `outputs.relationDefaults`，**不再重复写入 `outputs.businessRulesNotes`**）；仅需按条件交互、校验、锁定，或需条件触发/配合只读强锁定同步的 `rcid` 跨表赋值（如选设备自动同步所属站点并锁定）的意图，记入回执 `outputs.businessRulesNotes` 交 Step 3。尊重明确取舍，按适用性分段。
 - **标题字段（`isTitle`）唯一性兜底**：每表有且仅有一个合法标题字段（优先选识别度最高的 `Text` 或 `Concatenate`）；若选定的组合标题依赖 `Lookup/Rollup` 需留到 Pass 2，先从本次实际创建的合法字段中选一个作为临时标题（Pass 2 补建组合标题时传 `isTitle: true` 自动替换原标题）。若全表均为人员/选项/关联等非法标题类型，**必须主动新建一个 `Text` 或 `AutoNumber` 字段设为 `isTitle: true`**。
 
 ### 2. 两遍建表（Two-Pass）排版三步法
@@ -37,12 +37,15 @@
    - **唯一自关联红线**：仅原文写为 `(selfRelation)` 的字段随本步直接创建（`dataSource: "selfRelation"`）；任何跨表 `(Relation:xxx)` **严禁伪造为 `selfRelation` 规避**！
    - 保留下来的基础字段保持 Step A 的 `rowIndex / span` **原封不动**（允许行号跳号如 `0, 1, 3`，供 Pass 2 精准插回预留行）。
 3. **Step C — 构造完整 `relationLayout` 待办数组**：
-   - 将 Step B 剥离的每个字段记入输出 `relationLayout`（**每项必须带真实规划 `alias`，如 `biz_xxx`**）：
+   - **跨表引用只填业务名（严禁读取兄弟回执）**：所有表本步并发创建，`relationLayout` 与 `outputs.relationDefaults` 中的跨表引用直接写目标表名与目标字段业务名即可，**严禁列出或读取 `.build/receipts/` 下其他表的兄弟回执去查 `targetWorksheetId` 或对端字段 `alias`**（全部表的真实 `worksheetId` 与字段 `alias` 由调度器在进入 Step 2b 时统一注入）。
+   - 将 Step B 剥离的每个字段记入输出 `relationLayout`（**每项必须带本表真实规划 `alias`，如 `biz_xxx`**）：
      - `Relation`：`{ name, alias, targetWorksheet, rowIndex, span, displayMode, fieldType: "Relation", isMultiple, bidirectional, required? }`（`:bi`→`true`，`:uni`→`false`；缺省时字典/仓库/商品等主数据引用推导为 `false`，核心主从业务穿透推导为 `true`）；
      - `SubTable`：`{ name, alias, targetWorksheet, rowIndex, span: 12, fieldType: "SubTable", bidirectional: true }`；
      - `Lookup`：`{ name, alias, rowIndex, span, fieldType: "Lookup", relationField, sourceFieldName }`（`relationField` 填本表关联字段 `alias`，`sourceFieldName` 填目标字段中文名）；
      - `Rollup`：`{ name, alias, rowIndex, span, fieldType: "Rollup", relationField, sourceFieldName, calcType }`；
      - 跨表 `Concatenate` / `Formula`：保留 `{ name, alias, rowIndex, span, fieldType, isTitle?, precision?, expression }`。
+   - **跨表动态默认值交接（可选 `outputs.relationDefaults`）**：输入型基础字段需要从跨表关联带出可编辑初始值（如明细 `单价` 带出商品 `参考单价`、订单 `电话/地址` 带出客户信息，区别于只读 `Lookup`）时，本遍照常创建该基础字段、保留布局并省略其 `defaultValue`（**严禁仅写 `desc` 文案占位**），将该字段的完整默认值数组写入回执顶层可选字段 `outputs.relationDefaults`（保留混合来源顺序，引用填业务名或别名；无此需求时省略或 `[]`）：
+     `[{ "field": "单价", "defaultValue": [{ "source": "relation", "relationField": "商品", "field": "参考单价" }] }]`。
 
 ### 3. 描述生成、建表调用与表单设置按需增强
 1. **描述文案必填**：生成表级 `remark`、依据工作表规范 §1.2 与本表业务用途生成使用说明 `desc`（仅用 `<p>/<strong>/<br>`，禁转义实体）、按需 `importantNote`（`"#515151"`），以及每个输入字段的 `placeholder`、字段 `remark` 和按需 `desc`。

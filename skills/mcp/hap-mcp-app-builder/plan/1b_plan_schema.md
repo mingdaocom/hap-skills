@@ -47,13 +47,13 @@
 
 ## 二、 `worksheets`（工作表数组）
 
-每个元素结构：`{ "name", "groupName", "description", "worksheetType"?, "parentWorksheet"?, "icon", "color", "fields", "views", "businessRulesNotes"?, "consistencyNotes", "requirements"? }`
+每个元素结构：`{ "name", "groupName", "description", "worksheetType"?, "parentWorksheet"?, "icon", "fields", "views", "businessRulesNotes"?, "consistencyNotes", "requirements"? }`
 
 - **`name`（去“表”后缀规范）**：使用纯粹业务实体名词（如 `客户`、`采购订单`、`中奖名单`），自动剔除口语中的“表/工作表”后缀（仅 `资产负债表`、`利润表`、`课程表` 等专有名词或用户显式强调保留时例外）。
 - **`worksheetType` 与主子表双向闭环硬约束**：普通表为 `"normal"`（默认），明细子表为 `"subTable"` 且必填 `parentWorksheet`（主表名称）。**凡声明 `worksheetType: "subTable"` 的子表，其主表 `fields` 中必须 100% 包含对应的 `"子表名(SubTable:子工作表名)"` 字段，严禁出现孤立子表；且子表自身 `fields` 中严禁再重复声明回指 `parentWorksheet` 主表的 `Relation` 字段！**
-- **全表无条件唯一索引声明**：明确要求某组字段在全表无条件唯一时，在本表 `requirements` 写明字段组合及必填要求；仅提交后按状态防重、允许多条空值草稿等条件约束按原业务条件规划（不由唯一索引承接）。
+- **全表无条件唯一索引与跨表可编辑初始值声明**：明确要求某组字段在全表无条件唯一时，在本表 `requirements` 写明字段组合及必填要求（仅提交后按状态防重或允许草稿空值时不建唯一索引）；需要“选关联后自动带出可编辑初始值（区别于只读 `Lookup`）”的输入字段（如订单明细 `单价` 带出商品 `参考单价`、订单 `收货地址/电话` 带出客户对应字段），在接收表 `requirements` 中写明关联字段与来源表真实字段名（如“选商品后单价默认带出商品.参考单价，允许修改”）。
 - **`icon`**：从 `../references/hap-icon-palette.md` 选取带 `sys_` 前缀的合法图标，同组内避免雷同。
-- **`businessRulesNotes`**：字符串数组，用“意图 + 举例”的自然语言描述显隐、只读、动态赋值（含通过关联字段 `rcid` 自动带出所属站点/负责人）、本表字段对比校验（如“结束时间不早于开始时间”）或终态锁定规则（注意：关联候选框 `resultFilter` 不支持动态引用当前表单字段，跨表归属一致优先规划为“选子对象后自动带出归属站点/部门”或配合 `Lookup` 字段做同表校验）。
+- **`businessRulesNotes`**：字符串数组，用“意图 + 举例”的自然语言描述显隐、只读、条件赋值、本表字段对比校验（如“结束时间不早于开始时间”）或终态锁定规则。**与动态默认值严格去重**：无条件“选单条关联带出可编辑初始值”已由本表 `requirements` 交字段 `defaultValue(source="relation")` 承接，**严禁再重复写入 `businessRulesNotes`**；仅当需要条件触发赋值、配合 `readonly` 强锁定防篡改（如跨表归属一致强制同步所属站点/负责人）或字段默认值不支持的交互时，才在 `businessRulesNotes` 中规划 `rcid` 赋值规则（注意：关联候选框 `resultFilter` 不支持动态引用当前表单字段，跨表归属一致优先规划为“选子对象后强制同步归属并只读”或配合 `Lookup` 做同表校验）。
 - **`consistencyNotes`（必填）**：简述本表选项字段如何支撑视图筛选、业务规则、动作条件与工作流流转。
 
 ### 1. `fields` 紧凑字符串语法
@@ -75,7 +75,7 @@
 ## 三、 `customPages`、`customActions`、`workflows`、`roles`、`aiAssistants`
 
 1. **`customPages`（自定义页面数组）**：
-   - 公共属性：`name`、`groupName`、`type`（`"dashboard"` 或 `"workspace"`）、`description`、`icon`（从 `../references/hap-icon-palette.md` 选取带 `sys_` 前缀的合法图标，如 `"sys_control-panel_traffic"`、`"sys_hr_workbench"`）、`color`、`requirements`?。
+   - 公共属性：`name`、`groupName`、`type`（`"dashboard"` 或 `"workspace"`）、`description`、`icon`（从 `../references/hap-icon-palette.md` 选取带 `sys_` 前缀的合法图标，如 `"sys_control-panel_traffic"`、`"sys_hr_workbench"`）、`requirements`?。
    - `type: "dashboard"` 必填 `charts`（紧凑格式 `"名称(chartType)"`，建议 6～10 项：1 个 `"全局筛选(FiltersGroup:维度1,维度2)"` + 4～6 个 `numberChart` + 趋势/占比/排行图 + `pivotTable`，图表类型严格使用小驼峰标准 MCP `chartType`）。
    - `type: "workspace"` 必填 `components`（紧凑格式 `"名称(Type)"`，`Type` ∈ `Button | View | Text | Carousel | Section`）；新建应用若没有对应的已发布且启用的封装业务流程（PBP），页面按钮按实际操作规划新建记录或打开待处理视图等入口（需要执行审批等动作时，由相应业务流程或工作表自定义动作承接）；有实际展示需求和可用内容时才规划 `Carousel`（并在 `description` 写明面向整页还是特定业务区），明确需要跨组件联动筛选时在页面 `requirements` 写明筛选条件与受影响组件。
    - 可选 `viewBindings` 用于明确 View 组件到工作表与视图的绑定，例如 `{"待出库": {"worksheet": "出库单", "view": "待出库"}}`；键为 `components` 中的组件名称，两个值必须逐字匹配已规划对象。此映射兼容旧方案：缺省时根据已确认的方案和真实视图语义解析，不新增必填键。
@@ -95,7 +95,7 @@
    - 元素结构：`{ "name", "description", "roleScope": "general | externalPortal", "permissions": ["名称(worksheet)", "名称(customPage)", "名称(aiAssistant)"], "requirements"? }`。
    - 在 `requirements` 记录角色对各表的实际业务操作、数据范围、允许动作、必要的关联表/子表/视图访问以及系统维护字段的保护要求。**按人/按归属鉴权设计衔接**：需要“仅查看和处理分派给本人的记录”时，在对应业务表规划责任成员字段（如执行人、巡检人、维修人员、负责人，建表设 `userPermission: 2` 拥有者权限），角色配 `recordDataScope: 20` 即可原生按成员字段鉴权；跨表按所属站点/项目负责人管理时，在单据表保留负责人成员字段并由业务规则从所属站点/项目自动带出。
 5. **`aiAssistants`（AI 智能助手数组）**：
-   - 元素结构：`{ "name", "groupName", "description", "icon": "sys_virtual-assistant_office", "color": "#9C27B0", "requirements"? }`（`icon` 必须带 `sys_` 前缀）。
+   - 元素结构：`{ "name", "groupName", "description", "icon": "sys_virtual-assistant_office", "requirements"? }`（`icon` 必须带 `sys_` 前缀）。
 
 ---
 

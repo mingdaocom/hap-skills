@@ -378,8 +378,8 @@ Lookup 用于通过关联关系，自动从关联记录中带出指定字段的�
 3. **`field`**：动态引用当前表单内其他字段的值。
    - `field: "startTime"`（引用本表其他字段 alias）。
    - 示例：结束时间默认为开始时间 `[{ "source": "field", "field": "biz_start_time" }]`。
-4. **`relation`**：引用已选关联记录中的字段值（级联带出）。
-   - `relationField: "biz_customer", field: "biz_customer_phone"`。
+4. **`relation`**：仅支持从单条关联（`isMultiple: false`）带出可编辑的初始值。`relationField` 填本表关联字段的真实 alias，`field` 填目标表来源字段的真实 alias。
+   - 明细单价、收货地址等需要保留当时值并允许手动修改时，用关联默认值。只读展示且需随来源更新时，用 `Lookup`（`storeData: false`）。
    - 示例：选择客户后自动带出客户电话 `[{ "source": "relation", "relationField": "biz_customer", "field": "biz_phone" }]`。
 
 ### 10.3 控件类型支持矩阵
@@ -399,7 +399,7 @@ Lookup 用于通过关联关系，自动从关联记录中带出指定字段的�
 | `Rating` | — | ✅ (数值) | — | ✅ |
 | `Location` | — | — | `currentLocation` | ✅ |
 
-> **不支持 defaultValue 的字段类型**：`AutoNumber`、`Formula`、`DateFormula`、`Attachment`、`Relation`、`Divider`。
+> **不支持 defaultValue 的字段类型**：`AutoNumber`、`Formula`、`DateFormula`、`Attachment`、`Relation`、`Divider`、`Lookup`、`Rollup`、`SubTable`。
 
 ---
 

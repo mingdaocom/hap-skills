@@ -404,6 +404,8 @@ def extract_action_workflows(plan: Dict[str, Any], context: Dict[str, Any]) -> L
 
 
 MAX_RELATION_GROUP_SIZE = 5
+STEP2B_FORMULA_KINDS = ("Formula", "DateFormula", "FunctionFormula", "Concatenate")
+STEP2B_FORMULA_PREFIXES = tuple(f"{k}:" for k in STEP2B_FORMULA_KINDS)
 
 
 def _parse_relation_direction(spec: str) -> Tuple[str, str]:
@@ -418,9 +420,15 @@ def _parse_relation_direction(spec: str) -> Tuple[str, str]:
     return target, direction
 
 
-def _worksheet_needs_step2b(ws: Dict[str, Any], rel_layout: Optional[List[Any]] = None) -> bool:
-    """判定工作表是否真正需要在 Step 2b 发起 API 写入；自动剔除仅含 :reverse 被动关联且无衍生字段/无 requirements 的空表。"""
+def _worksheet_needs_step2b(
+    ws: Dict[str, Any],
+    rel_layout: Optional[List[Any]] = None,
+    rel_defaults: Optional[List[Any]] = None,
+) -> bool:
+    """判定工作表是否真正需要在 Step 2b 发起 API 写入；自动剔除仅含 :reverse 被动关联且无衍生字段/默认值回绑/requirements 的空表。"""
     if rel_layout:
+        return True
+    if rel_defaults:
         return True
     if ws.get("requirements"):
         return True
@@ -495,8 +503,9 @@ def _extract_step2b_worksheet_meta(
                 derived_by_name[fname] = entry
             else:
                 derived_extra.append(entry)
-        elif spec in ("Formula", "DateFormula", "Concatenate") or spec.startswith(("Formula:", "DateFormula:", "Concatenate:")):
-            if fname:
+        elif spec in STEP2B_FORMULA_KINDS or spec.startswith(STEP2B_FORMULA_PREFIXES):
+            # 若已有 Pass 1 回执的 rel_layout，则仅 rel_layout 里的公式属于 Step 2b（避免 Pass 1 已建本地公式如「小计金额」误触发上游 preRead）
+            if fname and not rel_layout:
                 step2b_field_names.add(fname)
 
     for item in rel_layout or []:
@@ -553,17 +562,368 @@ def _extract_step2b_worksheet_meta(
     }
 
 
+def _expr_references_field(expression: str, field_name: str, field_alias: str) -> bool:
+    """判断公式/文本组合表达式是否引用了指定字段（英文别名按词边界匹配，中文名按子串匹配）。"""
+    if not expression:
+        return False
+    if field_alias:
+        if re.search(r"(?<![A-Za-z0-9_])" + re.escape(field_alias) + r"(?![A-Za-z0-9_])", expression):
+            return True
+    if field_name:
+        if re.fullmatch(r"[A-Za-z0-9_]+", field_name):
+            if re.search(r"(?<![A-Za-z0-9_])" + re.escape(field_name) + r"(?![A-Za-z0-9_])", expression):
+                return True
+        elif field_name in expression:
+            return True
+    return False
+
+
+def _resolve_derived_dependency(
+    dref: Dict[str, str],
+    name: str,
+    meta: Dict[str, Any],
+    bi_sources_to: Dict[str, set],
+    meta_by_ws: Dict[str, Dict[str, Any]],
+) -> Tuple[List[Tuple[str, str, str]], bool, set]:
+    """解析单条 Rollup/Lookup 的外部依赖列表 [(target_ws, dep_kind, detail)]、是否需写前读结构及相关表集合。"""
+    active_targets = {t for t, _ in list(meta["active_rels"].values()) + list(meta["active_rel_by_alias"].values())}
+    subtable_targets = set(meta["subtables"].values()) | set(meta["subtable_by_alias"].values())
+    bi_srcs = bi_sources_to.get(name, set())
+
+    rel_ref = dref.get("relRef", "")
+    target_hint = dref.get("targetHint", "")
+    src_field = dref.get("sourceField", "")
+    resolved_target = ""
+    is_reverse_dep = False
+    deps: List[Tuple[str, str, str]] = []
+    needs_pre_read = False
+    related: set = set()
+
+    if rel_ref in meta["active_rels"]:
+        resolved_target = meta["active_rels"][rel_ref][0]
+    elif rel_ref in meta["active_rel_by_alias"]:
+        resolved_target = meta["active_rel_by_alias"][rel_ref][0]
+    elif rel_ref in meta["subtables"]:
+        resolved_target = meta["subtables"][rel_ref]
+    elif rel_ref in meta["subtable_by_alias"]:
+        resolved_target = meta["subtable_by_alias"][rel_ref]
+    elif rel_ref in meta["reverse_rels"]:
+        resolved_target = meta["reverse_rels"][rel_ref]
+        is_reverse_dep = True
+    elif target_hint and target_hint in bi_srcs and target_hint not in active_targets and target_hint not in subtable_targets:
+        resolved_target = target_hint
+        is_reverse_dep = True
+    elif rel_ref and rel_ref in bi_srcs and rel_ref not in active_targets and rel_ref not in subtable_targets:
+        resolved_target = rel_ref
+        is_reverse_dep = True
+    elif target_hint:
+        resolved_target = target_hint
+    elif bi_srcs and rel_ref not in active_targets and rel_ref not in subtable_targets:
+        for bsrc in sorted(bi_srcs):
+            if bsrc not in active_targets and bsrc not in subtable_targets:
+                related.add(bsrc)
+                if bsrc != name:
+                    deps.append((bsrc, "reverse", ""))
+                needs_pre_read = True
+
+    if resolved_target:
+        related.add(resolved_target)
+        if is_reverse_dep:
+            needs_pre_read = True
+            if resolved_target != name:
+                deps.append((resolved_target, "reverse", ""))
+        if resolved_target != name and src_field:
+            target_meta = meta_by_ws.get(resolved_target) or {}
+            if src_field in (target_meta.get("step2b_field_names") or set()):
+                deps.append((resolved_target, "field", src_field))
+                if not (target_meta.get("rel_layout_alias_by_name") or {}).get(src_field):
+                    needs_pre_read = True
+
+    return deps, needs_pre_read, related
+
+
+def _extract_step2b_field_records(
+    name: str,
+    ws: Dict[str, Any],
+    rel_layout: List[Dict[str, Any]],
+    meta: Dict[str, Any],
+    bi_sources_to: Dict[str, set],
+    meta_by_ws: Dict[str, Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """提取单张表所有 Step 2b 字段记录，供环路破环时做确定性字段二分（无环路径不调用）。"""
+    records_by_name: Dict[str, Dict[str, Any]] = {}
+    order: List[str] = []
+    layout_names = {
+        str(it.get("name") or "").strip()
+        for it in (rel_layout or [])
+        if isinstance(it, dict) and str(it.get("name") or "").strip()
+    }
+
+    def ensure_rec(fname: str, kind: str) -> Dict[str, Any]:
+        if fname not in records_by_name:
+            records_by_name[fname] = {
+                "name": fname,
+                "alias": "",
+                "kind": kind,
+                "is_bi": False,
+                "target_ws": "",
+                "rel_ref": "",
+                "source_field": "",
+                "expression": "",
+                "external_deps": [],
+                "needs_pre_read": False,
+                "raw_fields": [],
+                "layout_items": [],
+            }
+            order.append(fname)
+        return records_by_name[fname]
+
+    for f in (ws.get("fields") or ws.get("customFields") or []):
+        if not isinstance(f, str) or "(" not in f:
+            continue
+        fname = f.split("(", 1)[0].strip()
+        spec = f.split("(", 1)[1].rstrip(")").strip()
+        if not fname:
+            continue
+        if spec.startswith("Relation:"):
+            target, direction = _parse_relation_direction(spec[len("Relation:"):])
+            if not target or direction == "reverse":
+                continue
+            rec = ensure_rec(fname, "Relation")
+            rec["target_ws"] = target
+            rec["is_bi"] = (direction == "bi")
+            rec["raw_fields"].append(f)
+        elif spec.startswith("SubTable:"):
+            target = spec[len("SubTable:"):].split(":", 1)[0].strip()
+            if not target:
+                continue
+            rec = ensure_rec(fname, "SubTable")
+            rec["target_ws"] = target
+            rec["raw_fields"].append(f)
+        elif spec.startswith("Rollup:"):
+            segs = [s.strip() for s in spec[len("Rollup:"):].split(".") if s.strip()]
+            rel_ref = segs[0] if segs else ""
+            src_field = segs[1] if len(segs) >= 3 else (
+                segs[1] if len(segs) == 2 and segs[1].lower() not in ("count", "sum", "avg", "max", "min") else ""
+            )
+            rec = ensure_rec(fname, "Rollup")
+            rec["rel_ref"] = rel_ref
+            rec["source_field"] = src_field
+            rec["raw_fields"].append(f)
+        elif spec.startswith("Lookup:"):
+            segs = [s.strip() for s in spec[len("Lookup:"):].split(".") if s.strip()]
+            rel_ref = segs[0] if segs else ""
+            src_field = segs[1] if len(segs) >= 2 else ""
+            rec = ensure_rec(fname, "Lookup")
+            rec["rel_ref"] = rel_ref
+            rec["source_field"] = src_field
+            rec["raw_fields"].append(f)
+        elif spec in STEP2B_FORMULA_KINDS or spec.startswith(STEP2B_FORMULA_PREFIXES):
+            kind = spec.split(":", 1)[0].strip()
+            expr = spec.split(":", 1)[1].strip() if ":" in spec else ""
+            # 仅纳入在 relationLayout 中预留或依赖本表 Step 2b 字段的公式/文本组合
+            if fname in layout_names or any(
+                _expr_references_field(expr, s2b_n, (meta.get("rel_layout_alias_by_name") or {}).get(s2b_n, ""))
+                for s2b_n in (meta.get("step2b_field_names") or set())
+                if s2b_n != fname
+            ):
+                rec = ensure_rec(fname, kind)
+                rec["expression"] = expr
+                rec["raw_fields"].append(f)
+
+    for item in (rel_layout or []):
+        if not isinstance(item, dict):
+            continue
+        fname = str(item.get("name") or "").strip()
+        if not fname:
+            continue
+        ftype = str(item.get("fieldType") or item.get("type") or "").strip() or "Relation"
+        rec = ensure_rec(fname, ftype)
+        rec["layout_items"].append(item)
+        alias = str(item.get("alias") or "").strip()
+        if alias and not rec["alias"]:
+            rec["alias"] = alias
+        target = str(item.get("targetWorksheet") or "").strip()
+        if target and not rec["target_ws"]:
+            rec["target_ws"] = target
+        if ftype == "Relation" and item.get("bidirectional"):
+            rec["is_bi"] = True
+        if ftype in ("Rollup", "Lookup"):
+            rel_ref = str(item.get("relationField") or "").strip()
+            src_field = str(item.get("sourceFieldName") or item.get("sourceField") or "").strip()
+            if rel_ref and not rec["rel_ref"]:
+                rec["rel_ref"] = rel_ref
+            if src_field and not rec["source_field"]:
+                rec["source_field"] = src_field
+        elif ftype in STEP2B_FORMULA_KINDS:
+            expr = str(item.get("expression") or (item.get("config") or {}).get("expression") or "").strip()
+            if expr:
+                rec["expression"] = f"{rec['expression']} {expr}".strip()
+
+    # 计算每条记录的外部依赖与写前读取标志
+    for fname in order:
+        rec = records_by_name[fname]
+        kind = rec["kind"]
+        if kind == "SubTable" and rec["target_ws"] and rec["target_ws"] != name:
+            rec["external_deps"].append((rec["target_ws"], "subtable", ""))
+        elif kind in ("Rollup", "Lookup"):
+            dref = {
+                "kind": kind,
+                "name": fname,
+                "relRef": rec["rel_ref"],
+                "targetHint": rec["target_ws"],
+                "sourceField": rec["source_field"],
+            }
+            deps, pre_read, _ = _resolve_derived_dependency(dref, name, meta, bi_sources_to, meta_by_ws)
+            rec["external_deps"].extend(deps)
+            rec["needs_pre_read"] = pre_read
+
+    return [records_by_name[fname] for fname in order]
+
+
+def _try_split_cycle_worksheet(
+    node_id: str,
+    table_name: str,
+    records: List[Dict[str, Any]],
+    remaining_ids: set,
+    nodes: Dict[str, Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    """尝试把环路中的整表或尾段按字段拆分为 part1（不依赖未就绪节点）和 part2（依赖环内未就绪节点 + 本表依赖闭包）。"""
+    if len(records) < 2:
+        return None
+    remaining_ws = {nodes[nid]["ws_name"] for nid in remaining_ids if nodes[nid]["ws_name"] != table_name}
+    part2_names: set = set()
+
+    # 1. 种子：直接依赖 remaining 中其他表的字段进入 part2
+    for rec in records:
+        if any(dep_ws in remaining_ws for dep_ws, _, _ in rec["external_deps"]):
+            part2_names.add(rec["name"])
+
+    if not part2_names:
+        return None
+
+    # 2. 传递闭包：本表引用了 part2 字段的 Formula/DateFormula/FunctionFormula/Concatenate 或 Lookup/Rollup 一并进 part2
+    rec_by_name = {r["name"]: r for r in records}
+    changed = True
+    while changed:
+        changed = False
+        p2_refs = []
+        for pname in part2_names:
+            prec = rec_by_name[pname]
+            p2_refs.append((prec["name"], prec["alias"]))
+        p2_tokens = {tok for pair in p2_refs for tok in pair if tok}
+        for rec in records:
+            if rec["name"] in part2_names:
+                continue
+            if rec["kind"] in ("Lookup", "Rollup") and rec["rel_ref"] in p2_tokens:
+                part2_names.add(rec["name"])
+                changed = True
+                continue
+            if rec["kind"] in STEP2B_FORMULA_KINDS and rec["expression"]:
+                if any(_expr_references_field(rec["expression"], pn, pa) for pn, pa in p2_refs):
+                    part2_names.add(rec["name"])
+                    changed = True
+
+    part1 = [r for r in records if r["name"] not in part2_names]
+    part2 = [r for r in records if r["name"] in part2_names]
+    if not part1 or not part2:
+        return None
+
+    # 计算 part1 能满足的下游能力（主动 :bi 目标集合 + 已创建字段名/别名集合）
+    p1_field_tokens: set = set()
+    p1_bi_targets: set = set()
+    for r in part1:
+        p1_field_tokens.add(r["name"])
+        if r["alias"]:
+            p1_field_tokens.add(r["alias"])
+        if r["kind"] == "Relation" and r["is_bi"] and r["target_ws"]:
+            p1_bi_targets.add(r["target_ws"])
+
+    # 评估对 remaining 中其他节点的依赖重连与解绑收益（按边粒度拆出已被 part1 满足的边）
+    rewire_to_p1: List[str] = []
+    rewire_to_p2: List[Tuple[str, List[Tuple[str, str]], List[Tuple[str, str]]]] = []
+    for nid in remaining_ids:
+        if nid == node_id:
+            continue
+        other = nodes[nid]
+        if node_id not in other["deps_nodes"]:
+            continue
+        edges = other["deps_detail"].get(node_id) or []
+        met_by_p1 = [
+            (dk, detail) for dk, detail in edges
+            if (dk == "reverse" and other["ws_name"] in p1_bi_targets)
+            or (dk == "field" and detail in p1_field_tokens)
+        ]
+        left_for_p2 = [e for e in edges if e not in met_by_p1]
+        if edges and not left_for_p2:
+            rewire_to_p1.append(nid)
+        else:
+            rewire_to_p2.append((nid, met_by_p1, left_for_p2))
+
+    immediate_ready_count = sum(
+        1 for nid in rewire_to_p1
+        if not ((nodes[nid]["deps_nodes"] - {node_id}) & remaining_ids)
+    )
+
+    return {
+        "node_id": node_id,
+        "table": table_name,
+        "part1": part1,
+        "part2": part2,
+        "rewire_to_p1": rewire_to_p1,
+        "rewire_to_p2": rewire_to_p2,
+        "immediate_ready_count": immediate_ready_count,
+        "unblocks_count": len(rewire_to_p1),
+    }
+
+
+def _resolve_relation_default_deps(
+    rel_defaults: List[Dict[str, Any]],
+    name: str,
+    meta: Dict[str, Any],
+    bi_sources_to: Dict[str, set],
+    meta_by_ws: Dict[str, Dict[str, Any]],
+) -> Tuple[List[Tuple[str, str, str]], bool, set]:
+    """解析本表 relationDefaults 中 source=='relation' 项的跨表依赖、写前读需求及相关目标表集合。"""
+    deps: List[Tuple[str, str, str]] = []
+    needs_pre_read = False
+    related: set = set()
+    for entry in rel_defaults or []:
+        if not isinstance(entry, dict):
+            continue
+        dv_list = entry.get("defaultValue")
+        if not isinstance(dv_list, list):
+            continue
+        for dv in dv_list:
+            if not isinstance(dv, dict) or dv.get("source") != "relation":
+                continue
+            rel_ref = str(dv.get("relationField") or "").strip()
+            src_field = str(dv.get("field") or "").strip()
+            dref = {"kind": "Lookup", "name": str(entry.get("field") or ""), "relRef": rel_ref, "targetHint": "", "sourceField": src_field}
+            d_edges, d_pre_read, d_related = _resolve_derived_dependency(dref, name, meta, bi_sources_to, meta_by_ws)
+            related.update(d_related)
+            if d_pre_read:
+                needs_pre_read = True
+            for edge in d_edges:
+                if edge not in deps:
+                    deps.append(edge)
+    return deps, needs_pre_read, related
+
+
 def plan_step2b_waves(
     pending_items: List[Dict[str, Any]],
     all_ws_by_name: Dict[str, Dict[str, Any]],
     rel_layout_by_ws: Dict[str, Any],
+    rel_defaults_by_ws: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     """
     为 Step 2b 待处理工作表构建确定性有向依赖图并自动分波（Wave 1 / Wave 2 / ...）：
-    1. 反向关联依赖（:bi -> 反向 Rollup/Lookup）：从表先建 :bi，主表下一波写前 1 次 get_worksheet_structure 取反向关联 ID；
-    2. 跨表二次衍生依赖（目标表 Step 2b 新建的 Rollup/Lookup/Formula -> 本表 Rollup/Lookup）：目标表先于引用表；
-    3. 主子表列依赖（子表 Step 2b 关联列 -> 父表 SubTable）：子表先于父表；
-    4. 环路自动破环保护，保证绝不死锁。
+    1. 默认按表分波（1 表 1 批，80% 无环应用 Subagent 数量最少、Token 最省）：
+       - 反向关联依赖（:bi -> 反向 Rollup/Lookup）：从表先建 :bi，主表下一波写前 1 次 get_worksheet_structure 取反向关联 ID；
+       - 跨表二次衍生依赖（目标表 Step 2b 新建的 Rollup/Lookup/Formula -> 本表 Rollup/Lookup）：目标表先于引用表；
+       - 主子表列依赖（子表 Step 2b 关联列 -> 父表 SubTable）：子表先于父表；
+    2. 仅当检测到真实表级环路时，自动挑选最优破环表按字段确定性拆为 p1/p2 两段，并精准重连下游依赖边；
+    3. 极端纯字段级闭环仍保留兜底破环保护，保证绝不死锁。
     """
     if not pending_items:
         return []
@@ -589,8 +949,17 @@ def plan_step2b_waves(
                 bi_sources_to.setdefault(target_ws, set()).add(src_name)
 
     deps_on: Dict[str, set] = {n: set() for n in pending_order}
+    deps_detail: Dict[str, Dict[str, List[Tuple[str, str]]]] = {n: {} for n in pending_order}
     needs_pre_read: Dict[str, bool] = {n: False for n in pending_order}
     related_ws_map: Dict[str, set] = {n: {n} for n in pending_order}
+
+    def add_dep_edge(src: str, target: str, dep_kind: str, detail: str = "") -> None:
+        if target in pending_set and target != src:
+            deps_on[src].add(target)
+            edge = (dep_kind, detail)
+            lst = deps_detail[src].setdefault(target, [])
+            if edge not in lst:
+                lst.append(edge)
 
     for name in pending_order:
         ws = item_by_name[name]["ws"]
@@ -613,97 +982,316 @@ def plan_step2b_waves(
         if ws.get("worksheetType") == "subTable":
             parent_ws = ws.get("parentWorksheet")
             if isinstance(parent_ws, str) and parent_ws in pending_set and parent_ws != name:
-                deps_on[parent_ws].add(name)
+                add_dep_edge(parent_ws, name, "subtable", "")
                 related_ws_map[parent_ws].add(name)
         for sub_target in set(meta["subtables"].values()) | set(meta["subtable_by_alias"].values()):
             if sub_target in pending_set and sub_target != name:
-                deps_on[name].add(sub_target)
+                add_dep_edge(name, sub_target, "subtable", "")
 
         # 依赖类 1 & 2：解析每条 Rollup / Lookup 的真实前置依赖
-        active_targets = {t for t, _ in list(meta["active_rels"].values()) + list(meta["active_rel_by_alias"].values())}
-        subtable_targets = set(meta["subtables"].values()) | set(meta["subtable_by_alias"].values())
-        bi_srcs = bi_sources_to.get(name, set())
-
         for dref in meta["derived_refs"]:
-            rel_ref = dref.get("relRef", "")
-            target_hint = dref.get("targetHint", "")
-            src_field = dref.get("sourceField", "")
-            resolved_target = ""
-            is_reverse_dep = False
+            d_edges, d_pre_read, d_related = _resolve_derived_dependency(dref, name, meta, bi_sources_to, meta_by_ws)
+            related_ws_map[name].update(d_related)
+            if d_pre_read:
+                needs_pre_read[name] = True
+            for tgt, dkind, detail in d_edges:
+                add_dep_edge(name, tgt, dkind, detail)
 
-            if rel_ref in meta["active_rels"]:
-                resolved_target = meta["active_rels"][rel_ref][0]
-            elif rel_ref in meta["active_rel_by_alias"]:
-                resolved_target = meta["active_rel_by_alias"][rel_ref][0]
-            elif rel_ref in meta["subtables"]:
-                resolved_target = meta["subtables"][rel_ref]
-            elif rel_ref in meta["subtable_by_alias"]:
-                resolved_target = meta["subtable_by_alias"][rel_ref]
-            elif rel_ref in meta["reverse_rels"]:
-                resolved_target = meta["reverse_rels"][rel_ref]
-                is_reverse_dep = True
-            elif target_hint and target_hint in bi_srcs and target_hint not in active_targets and target_hint not in subtable_targets:
-                resolved_target = target_hint
-                is_reverse_dep = True
-            elif rel_ref and rel_ref in bi_srcs and rel_ref not in active_targets and rel_ref not in subtable_targets:
-                resolved_target = rel_ref
-                is_reverse_dep = True
-            elif target_hint:
-                resolved_target = target_hint
-            elif bi_srcs and rel_ref not in active_targets and rel_ref not in subtable_targets:
-                # 未能定位到本表任何主动关联/子表，且存在指向本表的 :bi 源表
-                for bsrc in sorted(bi_srcs):
-                    if bsrc not in active_targets and bsrc not in subtable_targets:
-                        related_ws_map[name].add(bsrc)
-                        if bsrc in pending_set and bsrc != name:
-                            deps_on[name].add(bsrc)
-                        needs_pre_read[name] = True
+        # 跨表动态默认值（relationDefaults）：引入关联目标表上下文，并在引用反向关联或目标表 Step 2b 衍生字段时加依赖边
+        ws_rel_defaults = item_by_name[name].get("rel_defaults")
+        if ws_rel_defaults is None and isinstance(rel_defaults_by_ws, dict):
+            ws_rel_defaults = rel_defaults_by_ws.get(name) or []
+        if isinstance(ws_rel_defaults, list) and ws_rel_defaults:
+            rd_edges, rd_pre_read, rd_related = _resolve_relation_default_deps(
+                ws_rel_defaults, name, meta, bi_sources_to, meta_by_ws
+            )
+            related_ws_map[name].update(rd_related)
+            if rd_pre_read:
+                needs_pre_read[name] = True
+            for tgt, dkind, detail in rd_edges:
+                add_dep_edge(name, tgt, dkind, detail)
 
-            if resolved_target:
-                related_ws_map[name].add(resolved_target)
-                if is_reverse_dep:
-                    needs_pre_read[name] = True
-                    if resolved_target in pending_set and resolved_target != name:
-                        deps_on[name].add(resolved_target)
-                # 依赖类 2：目标表在 Step 2b 待新建该源字段（如二次 Rollup / Lookup）
-                if resolved_target in pending_set and resolved_target != name and src_field:
-                    target_meta = meta_by_ws.get(resolved_target) or {}
-                    if src_field in (target_meta.get("step2b_field_names") or set()):
-                        deps_on[name].add(resolved_target)
-                        # 若目标表 relationLayout 未预留该字段的明确 alias，开放 write 前只读 1 次结构取真实字段 ID
-                        if not (target_meta.get("rel_layout_alias_by_name") or {}).get(src_field):
-                            needs_pre_read[name] = True
+    # 构建节点级调度图（默认每表 1 节点；仅遇环路时把破环表局部拆为 p1/p2 两节点）
+    nodes: Dict[str, Dict[str, Any]] = {}
+    node_order: List[str] = []
+    for idx, name in enumerate(pending_order):
+        nodes[name] = {
+            "node_id": name,
+            "ws_name": name,
+            "task_id": f"step2b-rel-{normalize_name(name)}",
+            "base_item": item_by_name[name],
+            "deps_nodes": set(deps_on[name]),
+            "deps_detail": {k: list(v) for k, v in deps_detail[name].items()},
+            "needs_pre_read": bool(needs_pre_read[name]),
+            "related_ws": set(related_ws_map[name]),
+            "part_index": None,
+            "total_parts": None,
+            "is_last_part": True,
+            "deferred_fields": [],
+            "completed_prev_fields": [],
+            "orig_order": (idx, 0),
+        }
+        node_order.append(name)
 
-    # 拓扑分层分波（带环路自动破环保护）
     assigned_wave: Dict[str, int] = {}
-    effective_deps: Dict[str, List[str]] = {}
-    remaining = list(pending_order)
+    effective_dep_nodes: Dict[str, List[str]] = {}
+    remaining = list(node_order)
     wave_num = 1
+
     while remaining:
-        ready = [n for n in remaining if deps_on[n].issubset(assigned_wave.keys())]
+        ready = [nid for nid in remaining if nodes[nid]["deps_nodes"].issubset(assigned_wave.keys())]
         if not ready:
-            # 检测到环路：取 Plan 顺序最前的一项破环，仅保留已就绪依赖
-            breaker = remaining[0]
-            deps_on[breaker] = deps_on[breaker] & set(assigned_wave.keys())
-            ready = [breaker]
-        for n in ready:
-            assigned_wave[n] = wave_num
-            ordered_deps = [d for d in pending_order if d in deps_on[n]]
-            effective_deps[n] = ordered_deps
-            remaining.remove(n)
+            # 检测到真实表级环路：尝试挑选最优节点（整表或当前尾段，单表最多拆 3 段）按字段局部二分
+            remaining_set = set(remaining)
+            best_split: Optional[Dict[str, Any]] = None
+            best_score: Optional[Tuple[int, int, int, int]] = None
+            for nid in remaining:
+                nd = nodes[nid]
+                if not nd["is_last_part"] or (nd["total_parts"] or 1) >= 3:
+                    continue
+                tname = nd["ws_name"]
+                recs = _extract_step2b_field_records(
+                    tname,
+                    nd["base_item"]["ws"],
+                    nd["base_item"].get("rel_layout") or [],
+                    meta_by_ws[tname],
+                    bi_sources_to,
+                    meta_by_ws,
+                )
+                cand = _try_split_cycle_worksheet(nid, tname, recs, remaining_set, nodes)
+                if cand is None:
+                    continue
+                score = (-cand["immediate_ready_count"], -cand["unblocks_count"], len(cand["part2"]), nd["orig_order"][0])
+                if best_score is None or score < best_score:
+                    best_score = score
+                    best_split = cand
+
+            if best_split is not None:
+                orig_id = best_split["node_id"]
+                tname = best_split["table"]
+                orig = nodes[orig_id]
+                part1 = best_split["part1"]
+                part2 = best_split["part2"]
+                p1_idx = orig["part_index"] or 1
+                p2_idx = p1_idx + 1
+                new_total = p2_idx
+                p1_id = f"{tname}::p{p1_idx}"
+                p2_id = f"{tname}::p{p2_idx}"
+                p1_names = [r["name"] for r in part1]
+                p2_names = [r["name"] for r in part2]
+                p1_name_set = set(p1_names)
+                p2_name_set = set(p2_names)
+                prev_completed = list(orig["completed_prev_fields"])
+
+                # 按就绪程度拆分 relationDefaults：关联已在本段/前段且不依赖 remaining 未就绪表的默认值直接归入 p1，其余留给尾段
+                orig_rel_defaults = list(orig["base_item"].get("rel_defaults") or [])
+                p1_rel_tokens = {r["name"] for r in part1} | {r["alias"] for r in part1 if r["alias"]} | set(prev_completed)
+                p2_rel_tokens = {r["name"] for r in part2} | {r["alias"] for r in part2 if r["alias"]}
+                other_remaining_ws = {nodes[n]["ws_name"] for n in remaining_set if nodes[n]["ws_name"] != tname}
+                p1_rel_defaults: List[Dict[str, Any]] = []
+                p2_rel_defaults: List[Dict[str, Any]] = []
+                for rd_entry in orig_rel_defaults:
+                    rd_edges, _, _ = _resolve_relation_default_deps(
+                        [rd_entry], tname, meta_by_ws[tname], bi_sources_to, meta_by_ws
+                    )
+                    dv_rels = [
+                        str(dv.get("relationField") or "").strip()
+                        for dv in (rd_entry.get("defaultValue") or [])
+                        if isinstance(dv, dict) and dv.get("source") == "relation"
+                    ]
+                    needs_p2_rel = any(rr in p2_rel_tokens for rr in dv_rels)
+                    needs_remaining_ws = any(dep_ws in other_remaining_ws for dep_ws, _, _ in rd_edges)
+                    if not needs_p2_rel and not needs_remaining_ws and (not dv_rels or any(rr in p1_rel_tokens for rr in dv_rels)):
+                        p1_rel_defaults.append(rd_entry)
+                    else:
+                        p2_rel_defaults.append(rd_entry)
+
+                def _slice_ws_and_item(
+                    part_recs: List[Dict[str, Any]],
+                    exclude_names: set,
+                    keep_reqs: bool,
+                    part_defaults: List[Dict[str, Any]],
+                ) -> Dict[str, Any]:
+                    base_ws = orig["base_item"]["ws"]
+                    ws_copy = dict(base_ws)
+                    f_key = "fields" if "fields" in base_ws else ("customFields" if "customFields" in base_ws else "fields")
+                    orig_fields = list(base_ws.get(f_key) or [])
+                    filtered_ws_fields = []
+                    for f in orig_fields:
+                        if isinstance(f, str) and "(" in f and f.split("(", 1)[0].strip() in exclude_names:
+                            continue
+                        filtered_ws_fields.append(f)
+                    ws_copy[f_key] = filtered_ws_fields
+                    if not keep_reqs:
+                        ws_copy["requirements"] = []
+                    part_raw_fields: List[str] = []
+                    part_rel_layout: List[Dict[str, Any]] = []
+                    for r in part_recs:
+                        part_raw_fields.extend(r["raw_fields"])
+                        part_rel_layout.extend(r["layout_items"])
+                    return {
+                        "name": tname,
+                        "ws": ws_copy,
+                        "fields": part_raw_fields,
+                        "rel_layout": part_rel_layout,
+                        "rel_defaults": part_defaults,
+                    }
+
+                def _resolve_target_nid(dep_ws: str) -> Optional[str]:
+                    if dep_ws in nodes:
+                        return dep_ws
+                    for k in (3, 2, 1):
+                        cand_id = f"{dep_ws}::p{k}"
+                        if cand_id in nodes:
+                            return cand_id
+                    return None
+
+                def _resolve_part_deps(part_recs: List[Dict[str, Any]], part_defaults: List[Dict[str, Any]]) -> Tuple[set, Dict[str, List[Tuple[str, str]]], bool]:
+                    p_deps: set = set()
+                    p_detail: Dict[str, List[Tuple[str, str]]] = {}
+                    p_pre_read = any(r["needs_pre_read"] for r in part_recs)
+                    for r in part_recs:
+                        for dep_ws, dkind, detail in r["external_deps"]:
+                            if dep_ws == tname:
+                                continue
+                            target_nid = _resolve_target_nid(dep_ws)
+                            if not target_nid:
+                                continue
+                            p_deps.add(target_nid)
+                            edge = (dkind, detail)
+                            lst = p_detail.setdefault(target_nid, [])
+                            if edge not in lst:
+                                lst.append(edge)
+                    if part_defaults:
+                        rd_edges, rd_pre_read, _ = _resolve_relation_default_deps(
+                            part_defaults, tname, meta_by_ws[tname], bi_sources_to, meta_by_ws
+                        )
+                        if rd_pre_read:
+                            p_pre_read = True
+                        for dep_ws, dkind, detail in rd_edges:
+                            if dep_ws == tname:
+                                continue
+                            target_nid = _resolve_target_nid(dep_ws)
+                            if target_nid:
+                                p_deps.add(target_nid)
+                                edge = (dkind, detail)
+                                lst = p_detail.setdefault(target_nid, [])
+                                if edge not in lst:
+                                    lst.append(edge)
+                    return p_deps, p_detail, p_pre_read
+
+                p1_deps, p1_detail, p1_pre_read = _resolve_part_deps(part1, p1_rel_defaults)
+                # 保留原节点对本表前序分段（如 p1）的已就绪依赖
+                for prev_dep in orig["deps_nodes"]:
+                    if prev_dep in assigned_wave and nodes.get(prev_dep, {}).get("ws_name") == tname:
+                        p1_deps.add(prev_dep)
+                p2_deps, p2_detail, p2_pre_read = _resolve_part_deps(part2, p2_rel_defaults)
+                p2_deps.add(p1_id)
+                # 若 part2 引用了 part1 中未预留明确 alias 的 Relation/SubTable，则开放写前 1 次结构读取
+                p1_no_alias_names = {r["name"] for r in part1 if r["kind"] in ("Relation", "SubTable") and not r["alias"]}
+                if any(r["kind"] in ("Lookup", "Rollup") and r["rel_ref"] in p1_no_alias_names for r in part2):
+                    p2_pre_read = True
+
+                # 同步更新本表已入波的前序分段 total_parts
+                for exist_nd in nodes.values():
+                    if exist_nd["ws_name"] == tname and exist_nd["node_id"] != orig_id and exist_nd["part_index"] is not None:
+                        exist_nd["total_parts"] = new_total
+
+                # 先移除原节点再写入新段（当 orig_id == p1_id 如拆 p2 -> p2+p3 时安全覆写）
+                del nodes[orig_id]
+                nodes[p1_id] = {
+                    "node_id": p1_id,
+                    "ws_name": tname,
+                    "task_id": f"step2b-rel-{normalize_name(tname)}-p{p1_idx}",
+                    "base_item": _slice_ws_and_item(part1, p2_name_set, keep_reqs=False, part_defaults=p1_rel_defaults),
+                    "deps_nodes": p1_deps & set(assigned_wave.keys()),
+                    "deps_detail": p1_detail,
+                    "needs_pre_read": p1_pre_read,
+                    "related_ws": set(orig["related_ws"]),
+                    "part_index": p1_idx,
+                    "total_parts": new_total,
+                    "is_last_part": False,
+                    "deferred_fields": p2_names,
+                    "completed_prev_fields": prev_completed,
+                    "orig_order": (orig["orig_order"][0], p1_idx),
+                }
+                nodes[p2_id] = {
+                    "node_id": p2_id,
+                    "ws_name": tname,
+                    "task_id": f"step2b-rel-{normalize_name(tname)}-p{p2_idx}",
+                    "base_item": _slice_ws_and_item(part2, p1_name_set, keep_reqs=True, part_defaults=p2_rel_defaults),
+                    "deps_nodes": p2_deps,
+                    "deps_detail": p2_detail,
+                    "needs_pre_read": p2_pre_read,
+                    "related_ws": set(orig["related_ws"]),
+                    "part_index": p2_idx,
+                    "total_parts": new_total,
+                    "is_last_part": True,
+                    "deferred_fields": [],
+                    "completed_prev_fields": prev_completed + p1_names,
+                    "orig_order": (orig["orig_order"][0], p2_idx),
+                }
+
+                # 重连 remaining 中其他节点对原节点 orig_id 的依赖边（已被 p1 满足的边归 p1，剩余边归 p2）
+                for other_nid in best_split["rewire_to_p1"]:
+                    ond = nodes[other_nid]
+                    ond["deps_nodes"].discard(orig_id)
+                    ond["deps_nodes"].add(p1_id)
+                    if orig_id in ond["deps_detail"]:
+                        ond["deps_detail"][p1_id] = ond["deps_detail"].pop(orig_id)
+                for other_nid, met_by_p1, left_for_p2 in best_split["rewire_to_p2"]:
+                    ond = nodes[other_nid]
+                    ond["deps_nodes"].discard(orig_id)
+                    ond["deps_detail"].pop(orig_id, None)
+                    if met_by_p1:
+                        ond["deps_nodes"].add(p1_id)
+                        ond["deps_detail"][p1_id] = list(met_by_p1)
+                    ond["deps_nodes"].add(p2_id)
+                    ond["deps_detail"][p2_id] = list(left_for_p2)
+
+                # 用 [p1_id, p2_id] 替换 remaining 和 node_order 中的 orig_id
+                rem_idx = remaining.index(orig_id)
+                remaining[rem_idx:rem_idx + 1] = [p1_id, p2_id]
+                ord_idx = node_order.index(orig_id)
+                node_order[ord_idx:ord_idx + 1] = [p1_id, p2_id]
+                ready = [p1_id]
+            else:
+                # 兜底保护（极端纯字段闭环）：取当前顺序最前的一项破环，仅保留已就绪依赖
+                breaker = remaining[0]
+                nodes[breaker]["deps_nodes"] = nodes[breaker]["deps_nodes"] & set(assigned_wave.keys())
+                ready = [breaker]
+
+        for nid in ready:
+            assigned_wave[nid] = wave_num
+            ordered_deps = [d for d in node_order if d in nodes[nid]["deps_nodes"]]
+            effective_dep_nodes[nid] = ordered_deps
+            remaining.remove(nid)
         wave_num += 1
 
-    # 按 (waveIndex, Plan 原始顺序) 输出
-    planned_names = sorted(pending_order, key=lambda n: (assigned_wave[n], pending_order.index(n)))
+    # 按 (waveIndex, Plan 原始顺序, 分段序号) 输出
+    planned_ids = sorted(node_order, key=lambda nid: (assigned_wave[nid], nodes[nid]["orig_order"]))
     result: List[Dict[str, Any]] = []
-    for n in planned_names:
-        item = dict(item_by_name[n])
-        dep_ws = effective_deps[n]
-        item["waveIndex"] = assigned_wave[n]
+    for nid in planned_ids:
+        nd = nodes[nid]
+        item = dict(nd["base_item"])
+        dep_nids = effective_dep_nodes[nid]
+        dep_ws: List[str] = []
+        for dn in dep_nids:
+            dws = nodes[dn]["ws_name"]
+            if dws not in dep_ws:
+                dep_ws.append(dws)
+        item["taskId"] = nd["task_id"]
+        item["waveIndex"] = assigned_wave[nid]
         item["dependsOnWorksheets"] = dep_ws
-        item["dependsOnTaskIds"] = [f"step2b-rel-{normalize_name(d)}" for d in dep_ws]
-        item["needsPreReadStructure"] = bool(needs_pre_read[n])
-        item["relatedWorksheets"] = related_ws_map[n]
+        item["dependsOnTaskIds"] = [nodes[dn]["task_id"] for dn in dep_nids]
+        item["needsPreReadStructure"] = bool(nd["needs_pre_read"])
+        item["relatedWorksheets"] = nd["related_ws"]
+        if nd["part_index"] is not None:
+            item["partIndex"] = nd["part_index"]
+            item["totalParts"] = nd["total_parts"]
+            item["isLastPart"] = nd["is_last_part"]
+            item["deferredFields"] = nd["deferred_fields"]
+            item["completedInPrevPartFields"] = nd["completed_prev_fields"]
         result.append(item)
     return result
 
@@ -912,16 +1500,23 @@ def get_stage_tasks_definitions(app_dir: str, stage: str) -> List[Dict[str, Any]
     app_color = plan.get("appColor", "")
     app_reqs = plan.get("requirements", [])
     nav_groups = plan.get("navGroups") or plan.get("sections") or []
-    worksheets = plan.get("worksheets", [])
-    custom_pages = plan.get("customPages", [])
+    def _strip_entity_color(items: List[Any]) -> List[Any]:
+        return [
+            {k: v for k, v in item.items() if k != "color"} if isinstance(item, dict) else item
+            for item in items
+        ]
+
+    worksheets = _strip_entity_color(plan.get("worksheets", []))
+    custom_pages = _strip_entity_color(plan.get("customPages", []))
     roles = plan.get("roles", [])
-    ai_assistants = plan.get("aiAssistants") or plan.get("chatbots") or []
+    ai_assistants = _strip_entity_color(plan.get("aiAssistants") or plan.get("chatbots") or [])
     workflows = plan.get("workflows", [])
     action_workflows = extract_action_workflows(plan, context)
 
     ws_id_by_name = context.get("worksheetIdByName", {})
     sec_id_by_name = context.get("sectionIdByName", {})
     rel_layout_by_ws = context.get("relationLayoutByWorksheet", {})
+    rel_defaults_by_ws = context.get("relationDefaultsByWorksheet", {})
     ws_fields_preview = context.get("worksheetFieldsPreview", {})
     field_options_ctx = context.get("fieldOptionsContext", [])
     chatbot_id_by_name = context.get("chatbotIdByName", {})
@@ -1023,14 +1618,20 @@ def get_stage_tasks_definitions(app_dir: str, stage: str) -> List[Dict[str, Any]
                 continue
             name = ws.get("name", "")
             rel_layout = rel_layout_by_ws.get(name)
+            rel_defaults = rel_defaults_by_ws.get(name) if isinstance(rel_defaults_by_ws, dict) else None
             fields = ws.get("fields") or ws.get("customFields") or []
-            if not _worksheet_needs_step2b(ws, rel_layout if isinstance(rel_layout, list) else None):
+            if not _worksheet_needs_step2b(
+                ws,
+                rel_layout if isinstance(rel_layout, list) else None,
+                rel_defaults if isinstance(rel_defaults, list) else None,
+            ):
                 continue
             pending_rel_items.append({
                 "name": name,
                 "ws": ws,
                 "fields": fields,
                 "rel_layout": rel_layout or [],
+                "rel_defaults": rel_defaults if isinstance(rel_defaults, list) else [],
             })
 
         if has_legacy_group_state:
@@ -1101,19 +1702,23 @@ def get_stage_tasks_definitions(app_dir: str, stage: str) -> List[Dict[str, Any]
                     "desc": f"按预留行号逐表顺序补充跨表关联与衍生字段（第 {idx} 组：{joined_names}）",
                 })
         else:
-            planned_waves = plan_step2b_waves(pending_rel_items, all_ws_by_name, rel_layout_by_ws)
+            planned_waves = plan_step2b_waves(pending_rel_items, all_ws_by_name, rel_layout_by_ws, rel_defaults_by_ws)
             total_waves = max((it["waveIndex"] for it in planned_waves), default=0)
             for item in planned_waves:
                 name = item["name"]
+                task_id = item.get("taskId") or f"step2b-rel-{normalize_name(name)}"
                 ws = item["ws"]
                 fields = item["fields"]
                 rel_layout = item["rel_layout"]
+                rel_defaults = item.get("rel_defaults") or []
                 ws_reqs = ws.get("requirements") or []
                 wave_idx = item["waveIndex"]
                 dep_ws = item["dependsOnWorksheets"]
                 dep_task_ids = item["dependsOnTaskIds"]
                 needs_pre_read = item["needsPreReadStructure"]
                 rel_ws_set = item["relatedWorksheets"]
+                part_idx = item.get("partIndex")
+                total_parts = item.get("totalParts")
 
                 s2b_refs = ["references/hap-domain-worksheet-spec.md"]
                 s2b_tools = ["update_worksheet"]
@@ -1139,9 +1744,35 @@ def get_stage_tasks_definitions(app_dir: str, stage: str) -> List[Dict[str, Any]
                 )
 
                 wave_label = f"第{wave_idx}波/" if total_waves > 1 else ""
+                part_label = f"({part_idx}/{total_parts})" if part_idx and total_parts else ""
+                plan_slice: Dict[str, Any] = {
+                    "worksheetName": name,
+                    "worksheet": ws,
+                    "fields": fields,
+                    "relationLayout": rel_layout,
+                    "waveIndex": wave_idx,
+                    "totalWaves": total_waves,
+                    "dependsOnWorksheets": dep_ws,
+                    "needsPreReadStructure": needs_pre_read,
+                    "allWorksheetOrder": all_ws_order,
+                    "allRelationLayouts": sliced_rel_layouts,
+                    "requirements": ws_reqs,
+                    "appLanguage": app_lang,
+                }
+                if rel_defaults:
+                    plan_slice["relationDefaults"] = rel_defaults
+                if part_idx and total_parts:
+                    plan_slice["partIndex"] = part_idx
+                    plan_slice["totalParts"] = total_parts
+                    plan_slice["isLastPart"] = bool(item.get("isLastPart", part_idx == total_parts))
+                    if item.get("deferredFields"):
+                        plan_slice["deferredFields"] = item["deferredFields"]
+                    if item.get("completedInPrevPartFields"):
+                        plan_slice["completedInPrevPartFields"] = item["completedInPrevPartFields"]
+
                 tasks.append({
-                    "taskId": f"step2b-rel-{normalize_name(name)}",
-                    "taskName": f"[Step 2b] {wave_label}关联回填 - {name}",
+                    "taskId": task_id,
+                    "taskName": f"[Step 2b] {wave_label}关联回填{part_label} - {name}",
                     "step": "2b",
                     "waveIndex": wave_idx,
                     "dependsOnTaskIds": dep_task_ids,
@@ -1149,22 +1780,9 @@ def get_stage_tasks_definitions(app_dir: str, stage: str) -> List[Dict[str, Any]
                     "stepFile": "build/steps/2b_create_relations.md",
                     "references": s2b_refs,
                     "allowedTools": s2b_tools,
-                    "receiptPath": f".build/receipts/step2b-rel-{normalize_name(name)}.json",
-                    "taskContextPath": f".build/task-context/step2b-rel-{normalize_name(name)}.json",
-                    "planSlice": {
-                        "worksheetName": name,
-                        "worksheet": ws,
-                        "fields": fields,
-                        "relationLayout": rel_layout,
-                        "waveIndex": wave_idx,
-                        "totalWaves": total_waves,
-                        "dependsOnWorksheets": dep_ws,
-                        "needsPreReadStructure": needs_pre_read,
-                        "allWorksheetOrder": all_ws_order,
-                        "allRelationLayouts": sliced_rel_layouts,
-                        "requirements": ws_reqs,
-                        "appLanguage": app_lang,
-                    },
+                    "receiptPath": f".build/receipts/{task_id}.json",
+                    "taskContextPath": f".build/task-context/{task_id}.json",
+                    "planSlice": plan_slice,
                     "contextSlice": {
                         "appId": app_id,
                         "worksheetId": ws_id_by_name.get(name, ""),
@@ -1173,7 +1791,7 @@ def get_stage_tasks_definitions(app_dir: str, stage: str) -> List[Dict[str, Any]
                         "fieldOptionsContext": sliced_options_ctx,
                     },
                     "worksheetContextSlice": {},
-                    "desc": f"按预留行号补充跨表关联与衍生字段: {name}",
+                    "desc": f"按预留行号补充跨表关联与衍生字段{part_label}: {name}",
                 })
 
     # 阶段 2: Step 3 单表全要素 + Step 4a AI 助手实体创建
@@ -1615,25 +2233,26 @@ def get_stage_tasks_definitions(app_dir: str, stage: str) -> List[Dict[str, Any]
                 "desc": "按示例规范填报业务记录，匹配并回读适用的示例成员与附件",
             })
 
-    # 保留目标工作表的完整设计，避免各步骤自行挑字段时丢失后续用途。
+    # 保留目标工作表的完整设计，避免各步骤自行挑字段时丢失后续用途（Step 2b 环路分段任务保留本段裁剪视图）。
     worksheets_by_name = {w.get("name"): w for w in worksheets if isinstance(w, dict)}
     for task in tasks:
-        if task["target"].get("type") == "worksheet":
+        if task["target"].get("type") == "worksheet" and not (task.get("planSlice") or {}).get("totalParts"):
             worksheet = worksheets_by_name.get(task["target"].get("name"))
             if worksheet is not None:
                 task["planSlice"]["worksheet"] = worksheet
+    orig_task_ids = [t["taskId"] for t in tasks]
     tasks = unique_task_paths(app_dir, tasks)
-    # 若发生罕见任务文件名冲突重命名，按工作表名同步修正 Step 2b 波次依赖 ID
-    step2b_id_by_ws = {
-        t["target"].get("name"): t["taskId"]
-        for t in tasks
-        if t.get("step") == "2b" and t.get("target", {}).get("type") == "worksheet" and t["target"].get("name")
+    # 若发生罕见任务文件名冲突重命名，按原 taskId -> 新 taskId 精准同步 Step 2b 波次依赖 ID（兼容同表 p1/p2 分段）
+    renamed_id_map = {
+        old_id: t["taskId"]
+        for old_id, t in zip(orig_task_ids, tasks)
+        if old_id != t["taskId"]
     }
-    if step2b_id_by_ws:
+    if renamed_id_map:
         for t in tasks:
-            dep_ws = (t.get("planSlice") or {}).get("dependsOnWorksheets")
-            if isinstance(dep_ws, list) and dep_ws:
-                t["dependsOnTaskIds"] = [step2b_id_by_ws[w] for w in dep_ws if w in step2b_id_by_ws]
+            dep_ids = t.get("dependsOnTaskIds")
+            if isinstance(dep_ids, list) and dep_ids:
+                t["dependsOnTaskIds"] = [renamed_id_map.get(d, d) for d in dep_ids]
     return tasks
 
 
@@ -2854,7 +3473,7 @@ def cmd_finalize(app_dir: str, progress: Optional[str]) -> Dict[str, Any]:
                     if ws_name and ws_id:
                         ws_id_by_name[ws_name] = ws_id
                     ws_def = plan_ws_by_name.get(ws_name, {})
-                    if _worksheet_needs_step2b(ws_def, outputs.get("relationLayout")):
+                    if _worksheet_needs_step2b(ws_def, outputs.get("relationLayout"), outputs.get("relationDefaults")):
                         has_relation_todo = True
             next_progress = "step2a_done" if has_relation_todo else "worksheets_created"
             stage_outputs["worksheetsCreated"] = len(ws_id_by_name)
@@ -3018,6 +3637,7 @@ def cmd_advance(app_dir: str) -> Dict[str, Any]:
     elif stage in ("app_created", "step2a"):
         ws_id_by_name = context.get("worksheetIdByName", {})
         rel_layout_by_ws = context.get("relationLayoutByWorksheet", {})
+        rel_defaults_by_ws = context.get("relationDefaultsByWorksheet", {})
         ws_fields_preview = context.get("worksheetFieldsPreview", {})
         rule_notes_by_sheet = {}
         field_options_ctx = list(context.get("fieldOptionsContext", []))
@@ -3035,6 +3655,8 @@ def cmd_advance(app_dir: str) -> Dict[str, Any]:
                     ws_id_by_name[ws_name] = ws_id
                 if ws_name and isinstance(outputs.get("relationLayout"), list) and outputs["relationLayout"]:
                     rel_layout_by_ws[ws_name] = outputs["relationLayout"]
+                if ws_name and isinstance(outputs.get("relationDefaults"), list) and outputs["relationDefaults"]:
+                    rel_defaults_by_ws[ws_name] = outputs["relationDefaults"]
                 if ws_name and isinstance(outputs.get("fields"), list):
                     ws_fields_preview[ws_name] = [
                         {"name": f.get("name"), "id": f.get("id"), "alias": f.get("alias"), "type": f.get("type")}
@@ -3056,6 +3678,8 @@ def cmd_advance(app_dir: str) -> Dict[str, Any]:
         context["worksheetIdByName"] = ws_id_by_name
         context["businessRulesNotesByWorksheet"] = rule_notes_by_sheet
         context["relationLayoutByWorksheet"] = rel_layout_by_ws
+        if rel_defaults_by_ws:
+            context["relationDefaultsByWorksheet"] = rel_defaults_by_ws
         context["worksheetFieldsPreview"] = ws_fields_preview
         context["fieldOptionsContext"] = field_options_ctx
 
