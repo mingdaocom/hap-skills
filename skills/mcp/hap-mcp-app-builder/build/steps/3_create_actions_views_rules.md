@@ -51,7 +51,7 @@
 
 ## 三、 本地回执落盘契约
 
-在 `outputs.ruleChecks` 逐项记录业务条件（`intent`，承接已有意图时沿用原文；若将一条复合意图拆分为多条规则，可在 `sourceIntent` 保留原句）和依据。由规则落实时记录规则详情中的 `ruleId/name/enabled/conditions`，汇总 ID 到 `ruleIds`；由字段配置承接或业务允许时记录 `fieldId/property/value`（如实际的 required、type、config，多字段逐条拆分或使用 `fieldIds` 数组）及 `reason`。零规则也须交代适用性；核心条件尚未落实时保留缺项续作。
+在 `outputs.ruleChecks` 逐项记录业务条件（`intent`，承接已有意图时沿用原文；若将一条复合意图拆分为多条规则，可在 `sourceIntent` 保留原句）和依据。由规则落实时记录规则详情中的 `ruleId/name/enabled/conditions`，汇总 ID 到 `ruleIds`；由字段配置承接或业务允许时不要写空的 `ruleId: ""`，改为记录 `fieldId/property/value`（如 `required`、`defaultValue` 或嵌套点路径 `config.userPermission`、`config.expression`，多字段逐条拆分或使用 `fieldIds` 数组）及 `reason`。零规则也须交代适用性；核心条件尚未落实时保留缺项续作。
 
 确认 `.build/artifacts/worksheet-{worksheetId}.json` 已写入后，将视图、动作（含 `processId`）及规则计数写入 `receiptPath`（`.build/receipts/step3-view-act-{name}.json`）：
 

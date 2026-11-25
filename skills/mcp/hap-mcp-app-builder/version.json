@@ -1,9 +1,9 @@
 {
   "name": "hap-mcp-app-builder",
-  "version": "2.1.2",
+  "version": "2.1.3",
   "schemaVersion": 1,
   "minToolsCount": 170,
-  "releaseNotes": "优化 Step 2b 关联回填与跨表动态默认值链路：遇环按边拆段并发、反向关联改用 md 精简回读、新增关联与 defaultValue(source=\"relation\") 同请求合并提交，明确动态默认值与 rcid 业务规则去重边界；同步移除 hap-plan 实体级 color 冗余字段并禁止 Step 2a 并发读兄弟回执（更新后请重新读取根目录 SKILL.md）",
+  "releaseNotes": "彻底修复后台示例数据 Step 5 跨阶段双次派发缺陷（移除阶段 4 重挂并在 status/finalize 只读透出 backgroundTasks），为 dispatched 增加单次批量登记 --items/--items-json 并在异步调度规范中设为必做以杜绝同阶段重派；升级 Step 3 规则证据验真逻辑支持字段 alias、嵌套点路径与列表默认值并消除假告警；同步收紧两遍建表字段剥离、反向关联物理 ID 引用及 FunctionFormula 选型规范（更新后请重新读取根目录 SKILL.md）",
   "repository": "https://github.com/mingdaocom/hap-skills",
   "branch": "main",
   "skillPath": "skills/mcp/hap-mcp-app-builder"

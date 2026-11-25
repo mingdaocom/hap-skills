@@ -33,7 +33,7 @@
    - 先剔除 `:reverse` 反向承接端字段（由对端 `:bi` 自动在标签页带出，不占表单网格）以及子表中指向 `parentWorksheet` 主表的父级关联字段；
    - 对剩余**全部表单字段**（基础字段 + `selfRelation` 自关联 + 待补跨表 `Relation` `:bi/:uni` + `SubTable` + `Lookup/Rollup` + 公式）统一分配 `rowIndex` 与 `span`（推荐 `3 / 6 / 12` 栅格：同行 2 个字段用 `6 + 6 = 12` 消灭右侧留白；`SubTable` 与 `inlineTable` 独占整行 `span: 12`；单条关联无摘要用 `"dropdown"`，需摘要用 `"card"`）。
 2. **Step B — 剥离跨表与衍生字段并保留原行号间隙**：
-   - 从发送给 `create_worksheet` 的 `fields` 中剔除：① 所有跨表 `Relation:目标表` 与 `SubTable` 字段；② 所有 `Lookup` 与 `Rollup` 字段；③ 依赖上述 `Lookup` 或 `Rollup` 的 `Concatenate` 和 `Formula`（表达式使用本表衍生字段的 `alias`）；
+   - 从发送给 `create_worksheet` 的 `fields` 中剔除：① 所有跨表 `Relation:目标表` 与 `SubTable` 字段；② 所有 `Lookup` 与 `Rollup` 字段；③ 依赖上述 `Lookup` 或 `Rollup` 的 `Concatenate`、`Formula` 和 `DateFormula`（表达式仅可引用本表字段 `$alias$`，严禁构造 `$关联$.目标字段$` 跨表路径语法）。**凡记入 `relationLayout` 的字段严禁同时出现在 `create_worksheet.fields` 与回执 `outputs.fields` 中（禁止在 Pass 1 建空壳 `Lookup`/`Rollup` 或把 `Lookup` 私改为临时 `Concatenate`）**；
    - **唯一自关联红线**：仅原文写为 `(selfRelation)` 的字段随本步直接创建（`dataSource: "selfRelation"`）；任何跨表 `(Relation:xxx)` **严禁伪造为 `selfRelation` 规避**！
    - 保留下来的基础字段保持 Step A 的 `rowIndex / span` **原封不动**（允许行号跳号如 `0, 1, 3`，供 Pass 2 精准插回预留行）。
 3. **Step C — 构造完整 `relationLayout` 待办数组**：

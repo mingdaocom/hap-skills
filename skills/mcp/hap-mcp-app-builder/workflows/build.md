@@ -59,8 +59,8 @@ python3 {SKILL_DIR}/scripts/build_runtime.py init --app-dir {APP_DIR} --skill-di
 ```bash
 # Pass 1: Step 2a 全表并发建表与基础字段排版（省略 --progress，自动读取当前阶段）
 python3 {SKILL_DIR}/scripts/build_runtime.py prepare --app-dir {APP_DIR}
-# -> 批量派发 readyTasks 中的 Subagent 后，按需登记已派发（无需运行 --help 查参数）：
-# python3 {SKILL_DIR}/scripts/build_runtime.py dispatched --app-dir {APP_DIR} --task-id <taskId> --agent-id <agentId>
+# -> 批量派发 readyTasks 中的 Subagent 后，第 2 档异步宿主必须用单条命令一次性批量登记已派发（亦兼容单条 --task-id/--agent-id）：
+# python3 {SKILL_DIR}/scripts/build_runtime.py dispatched --app-dir {APP_DIR} --items "<taskId1>=<agentId1>" "<taskId2>=<agentId2>"
 # -> 查状态直接用 build_runtime.py status --app-dir {APP_DIR}（无需 ls .build/receipts/）-> 等待完成
 # -> 一键完成本阶段汇总、推进与下一阶段任务准备（若无跨表关联自动跳至 worksheets_created）：
 python3 {SKILL_DIR}/scripts/build_runtime.py finalize --app-dir {APP_DIR} --advance-and-prepare
@@ -127,7 +127,7 @@ async def run_one(t):
     return await agent(prompt, schema=SCHEMA, role=t["taskName"][:40], type_name="self")
 results = await asyncio.gather(*(run_one(t) for t in tasks), return_exceptions=True)
 ```
-2. **第 2 档（无编排工具，但子代理工具带后台/异步参数如 `run_in_background: true`，或天生异步返回 ID）**：**本阶段全部 `readyTasks`（含阻塞型与 `Step 5`）一律显式开启后台/异步模式一次性全量起跑，严禁套用第 3 档的 4～5 个分波上限拆分无依赖任务**（每发 1 个立即返回 ID 并后台开跑，彻底杜绝串行退化与无谓拆波）；全部起跑后（异步回调宿主可顺手登记 `dispatched`）**直接结束当前轮次（停止调用工具），等待系统后台完成通知自动唤醒**，**严禁在终端运行 `sleep` 循环轮询**；被单个通知唤醒后先调用 1 次 `build_runtime.py status --app-dir {APP_DIR}`，若 `phaseComplete` 为 `false` 则再次结束本轮等待下一通知；
+2. **第 2 档（无编排工具，但子代理工具带后台/异步参数如 `run_in_background: true`，或天生异步返回 ID）**：**本阶段全部 `readyTasks`（含阻塞型与 `Step 5`）一律显式开启后台/异步模式一次性全量起跑，严禁套用第 3 档的 4～5 个分波上限拆分无依赖任务**（每发 1 个立即返回 ID 并后台开跑，彻底杜绝串行退化与无谓拆波）；全批起跑后**必须用单条 `dispatched --items "<taskId1>=<agentId1>" ...`（或 `--items-json`）一次性批量登记所有在跑任务**，避免 `status` / `finalize` 因未登记将后台在跑任务误判为待派发而重复起跑；登记完毕后**直接结束当前轮次（停止调用工具），等待系统后台完成通知自动唤醒**，**严禁在终端运行 `sleep` 循环轮询**；被单个通知唤醒后先调用 1 次 `build_runtime.py status --app-dir {APP_DIR}`，若 `phaseComplete` 为 `false` 则再次结束本轮等待下一通知；
 3. **第 3 档（仅有纯同步阻塞型子代理工具）**：在同一条助手消息内并列发出 **4～5 个**子代理调用（超过 5 个分波次并行，严禁发 1 个等返回再发下 1 个）。
 
 - **极简派发 `prompt` 铁律（严禁扩写成小作文）**：直接原样套用下方单段模板（仅替换 `{taskName}`、`{step}`、`{bundleFiles}`、`{receiptPath}`，单条 `prompt` 严格控制在 **150 字以内**）；所有字段、业务要点、工具白名单与回执契约均已预编译在 `bundleFiles` 内，**严禁在派发 `prompt` 中自行复述字段、白名单或 SOP 细节**。

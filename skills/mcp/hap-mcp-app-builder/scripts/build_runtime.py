@@ -2178,60 +2178,9 @@ def get_stage_tasks_definitions(app_dir: str, stage: str) -> List[Dict[str, Any]
                 "desc": f"一体化设计节点、注入预建动作流、校验并发布: {ws_n}/{act_n}",
             })
 
-        # 若阶段 3 后台任务 Step 5 尚未成功完成（如中途报错中断需 reset-task 重派），在阶段 4 继续挂载追踪
-        step5_receipt = os.path.join(app_dir, ".build", "receipts", "step5-sample-data.json")
-        run_id_cur = (load_json(os.path.join(app_dir, ".build", "run.json")) or {}).get("runId", "")
-        if not is_task_succeeded(step5_receipt, "step5-sample-data", run_id_cur):
-            readonly_types = {"Divider", "AutoNumber", "Concatenate", "Formula", "Rollup", "Lookup", "SubTable"}
-            slim_ws_ctx = []
-            ws_list_raw = ws_context.get("worksheets", []) if isinstance(ws_context, dict) else (ws_context if isinstance(ws_context, list) else [])
-            for w_item in ws_list_raw:
-                if not isinstance(w_item, dict):
-                    continue
-                slim_fields = []
-                for fld in w_item.get("fields", []) or []:
-                    if not isinstance(fld, dict) or fld.get("type") in readonly_types:
-                        continue
-                    sf = {"id": fld.get("id"), "name": fld.get("name"), "type": fld.get("type")}
-                    if fld.get("options") and isinstance(fld["options"], list):
-                        sf["options"] = [o.get("value") for o in fld["options"] if isinstance(o, dict) and o.get("value") and not o.get("isDelete")]
-                    slim_fields.append(sf)
-                slim_ws_ctx.append({
-                    "worksheetId": w_item.get("worksheetId"),
-                    "worksheetName": w_item.get("worksheetName"),
-                    "fields": slim_fields,
-                })
-            tasks.append({
-                "taskId": "step5-sample-data",
-                "taskName": "[Step 5] 填充示例数据",
-                "step": "5",
-                "target": {"type": "sample_data", "name": "全局示例数据"},
-                "stepFile": "build/steps/5_create_sample_data.md",
-                "references": ["references/hap-sample-data-spec.md"],
-                "allowedTools": ["batch_create_records", "get_worksheet_structure", "get_record_details", "update_record"],
-                "receiptPath": ".build/receipts/step5-sample-data.json",
-                "taskContextPath": ".build/task-context/step5-sample-data.json",
-                "isBackground": True,
-                "planSlice": {
-                    "worksheets": [
-                        {
-                            "name": w.get("name"),
-                            "worksheetType": w.get("worksheetType", "normal"),
-                            "parentWorksheet": w.get("parentWorksheet", ""),
-                            "requirements": w.get("requirements", []),
-                        }
-                        for w in worksheets
-                        if isinstance(w, dict)
-                    ],
-                    "appLanguage": app_lang,
-                },
-                "contextSlice": {
-                    "appId": app_id,
-                    "worksheetIdByName": ws_id_by_name,
-                },
-                "worksheetContextSlice": {"worksheets": slim_ws_ctx},
-                "desc": "按示例规范填报业务记录，匹配并回读适用的示例成员与附件",
-            })
+        # 注：后台任务 Step 5 单一归属阶段 3，不跨阶段重挂进阶段 4 readyTasks 以杜绝双次派发；
+        # 其状态在 status/finalize 的 backgroundTasks 中只读透出，终态 advance 直接按回执收口，
+        # 若确需失败重跑可运行 prepare --progress fields_refreshed 定点取回。
 
     # 保留目标工作表的完整设计，避免各步骤自行挑字段时丢失后续用途（Step 2b 环路分段任务保留本段裁剪视图）。
     worksheets_by_name = {w.get("name"): w for w in worksheets if isinstance(w, dict)}
@@ -2812,16 +2761,19 @@ def build_sort_app_items_hints(plan: Dict[str, Any], context: Dict[str, Any]) ->
     return hints
 
 
-def cmd_record_dispatch(app_dir: str, task_id: str, agent_id: str, status: str, reason: str = "") -> Dict[str, Any]:
-    app_dir = os.path.abspath(app_dir)
-    run_data = require_run(app_dir)
-    record_file = os.path.join(app_dir, ".build", "dispatch-registry.json")
-    registry = load_json(record_file) or {}
-
+def _apply_dispatch_entry(
+    app_dir: str,
+    run_id: str,
+    registry: Dict[str, Any],
+    task_id: str,
+    agent_id: str,
+    status: str,
+    reason: str = "",
+) -> Dict[str, Any]:
     resume_version = ""
     receipt_path = os.path.join(app_dir, ".build", "receipts", task_id + ".json")
     if status == "running":
-        previous_state, _ = task_state(receipt_path, task_id, run_data["runId"], registry.get(task_id, {}))
+        previous_state, _ = task_state(receipt_path, task_id, run_id, registry.get(task_id, {}))
         if previous_state == "failed" and registry.get(task_id, {}).get("agentId") and os.path.exists(receipt_path):
             resume_version = receipt_version(receipt_path)
         elif previous_state == "running" and registry.get(task_id, {}).get("agentId") == agent_id:
@@ -2829,15 +2781,82 @@ def cmd_record_dispatch(app_dir: str, task_id: str, agent_id: str, status: str, 
     registry[task_id] = {
         "taskId": task_id,
         "agentId": agent_id,
-        "runId": run_data.get("runId", ""),
+        "runId": run_id,
         "status": status,
         "reason": reason,
         "timestamp": datetime.datetime.now().isoformat(),
     }
     if resume_version:
         registry[task_id]["resumeReceiptVersion"] = resume_version
-    save_json(record_file, registry)
     return {"taskId": task_id, "status": status, "agentId": agent_id, "recorded": True}
+
+
+def cmd_record_dispatch(app_dir: str, task_id: str, agent_id: str, status: str, reason: str = "") -> Dict[str, Any]:
+    app_dir = os.path.abspath(app_dir)
+    run_data = require_run(app_dir)
+    record_file = os.path.join(app_dir, ".build", "dispatch-registry.json")
+    registry = load_json(record_file) or {}
+    entry = _apply_dispatch_entry(app_dir, run_data.get("runId", ""), registry, task_id, agent_id, status, reason)
+    save_json(record_file, registry)
+    return entry
+
+
+def cmd_record_dispatches_batch(
+    app_dir: str,
+    pairs: List[Tuple[str, str]],
+    status: str = "running",
+    reason: str = "",
+) -> Dict[str, Any]:
+    if not pairs:
+        raise ValueError("批量 dispatched 至少需要 1 组 taskId=agentId。")
+    app_dir = os.path.abspath(app_dir)
+    run_data = require_run(app_dir)
+    run_id = run_data.get("runId", "")
+    record_file = os.path.join(app_dir, ".build", "dispatch-registry.json")
+    registry = load_json(record_file) or {}
+    recorded_items = []
+    for task_id, agent_id in pairs:
+        tid = task_id.strip() if isinstance(task_id, str) else ""
+        aid = agent_id.strip() if isinstance(agent_id, str) else ""
+        if not tid or not aid:
+            raise ValueError(f"dispatched 项缺少有效的 taskId 或 agentId：{task_id!r}={agent_id!r}")
+        recorded_items.append(_apply_dispatch_entry(app_dir, run_id, registry, tid, aid, status, reason))
+    save_json(record_file, registry)
+    return {"recorded": True, "count": len(recorded_items), "items": recorded_items}
+
+
+def _parse_dispatch_items(items: Optional[List[str]], items_json: str) -> List[Tuple[str, str]]:
+    pairs: List[Tuple[str, str]] = []
+    if items:
+        for raw in items:
+            if not isinstance(raw, str) or "=" not in raw:
+                raise ValueError(f"--items 项格式必须为 taskId=agentId，收到：{raw!r}")
+            tid, aid = raw.split("=", 1)
+            if not tid.strip() or not aid.strip():
+                raise ValueError(f"--items 项 taskId 与 agentId 均不能为空，收到：{raw!r}")
+            pairs.append((tid.strip(), aid.strip()))
+    if items_json and items_json.strip():
+        try:
+            parsed = json.loads(items_json)
+        except Exception as exc:
+            raise ValueError(f"--items-json 不是合法 JSON：{exc}") from exc
+        if isinstance(parsed, dict):
+            for k, v in parsed.items():
+                if not isinstance(k, str) or not isinstance(v, str) or not k.strip() or not v.strip():
+                    raise ValueError(f"--items-json 对象键值必须为非空字符串：{k!r}: {v!r}")
+                pairs.append((k.strip(), v.strip()))
+        elif isinstance(parsed, list):
+            for entry in parsed:
+                if not isinstance(entry, dict):
+                    raise ValueError("--items-json 数组元素必须为包含 taskId 与 agentId 的对象。")
+                tid = entry.get("taskId")
+                aid = entry.get("agentId")
+                if not isinstance(tid, str) or not isinstance(aid, str) or not tid.strip() or not aid.strip():
+                    raise ValueError(f"--items-json 元素缺少非空 taskId/agentId：{entry!r}")
+                pairs.append((tid.strip(), aid.strip()))
+        else:
+            raise ValueError("--items-json 必须为 JSON 对象或数组。")
+    return pairs
 
 
 def cmd_reset_task(app_dir: str, task_id: str) -> Dict[str, Any]:
@@ -3218,6 +3237,16 @@ def cmd_resolve_task(app_dir: str, task_id: str, evidence: str, outputs_json: st
     }
 
 
+def _background_task_status(app_dir: str, run_id: str, registry: Dict[str, Any]) -> Dict[str, Any]:
+    """只读追踪后台任务（Step 5）状态，供阶段 3/4 进度与交付汇总可见，不触发重复派发。"""
+    receipt_path = os.path.join(app_dir, ".build", "receipts", "step5-sample-data.json")
+    state, issue = task_state(receipt_path, "step5-sample-data", run_id, registry.get("step5-sample-data", {}))
+    info: Dict[str, Any] = {"status": state}
+    if issue:
+        info["issue"] = issue
+    return {"step5-sample-data": info}
+
+
 def cmd_refresh(app_dir: str) -> Dict[str, Any]:
     app_dir = os.path.abspath(app_dir)
     context = load_json(os.path.join(app_dir, "hap-context.json")) or {}
@@ -3251,7 +3280,7 @@ def cmd_refresh(app_dir: str) -> Dict[str, Any]:
     blocking_ids = [t["taskId"] for t in all_tasks if not t.get("isBackground", False)]
     phase_complete = all(tid in succeeded_ids for tid in blocking_ids)
 
-    return {
+    result: Dict[str, Any] = {
         "stage": stage,
         "total": len(all_tasks),
         "succeeded": counts["succeeded"],
@@ -3264,6 +3293,9 @@ def cmd_refresh(app_dir: str) -> Dict[str, Any]:
         "currentWaveComplete": phase_complete or (counts["running"] == 0 and counts["failed"] == 0 and counts["blocked"] == 0 and counts["planned"] == 0 and counts["waiting_dependency"] > 0),
         "phaseComplete": phase_complete,
     }
+    if canonical_stage(stage) in ("fields_refreshed", "config_completed"):
+        result["backgroundTasks"] = _background_task_status(app_dir, run_id, registry)
+    return result
 
 
 def workflow_publication_status(outputs: Dict[str, Any]) -> str:
@@ -3288,6 +3320,37 @@ def rule_condition_matches_fields(condition, fields):
             and fid in fields and bool(condition.get("operator")))
 
 
+def _resolve_field_property(field: Dict[str, Any], prop: str) -> Tuple[bool, Any]:
+    """支持顶层键（如 required / defaultValue）及点路径嵌套键（如 config.userPermission / config.expression）。"""
+    if not isinstance(field, dict) or not isinstance(prop, str) or not prop.strip():
+        return False, None
+    key = prop.strip()
+    if key in field:
+        return True, field[key]
+    if "." not in key:
+        return False, None
+    cur: Any = field
+    for part in key.split("."):
+        if not isinstance(cur, dict) or part not in cur:
+            return False, None
+        cur = cur[part]
+    return True, cur
+
+
+def _field_prop_value_matches(actual: Any, expected: Any) -> bool:
+    if actual == expected:
+        if isinstance(actual, bool) != isinstance(expected, bool):
+            return False
+        return True
+    # 兼容 HAP DSL 中单元素列表包装的默认值结构（如 defaultValue: [{source: "relation", ...}]）
+    if isinstance(actual, list) and isinstance(expected, dict) and expected:
+        return any(
+            isinstance(item, dict) and all(item.get(k) == v for k, v in expected.items())
+            for item in actual
+        )
+    return False
+
+
 def has_rule_evidence(app_dir: str, outputs: Dict[str, Any], intents=()) -> bool:
     ids = outputs.get("ruleIds")
     checks = outputs.get("ruleChecks")
@@ -3299,53 +3362,164 @@ def has_rule_evidence(app_dir: str, outputs: Dict[str, Any], intents=()) -> bool
     artifact = load_json(os.path.join(app_dir, ".build", "artifacts", f"worksheet-{sheet_id}.json")) or {}
     if not isinstance(artifact, dict) or artifact.get("worksheetId") != sheet_id:
         return False
-    fields = {f["id"]: f for f in artifact.get("fields", []) if isinstance(f, dict) and f.get("id")}
+    fields_by_id = {f["id"]: f for f in artifact.get("fields", []) if isinstance(f, dict) and f.get("id")}
+    fields_by_ref: Dict[str, Dict[str, Any]] = dict(fields_by_id)
+    for fld in fields_by_id.values():
+        alias = fld.get("alias")
+        if isinstance(alias, str) and alias.strip():
+            fields_by_ref.setdefault(alias.strip(), fld)
+
+    known_view_ids = {
+        v["id"] for v in (outputs.get("views") or [])
+        if isinstance(v, dict) and isinstance(v.get("id"), str) and v["id"].strip()
+    }
+    known_action_ids = {
+        a["id"] for a in (outputs.get("actions") or [])
+        if isinstance(a, dict) and isinstance(a.get("id"), str) and a["id"].strip()
+    }
+
     covered, verified_ids = set(), set()
+    verified_field_checks = 0
     for check in checks:
         if not isinstance(check, dict) or not isinstance(check.get("intent"), str) or not check["intent"].strip():
             return False
-        covered.add(check["intent"].strip())
+        intent_text = check["intent"].strip()
         src_intent = check.get("sourceIntent")
-        if isinstance(src_intent, str) and src_intent.strip():
-            covered.add(src_intent.strip())
-        if "ruleId" in check:
-            rule_id = check["ruleId"]
-            if not isinstance(rule_id, str) or not rule_id.strip() or not check.get("name") or check.get("enabled") is not True:
+        src_text = src_intent.strip() if isinstance(src_intent, str) and src_intent.strip() else ""
+
+        raw_rule_id = check.get("ruleId")
+        has_nonempty_rule_id = isinstance(raw_rule_id, str) and bool(raw_rule_id.strip())
+        if "ruleId" in check and has_nonempty_rule_id:
+            rule_id = raw_rule_id.strip()
+            if not check.get("name") or check.get("enabled") is not True:
                 return False
-            if not rule_condition_matches_fields(check.get("conditions"), fields):
+            if not rule_condition_matches_fields(check.get("conditions"), fields_by_ref):
                 return False
             verified_ids.add(rule_id)
+            covered.add(intent_text)
+            if src_text:
+                covered.add(src_text)
+            continue
+
+        # 显式视图/动作承接项：核对真实已创建 viewId / actionId，不误杀同表已验证的业务规则
+        reason = check.get("reason") or check.get("basis")
+        has_reason = isinstance(reason, str) and bool(reason.strip())
+        if isinstance(check.get("viewId"), str) and check["viewId"].strip():
+            if check["viewId"].strip() not in known_view_ids or not has_reason:
+                return False
+            covered.add(intent_text)
+            if src_text:
+                covered.add(src_text)
+            continue
+        if isinstance(check.get("actionId"), str) and check["actionId"].strip():
+            if check["actionId"].strip() not in known_action_ids or not has_reason:
+                return False
+            covered.add(intent_text)
+            if src_text:
+                covered.add(src_text)
+            continue
+
+        raw_field_id, prop = check.get("fieldId"), check.get("property")
+        field_ids_list = check.get("fieldIds")
+        if isinstance(field_ids_list, list) and field_ids_list:
+            fids = [str(x).strip() for x in field_ids_list if str(x).strip()]
+        elif isinstance(raw_field_id, str) and raw_field_id.strip():
+            fids = [x.strip() for x in raw_field_id.split(",") if x.strip()]
         else:
-            raw_field_id, prop = check.get("fieldId"), check.get("property")
-            field_ids_list = check.get("fieldIds")
-            if isinstance(field_ids_list, list) and field_ids_list:
-                fids = [str(x).strip() for x in field_ids_list if str(x).strip()]
-            elif isinstance(raw_field_id, str) and raw_field_id.strip():
-                fids = [x.strip() for x in raw_field_id.split(",") if x.strip()]
-            else:
+            fids = []
+
+        if fids:
+            if not isinstance(prop, str) or not prop.strip() or prop.strip() in {"name", "alias", "id"} or "value" not in check:
                 return False
-            if not fids or not isinstance(prop, str) or prop in {"name", "alias", "id"} or "value" not in check:
+            if not has_reason:
                 return False
-            if not isinstance(check.get("reason"), str) or not check["reason"].strip():
-                return False
-            for fid in fids:
-                field = fields.get(fid, {})
-                if prop not in field or field[prop] != check["value"]:
+            prop_str = prop.strip()
+            # 视图/动作附加说明（虽附带字段/视图/动作 ID，但声明的是视图/动作配置）：只要引用真实 ID 即不否决整表
+            if prop_str.startswith(("view.", "views.", "action.", "actions.", "customAction.")):
+                valid_refs = set(fields_by_ref.keys()) | known_view_ids | known_action_ids
+                if not all(fid in valid_refs for fid in fids):
                     return False
+                if known_view_ids or known_action_ids:
+                    covered.add(intent_text)
+                    if src_text:
+                        covered.add(src_text)
+                continue
+            # 复合多属性路径（如 "config.expression / config.storeData"）拆段检查，全部字段须存在且至少命中一段真实属性
+            if "/" in prop_str:
+                if not all(fid in fields_by_ref for fid in fids):
+                    return False
+                sub_props = [p.strip() for p in prop_str.split("/") if p.strip()]
+                matched_any = False
+                for fid in fids:
+                    fld = fields_by_ref[fid]
+                    for sp in sub_props:
+                        found, _ = _resolve_field_property(fld, sp)
+                        if found:
+                            matched_any = True
+                            break
+                if matched_any:
+                    covered.add(intent_text)
+                    if src_text:
+                        covered.add(src_text)
+                continue
+            # 单一字段属性核验：严格比对真实字段属性值（支持嵌套点路径与单元素 defaultValue 列表）
+            for fid in fids:
+                fld = fields_by_ref.get(fid)
+                if not fld:
+                    return False
+                found, actual_val = _resolve_field_property(fld, prop_str)
+                if not found or not _field_prop_value_matches(actual_val, check["value"]):
+                    return False
+            verified_field_checks += 1
+            covered.add(intent_text)
+            if src_text:
+                covered.add(src_text)
+            continue
+
+        # 无 fieldId 且无非空 ruleId：仅允许带非空 reason 的视图/动作或超范围说明不触发整表一票否决
+        if not has_reason:
+            return False
+        if (
+            (isinstance(prop, str) and prop.strip().startswith(("view.", "views.", "action.", "actions.", "customAction.")))
+            or check.get("viewConfigEvidence")
+            or check.get("viewFilterEvidence")
+        ) and (known_view_ids or known_action_ids):
+            covered.add(intent_text)
+            if src_text:
+                covered.add(src_text)
+        # 其余纯文字说明（如跨表超范围 basis）不否决已有规则，也不计入 covered 避免掩盖未落地意图
+
     if not (all(isinstance(i, str) for i in ids) and verified_ids == set(ids)):
         return False
-    valid_intents = [i.strip() for i in set(intents) if isinstance(i, str) and i.strip()]
-    if not valid_intents:
+    # 至少须有 1 条已验真的业务规则或 1 条已验真的字段属性核验，防止仅靠空话/视图说明蒙混零规则表
+    if not verified_ids and verified_field_checks == 0:
+        return False
+    raw_valid_intents = [i.strip() for i in set(intents) if isinstance(i, str) and i.strip()]
+    if not raw_valid_intents:
         return True
+    # 归并 businessRules 与 businessRulesNotes 中的同义/子串重复表述，避免同一条意图被重复计数
+    def _norm_intent(s: str) -> str:
+        return re.sub(r"[\s「」『』“”\"'()（）：:，,。；;]", "", s)
+    norm_pairs = [(i, _norm_intent(i)) for i in sorted(raw_valid_intents, key=len, reverse=True)]
+    valid_intents: List[str] = []
+    kept_norms: List[str] = []
+    for orig, norm in norm_pairs:
+        if norm and any(norm in existing for existing in kept_norms):
+            continue
+        valid_intents.append(orig)
+        kept_norms.append(norm)
     # 支持子代理将复合意图拆分为多条精细规则或字段属性核验：逐字命中、子串包含，或已验真的规则/拆分检查项覆盖规划意图数
+    covered_norms = [_norm_intent(c) for c in covered]
     all_matched = all(
-        i in covered or any(i in c or c in i for c in covered)
+        i in covered
+        or any(i in c or c in i for c in covered)
+        or any(_norm_intent(i) and (_norm_intent(i) in cn or cn in _norm_intent(i)) for cn in covered_norms if cn)
         for i in valid_intents
     )
     return (
         all_matched
         or (len(verified_ids) >= len(valid_intents))
-        or (len(checks) > len(valid_intents) and len(verified_ids) >= 1)
+        or (len(verified_ids) + verified_field_checks > len(valid_intents) and len(verified_ids) >= 1)
     )
 
 
@@ -3575,6 +3749,8 @@ def cmd_finalize(app_dir: str, progress: Optional[str]) -> Dict[str, Any]:
         "failedTaskIds": failed_tasks,
         "deliveryNotes": receipt_delivery_notes(app_dir, run_id),
     }
+    if canonical_stage(stage) in ("fields_refreshed", "config_completed"):
+        report_data["backgroundTasks"] = _background_task_status(app_dir, run_id, registry)
     if canonical_stage(stage) == "fields_refreshed" and set(failed_tasks).intersection(blocking_tasks):
         report_data["reviewLaterTasks"] = {
             "prepareProgress": "config_completed",
@@ -3867,10 +4043,12 @@ def main():
     p_prep.add_argument("--progress", type=str, default="", help="准备指定阶段候选任务，不改变全局进度；执行前核实实际依赖")
     p_prep.add_argument("--include-pending-capacity", action="store_true", default=True, help="兼容旧调用；默认已包含容量等待任务")
 
-    p_disp = subparsers.add_parser("dispatched", help="记录已成功派发任务")
+    p_disp = subparsers.add_parser("dispatched", help="记录已成功派发任务（支持单条或单次批量登记）")
     p_disp.add_argument("--app-dir", type=str, required=True, help="应用项目根目录")
-    p_disp.add_argument("--task-id", type=str, required=True, help="任务 ID")
-    p_disp.add_argument("--agent-id", type=str, required=True, help="Subagent 实例 ID")
+    p_disp.add_argument("--task-id", type=str, default="", help="单个任务 ID（与 --agent-id 配对）")
+    p_disp.add_argument("--agent-id", type=str, default="", help="单个 Subagent 实例 ID")
+    p_disp.add_argument("--items", nargs="+", default=None, help="批量登记：多个 taskId=agentId 对")
+    p_disp.add_argument("--items-json", type=str, default="", help="批量登记：JSON 数组 [{\"taskId\":..., \"agentId\":...}] 或对象 {\"taskId\": \"agentId\"}")
 
     p_cap = subparsers.add_parser("capacity-wait", help="标记任务进入容量等待")
     p_cap.add_argument("--app-dir", type=str, required=True, help="应用项目根目录")
@@ -3916,7 +4094,17 @@ def main():
     elif args.command == "prepare":
         res = cmd_prepare(args.app_dir, args.progress if args.progress else None, args.include_pending_capacity)
     elif args.command == "dispatched":
-        res = cmd_record_dispatch(args.app_dir, args.task_id, args.agent_id, "running")
+        batch_pairs = _parse_dispatch_items(args.items, args.items_json)
+        if batch_pairs:
+            if args.task_id or args.agent_id:
+                if not (args.task_id and args.agent_id):
+                    raise ValueError("使用 --task-id 与 --agent-id 时必须成对提供。")
+                batch_pairs.insert(0, (args.task_id, args.agent_id))
+            res = cmd_record_dispatches_batch(args.app_dir, batch_pairs, "running")
+        else:
+            if not args.task_id or not args.agent_id:
+                raise ValueError("dispatched 必须提供 --task-id 与 --agent-id，或使用 --items / --items-json 批量登记。")
+            res = cmd_record_dispatch(args.app_dir, args.task_id, args.agent_id, "running")
     elif args.command == "capacity-wait":
         res = cmd_record_dispatch(args.app_dir, args.task_id, "", "pending_capacity")
     elif args.command == "dispatch-failed":
