@@ -424,29 +424,29 @@ def validate_schema(worksheets, id_to_name, name_to_id, plan_data):
     return passed, errors, warnings
 
 
-def main():
-    parser = argparse.ArgumentParser(description="HAP 工作表结构分片合并与多维度强校验引擎")
-    parser.add_argument("app_dir", help="应用所在目录（如 apps/个人读书与笔记）")
-    parser.add_argument("--shards-dir", help="分片文件所在目录，默认为 <app_dir>/.build/artifacts")
-    args = parser.parse_args()
-
-    app_dir = Path(args.app_dir).resolve()
+def merge_and_validate_worksheet_context(app_dir_arg, shards_dir_arg=None, verbose: bool = False):
+    """合并单表结构分片并执行 10 项强校验；返回 (passed: bool, error_message: str)。"""
+    app_dir = Path(app_dir_arg).resolve()
     if not app_dir.exists():
-        print(f"❌ 错误: 应用目录不存在: {app_dir}", file=sys.stderr)
-        sys.exit(1)
+        msg = f"❌ 错误: 应用目录不存在: {app_dir}"
+        if verbose:
+            print(msg, file=sys.stderr)
+        return False, msg
 
     context_path = app_dir / "hap-context.json"
     plan_path = app_dir / "hap-plan.json"
 
     # 分片文件统一位于 .build/artifacts 目录
-    if args.shards_dir:
-        shards_dir = Path(args.shards_dir).resolve()
+    if shards_dir_arg:
+        shards_dir = Path(shards_dir_arg).resolve()
     else:
         shards_dir = app_dir / ".build" / "artifacts"
 
     if not context_path.exists():
-        print(f"❌ 错误: hap-context.json 不存在: {context_path}", file=sys.stderr)
-        sys.exit(1)
+        msg = f"❌ 错误: hap-context.json 不存在: {context_path}"
+        if verbose:
+            print(msg, file=sys.stderr)
+        return False, msg
 
     with open(context_path, "r", encoding="utf-8") as f:
         context_data = json.load(f)
@@ -458,8 +458,10 @@ def main():
 
     worksheet_id_by_name = context_data.get("worksheetIdByName", {})
     if not worksheet_id_by_name:
-        print("❌ 错误: hap-context.json 中未找到任何 worksheetIdByName 映射", file=sys.stderr)
-        sys.exit(1)
+        msg = "❌ 错误: hap-context.json 中未找到任何 worksheetIdByName 映射"
+        if verbose:
+            print(msg, file=sys.stderr)
+        return False, msg
 
     id_to_name = {v: k for k, v in worksheet_id_by_name.items()}
     name_to_id = dict(worksheet_id_by_name)
@@ -495,8 +497,9 @@ def main():
             if f_map:
                 fallback_opts_by_ws[w_opt["name"]] = f_map
 
-    print(f"🔍 启动分片收集，预期工作表数量: {len(worksheet_id_by_name)}")
-    print(f"📂 分片存储目录: {shards_dir}")
+    if verbose:
+        print(f"🔍 启动分片收集，预期工作表数量: {len(worksheet_id_by_name)}")
+        print(f"📂 分片存储目录: {shards_dir}")
 
     # 1. 检查并读取所有分片
     normalized_shards = []
@@ -535,7 +538,8 @@ def main():
             norm_shard = normalize_worksheet_shard(raw_shard, ws_id, ws_name, name_to_id, fallback_opts_by_ws)
             normalized_shards.append(norm_shard)
         else:
-            print(f"❌ 读取分片文件失败 [{shard_file}]: {last_err}", file=sys.stderr)
+            if verbose:
+                print(f"❌ 读取分片文件失败 [{shard_file}]: {last_err}", file=sys.stderr)
             missing_shards.append({"worksheetName": ws_name, "worksheetId": ws_id, "error": str(last_err)})
 
     # 2. 执行 10 项强校验
@@ -565,26 +569,27 @@ def main():
     with open(validation_path, "w", encoding="utf-8") as f:
         json.dump(validation_report, f, ensure_ascii=False, indent=2)
 
-    print("\n" + "=" * 50)
-    print("📋 HAP 工作表结构校验与合并报告")
-    print("=" * 50)
-    print(f"• 预期工作表数: {len(worksheet_id_by_name)}")
-    print(f"• 实际采集分片: {len(normalized_shards)}")
-    print(f"• 校验状态: {'✅ 通过 (PASSED)' if passed else '❌ 拦截未通过 (FAILED)'}")
-    print(f"• 阻断错误 (Errors): {len(errors)}")
-    print(f"• 优化告警 (Warnings): {len(warnings)}")
+    if verbose:
+        print("\n" + "=" * 50)
+        print("📋 HAP 工作表结构校验与合并报告")
+        print("=" * 50)
+        print(f"• 预期工作表数: {len(worksheet_id_by_name)}")
+        print(f"• 实际采集分片: {len(normalized_shards)}")
+        print(f"• 校验状态: {'✅ 通过 (PASSED)' if passed else '❌ 拦截未通过 (FAILED)'}")
+        print(f"• 阻断错误 (Errors): {len(errors)}")
+        print(f"• 优化告警 (Warnings): {len(warnings)}")
 
-    if errors:
-        print("\n⛔ 阻断错误详情 (Errors):")
-        for err in errors:
-            print(f"  - [{err.get('code')}] 表【{err.get('worksheet')}】: {err.get('message')}")
+        if errors:
+            print("\n⛔ 阻断错误详情 (Errors):")
+            for err in errors:
+                print(f"  - [{err.get('code')}] 表【{err.get('worksheet')}】: {err.get('message')}")
 
-    if warnings:
-        print("\n⚠️ 优化告警详情 (Warnings):")
-        for warn in warnings:
-            print(f"  - [{warn.get('code')}] 表【{warn.get('worksheet')}】: {warn.get('message')}")
+        if warnings:
+            print("\n⚠️ 优化告警详情 (Warnings):")
+            for warn in warnings:
+                print(f"  - [{warn.get('code')}] 表【{warn.get('worksheet')}】: {warn.get('message')}")
 
-    print("=" * 50)
+        print("=" * 50)
 
     # 4. 若通过，原子写入 worksheetContext.json
     if passed:
@@ -593,15 +598,32 @@ def main():
 
         with open(temp_context_path, "w", encoding="utf-8") as f:
             json.dump(normalized_shards, f, ensure_ascii=False, indent=2)
-        
+
         # 原子替换
         temp_context_path.replace(target_context_path)
-        print(f"✨ 成功原子生成全量结构上下文: {target_context_path}")
-        print(f"📄 检验报告已保存至: {validation_path}\n")
-        sys.exit(0)
-    else:
+        if verbose:
+            print(f"✨ 成功原子生成全量结构上下文: {target_context_path}")
+            print(f"📄 检验报告已保存至: {validation_path}\n")
+        return True, ""
+
+    err_lines = [
+        f"[{err.get('code')}] 表【{err.get('worksheet')}】: {err.get('message')}"
+        for err in errors[:10]
+    ]
+    err_summary = "; ".join(err_lines) if err_lines else f"校验未通过，详见 {validation_path}"
+    if verbose:
         print(f"\n❌ 校验未通过，已生成体检报告至 {validation_path}，禁止推进状态！\n", file=sys.stderr)
-        sys.exit(1)
+    return False, err_summary
+
+
+def main():
+    parser = argparse.ArgumentParser(description="HAP 工作表结构分片合并与多维度强校验引擎")
+    parser.add_argument("app_dir", help="应用所在目录（如 apps/个人读书与笔记）")
+    parser.add_argument("--shards-dir", help="分片文件所在目录，默认为 <app_dir>/.build/artifacts")
+    args = parser.parse_args()
+
+    passed, _ = merge_and_validate_worksheet_context(args.app_dir, args.shards_dir, verbose=True)
+    sys.exit(0 if passed else 1)
 
 
 if __name__ == "__main__":

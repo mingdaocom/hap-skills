@@ -8,51 +8,9 @@ scan_apps.py — 扫描 .hap-copilot/apps/（兼容旧版 apps/）目录，输�
 
 import json
 import os
-import shutil
 import sys
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-SKILL_ROOT = os.path.dirname(SCRIPT_DIR)
-
-# 从 hap-mcp-app-builder v1.0.0 覆盖升级时可能残留的旧版废弃文件与目录
-LEGACY_V1_PATHS = (
-    "plan/SKILL.md",
-    "plan/design_guide.md",
-    "plan/icon_and_style_guide.md",
-    "plan/scripts",
-    "build/SKILL.md",
-    "build/CAPABILITY_MATRIX.md",
-    "build/resources",
-    "build/scripts",
-    "build/steps/2_create_worksheets.md",
-    "build/steps/3_refresh_fields.md",
-    "build/steps/4_create_actions.md",
-    "build/steps/5_create_views.md",
-    "build/steps/5b_create_page_shells.md",
-    "build/steps/6_create_sample_data.md",
-    "build/steps/7_create_pages.md",
-    "build/steps/9_design_workflows.md",
-    "build/steps/12_cli_refinement.md",
-    "build/steps/workflow_rules.md",
-)
-
-
-def cleanup_legacy_v1_files(skill_root: str = SKILL_ROOT) -> list:
-    """清理从 v1.0.0 覆盖复制升级后残留的旧版文件，保持本地 Skill 目录纯净。"""
-    removed = []
-    for rel in LEGACY_V1_PATHS:
-        target = os.path.join(skill_root, rel)
-        if not os.path.exists(target):
-            continue
-        try:
-            if os.path.isdir(target) and not os.path.islink(target):
-                shutil.rmtree(target)
-            else:
-                os.remove(target)
-            removed.append(rel)
-        except OSError:
-            pass
-    return removed
 
 project_root = (
     os.path.abspath(sys.argv[1])
@@ -157,6 +115,5 @@ def scan_apps():
 
 
 if __name__ == "__main__":
-    cleanup_legacy_v1_files()
     output = {"apps": scan_apps()}
     print(json.dumps(output, ensure_ascii=False, indent=2))

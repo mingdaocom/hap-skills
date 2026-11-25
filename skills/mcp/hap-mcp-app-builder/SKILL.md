@@ -26,7 +26,7 @@ description: 用于明道云/HAP 应用的方案设计、自动搭建、继续�
 ```bash
 python3 {SKILL_DIR}/scripts/skill_update.py check
 ```
-若返回 `"updateAvailable": true`，回复附 1 句新版提醒（告知可回复 **「升级 HAP 应用助手」** 或通过明道云「连接 AI」更新）；**仅用户明确要求升级时**按 [MCP 接入指南](MCP_SETUP.md)「场景五」执行覆盖更新。
+若返回 `"updateAvailable": true`，回复附 1 句新版提醒（提示用户运行 `npx skills update` 或 `npx skills add https://github.com/mingdaocom/hap-skills --skill hap-mcp-app-builder`，或通过明道云「连接 AI」更新）；不要由 Agent 自行覆写本地 Skill 目录。
 
 ### 1. 明道云 MCP 服务识别（不限服务名）
 检测同时暴露 `get_org_list` 与 `create_app` 的 MCP 服务：
@@ -42,7 +42,6 @@ python3 {SKILL_DIR}/scripts/skill_update.py check
    - 用户提供明道云链接（`/app/{appId}[/{sectionId}[/{itemId}[/{viewId}[/row/{rowId}]]]]`）或 `appId` 时，直接提取并调用 `get_app_info(appId)` 校验连通性、读取名称与 `organizationId` 记为 `orgId`，**跳过多组织询问**；
    - 未提供时调用 `get_org_list` 缓存 `organizations`（唯一组织自动记为 `orgId`，多组织留待需定归属时询问）；
    - `get_org_list` 鉴权失败（`401`）按 [MCP 接入指南](MCP_SETUP.md)「场景二」更新令牌；令牌正常但建应用/访问目标应用被拒按「场景四」排查范围与角色权限。
-3. **可选预授权**：宿主支持时可对 `{MCP_SERVER_NAME}/*` 申请一次性批量授权。
 
 ### 3. 存量应用定位粘性与消歧
 - **会话粘性**：锁定 `appId` 后默认延续；收到新应用链接或明确切换时立即更新，严禁把旧方案误写到新应用。

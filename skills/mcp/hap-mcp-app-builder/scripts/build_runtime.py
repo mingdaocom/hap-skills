@@ -25,10 +25,14 @@ import hashlib
 import json
 import os
 import re
-import subprocess
 import sys
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
+
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+if _SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPT_DIR)
+from merge_worksheet_context import merge_and_validate_worksheet_context
 
 SYSTEM_WORKFLOW_TOOLS = [
     "find_member",
@@ -3657,11 +3661,10 @@ def cmd_finalize(app_dir: str, progress: Optional[str]) -> Dict[str, Any]:
             stage_outputs["relationsConfigured"] = True
 
         elif stage in ("worksheets_created", "phase2_single_table"):
-            merge_script = os.path.join(skill_root, "scripts", "merge_worksheet_context.py")
-            res = subprocess.run([sys.executable, merge_script, app_dir], capture_output=True, text=True)
-            if res.returncode != 0:
+            merge_ok, merge_err = merge_and_validate_worksheet_context(app_dir, verbose=False)
+            if not merge_ok:
                 can_advance = False
-                errors.append(f"merge_worksheet_context.py 校验失败: {res.stderr or res.stdout}")
+                errors.append(f"merge_worksheet_context.py 校验失败: {merge_err}")
             else:
                 view_id_by_name = dict(context.get("viewIdByName", {}))
                 action_id_by_name = dict(context.get("actionIdByName", {}))

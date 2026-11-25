@@ -1,9 +1,9 @@
 {
   "name": "hap-mcp-app-builder",
-  "version": "2.1.3",
+  "version": "2.1.4",
   "schemaVersion": 1,
   "minToolsCount": 170,
-  "releaseNotes": "彻底修复后台示例数据 Step 5 跨阶段双次派发缺陷（移除阶段 4 重挂并在 status/finalize 只读透出 backgroundTasks），为 dispatched 增加单次批量登记 --items/--items-json 并在异步调度规范中设为必做以杜绝同阶段重派；升级 Step 3 规则证据验真逻辑支持字段 alias、嵌套点路径与列表默认值并消除假告警；同步收紧两遍建表字段剥离、反向关联物理 ID 引用及 FunctionFormula 选型规范（更新后请重新读取根目录 SKILL.md）",
+  "releaseNotes": "安全合规优化：消除 build_runtime.py 中唯一的 subprocess.run 调用改为直接 import merge_worksheet_context 静默校验函数；移除 SKILL.md 中的宽泛 MCP 通配符预授权与 MCP_SETUP.md 中的 git clone 覆写升级流程（改用 npx skills update 标准提示并同步更新 skill_update.py 提示文案）；清理 scan_apps.py 中历史 v1.0.0 遗留的 shutil.rmtree 目录清理逻辑（更新后请重新读取根目录 SKILL.md）",
   "repository": "https://github.com/mingdaocom/hap-skills",
   "branch": "main",
   "skillPath": "skills/mcp/hap-mcp-app-builder"

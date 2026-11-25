@@ -341,8 +341,8 @@ Lookup 用于通过关联关系，自动从关联记录中带出指定字段的�
 - **配置结构**：`relationField` 为本表关联字段的真实 alias 或字段 ID（当关联字段 `alias` 为空，如服务端自动生成的反向关联时，必须传其真实字段 `id`，禁止把字段显示名称当作引用标识），`sourceField` 为目标表源字段的真实 alias 或字段 ID；
 - **同批创建**：目标表及来源字段已明确时，本表 Relation 与依赖它的 Lookup 可在同一次 `create_worksheet.fields` 或 `update_worksheet.addFields` 中创建，通过本批明确声明的关联字段 alias 引用；直接创建正确类型，不先建普通 PhoneNumber/Text 占位再改类型，也不为取得本批关联字段 ID 固定拆批回读。依赖尚未创建的目标表或服务端生成的反向关联时，仍须先取得真实来源，不能编造未来字段引用；Build 既有两遍建表在关联补全阶段合并处理，不改变跨表依赖顺序。
 - **存储型 vs 动态引用决策**：
-  - `config.storeData: false`（仅显示）：需要在本表独立展示关联值时使用，手机号、奖品等带出展示无需改成存储型。
-  - `config.storeData: true`（存储副本）：本表文本组合（`Concatenate`）、公式计算、视图分组/筛选等需要引用该值时采用，并确认同步与业务取值要求；不能把存储副本必然等同于当前来源值。
+  - `config.storeData: false`（仅显示）：仅用于本表独立展示且**不被本表公式/函数公式/日期公式/文本组合引用**的场景（如手机号、奖品等纯展示带出），此类字段无需改成存储型。
+  - `config.storeData: true`（存储副本）：**凡被本表 `Formula`、`FunctionFormula`、`DateFormula`、`Concatenate` 引用，或用于视图分组/筛选时，必须设为 `true`**——即使业务描述为“只读展示”也不得设为 `false`（平台中 `storeData: false` 的仅展示 Lookup 不落库存储，无法被本表公式解析引用，会导致公式出现“字段已删除”且算不出值）；同时注意存储副本不必然实时等同于来源最新值。
   - 不因工作流取值需求开启 Lookup 存储或改变字段类型；来源取值由工作流领域处理。不擅自改变已有字段的存储模式。
 
 ### 9.3 Rollup（跨表汇总计算）
@@ -379,7 +379,7 @@ Lookup 用于通过关联关系，自动从关联记录中带出指定字段的�
    - `field: "startTime"`（引用本表其他字段 alias）。
    - 示例：结束时间默认为开始时间 `[{ "source": "field", "field": "biz_start_time" }]`。
 4. **`relation`**：仅支持从单条关联（`isMultiple: false`）带出可编辑的初始值。`relationField` 填本表关联字段的真实 alias 或字段 ID（`alias` 为空时传真实字段 `id`），`field` 填目标表来源字段的真实 alias 或字段 ID（禁止填本表字段）。
-   - 明细单价、收货地址等需要保留当时值并允许手动修改时，用关联默认值；只读展示且需随来源更新时，用 `Lookup`（`storeData: false`）。
+   - 明细单价、收货地址等需要保留当时值并允许手动修改时，用关联默认值；纯只读展示、随来源更新且不被本表公式/拼接引用时，用 `Lookup`（`storeData: false`）；若该 `Lookup` 被本表公式或拼接引用，必须设 `storeData: true`。
    - 示例：选择客户后自动带出客户电话 `[{ "source": "relation", "relationField": "biz_customer", "field": "biz_phone" }]`。
 
 ### 10.3 控件类型支持矩阵

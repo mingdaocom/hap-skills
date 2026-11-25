@@ -155,7 +155,7 @@ def cmd_check(skill_dir: str = None, version_url: str = None, force: bool = Fals
         if has_update:
             res["upgradeHint"] = (
                 f"检测到 HAP 应用助手新版本 v{remote_ver}（当前 v{st['version']}），"
-                "可告知用户回复「升级 HAP 应用助手」或在明道云「连接 AI」重新复制提示词更新。"
+                "可提示用户执行 `npx skills update`（或 `npx skills add https://github.com/mingdaocom/hap-skills --skill hap-mcp-app-builder`），或在明道云「连接 AI」更新。"
             )
         save_json_safe(cache_path, {
             "source": target_url,

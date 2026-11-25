@@ -79,12 +79,3 @@
 3. `get_org_list` 或目标 `get_app_info(appId)` 连通性。
 
 全部通过后无缝继续用户原本的搭建、修改或数据操作任务。
-
----
-
-## 场景五：手动升级 Skill（仅用户明确要求升级时执行）
-
-当 `scripts/skill_update.py check` 提醒发现新版本，且用户明确回复 **「升级 HAP 应用助手」**（或要求更新 Skill）时执行安全覆盖更新：
-1. 若 `isSourceWorkspace: true`（源码工作区或外部软链），告知用户当前由本地源码目录托管，不覆写；
-2. 否则在系统临时目录浅克隆 `https://github.com/mingdaocom/hap-skills`，将 `skills/mcp/hap-mcp-app-builder` 覆盖复制到当前客户端全局 skills 目录（**严禁先执行 `rm -rf` 删除旧目录**）；
-3. 复制完成后清理临时克隆目录，告知用户已更新至最新版本。
