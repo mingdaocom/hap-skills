@@ -63,7 +63,7 @@
 
 - **`IFS(cond1, val1, cond2, val2, ...)`**：顺序匹配首个真条件并返回对应值，兜底分支放末尾 `TRUE(), defaultVal`，无匹配返回空。
 - **`COUNTARRAY(arr)`**：返回数组/多选/子表元素个数（空返回 `0`）。
-- **`STRING(val)`**：1 参基础转文本（数组以 `,` 拼接，不支持格式模板）。
+- **`STRING(val)`**：1 参基础转文本（不支持格式模板）；传入数组时**仅保留字符串元素或对象的 `text` 属性**（如 `STRING([1,2,3])` 返回 `",,"` 而非 `"1,2,3"`），通用数组拼接请使用 `JOIN(arr, ",")`。
 - **`REPLACE(text, start=1, count=0, newText="")` vs `SUBSTITUTE(text, old, new, [nth])`**：`REPLACE` 按 1-based 位置与长度替换；`SUBSTITUTE` 按文本内容替换（省略 `nth` 全量替换，传正整数 `nth` 只替第 `n` 次）。
 - **`SPLIT(text, sep="")` / `JOIN(arr, sep="")`**：按分隔符拆分字符串为数组 / 用分隔符连接数组为文本。
 - **`WEEKNUM(date, returnType=1)`**：返回年中第几周（`1`=周日起始，`2`/`11`/`21`=周一起始）。
