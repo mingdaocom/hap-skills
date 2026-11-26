@@ -1,9 +1,9 @@
 {
   "name": "hap-mcp-app-builder",
-  "version": "2.1.4",
+  "version": "2.1.5",
   "schemaVersion": 1,
   "minToolsCount": 170,
-  "releaseNotes": "安全合规优化：消除 build_runtime.py 中唯一的 subprocess.run 调用改为直接 import merge_worksheet_context 静默校验函数；移除 SKILL.md 中的宽泛 MCP 通配符预授权与 MCP_SETUP.md 中的 git clone 覆写升级流程（改用 npx skills update 标准提示并同步更新 skill_update.py 提示文案）；清理 scan_apps.py 中历史 v1.0.0 遗留的 shutil.rmtree 目录清理逻辑（更新后请重新读取根目录 SKILL.md）",
+  "releaseNotes": "新增工作表公式函数封闭白名单规范（references/hap-domain-formula-function-spec.md，覆盖全部 80 个线上合法系统函数、高危同名异义陷阱、高频错名替换与 HAP 特有函数用法）；在 Build Step 2a/2b 按需自动注入函数规范并同步补齐 FunctionFormula 构造指引；在 Modify resolve_context 新增 formula/function_formula 领域按需加载；同步 ISBLANK 语法、Rollup 多条关联约束与 SKILL.md 路由精简（更新后请重新读取根目录 SKILL.md）",
   "repository": "https://github.com/mingdaocom/hap-skills",
   "branch": "main",
   "skillPath": "skills/mcp/hap-mcp-app-builder"

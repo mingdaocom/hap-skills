@@ -410,6 +410,18 @@ def extract_action_workflows(plan: Dict[str, Any], context: Dict[str, Any]) -> L
 MAX_RELATION_GROUP_SIZE = 5
 STEP2B_FORMULA_KINDS = ("Formula", "DateFormula", "FunctionFormula", "Concatenate")
 STEP2B_FORMULA_PREFIXES = tuple(f"{k}:" for k in STEP2B_FORMULA_KINDS)
+FORMULA_FUNCTION_REF = "references/hap-domain-formula-function-spec.md"
+
+
+def _has_formula_function_signal(*payloads: Any) -> bool:
+    """检查工作表规划或字段配置是否涉及 FunctionFormula、动态公式默认值或函数计算特征。"""
+    for payload in payloads:
+        if not payload:
+            continue
+        dumped = json.dumps(payload, ensure_ascii=False).lower()
+        if any(k in dumped for k in ("functionformula", "formulafunc", "函数计算", "dynamicdefault", "(53)", ":53")):
+            return True
+    return False
 
 
 def _parse_relation_direction(spec: str) -> Tuple[str, str]:
@@ -1577,6 +1589,8 @@ def get_stage_tasks_definitions(app_dir: str, stage: str) -> List[Dict[str, Any]
             s2a_refs = ["references/hap-domain-worksheet-spec.md"]
             if any(k in ws_dump for k in ("customfield", "customwidget", "自由字段", "自定义字段", "(48)", "(54)", ":48", ":54")):
                 s2a_refs.append("references/hap-domain-custom-field-spec.md")
+            if _has_formula_function_signal(ws):
+                s2a_refs.append(FORMULA_FUNCTION_REF)
             tasks.append({
                 "taskId": f"step2a-ws-{normalize_name(name)}",
                 "taskName": f"[Step 2a] 创表 - {name}",
@@ -1684,6 +1698,8 @@ def get_stage_tasks_definitions(app_dir: str, stage: str) -> List[Dict[str, Any]
                 if has_group_reqs:
                     grp_refs.append("references/hap-domain-worksheet-index-spec.md")
                     grp_tools.extend(["get_worksheet_index_list", "create_worksheet_index"])
+                if any(_has_formula_function_signal(item["ws"], item["fields"], item["rel_layout"]) for item in grp):
+                    grp_refs.append(FORMULA_FUNCTION_REF)
 
                 tasks.append({
                     "taskId": f"step2b-rel-group-{idx}",
@@ -1731,6 +1747,8 @@ def get_stage_tasks_definitions(app_dir: str, stage: str) -> List[Dict[str, Any]
                 if ws_reqs:
                     s2b_refs.append("references/hap-domain-worksheet-index-spec.md")
                     s2b_tools.extend(["get_worksheet_index_list", "create_worksheet_index"])
+                if _has_formula_function_signal(ws, fields, rel_layout):
+                    s2b_refs.append(FORMULA_FUNCTION_REF)
 
                 sliced_fields_preview = (
                     {k: v for k, v in ws_fields_preview.items() if k in rel_ws_set}

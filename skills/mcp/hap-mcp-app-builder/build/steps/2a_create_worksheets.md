@@ -9,7 +9,7 @@
   - `planSlice.worksheet`：当前表规划（含 `name`、`description`、`groupName`、`worksheetType`、`parentWorksheet`、`icon`、`fields` 紧凑字符串数组、`requirements`）；
   - `planSlice.appLanguage`：应用内容语言代码；
   - `contextSlice`：`appId`、`appSectionId`（按 `groupName` 查好的真实 `sectionId`）。
-- **必读领域规范**：`references/hap-domain-worksheet-spec.md`（若含自定义组件字段则按需查阅 `references/hap-domain-custom-field-spec.md`）
+- **必读领域规范**：`references/hap-domain-worksheet-spec.md`（若含自定义组件字段则按需查阅 `references/hap-domain-custom-field-spec.md`；若含函数计算字段则已按需附带 `references/hap-domain-formula-function-spec.md`）
 - **主要业务工具**：`["create_worksheet", "update_worksheet", "update_worksheet_settings"]`
 
 ---
@@ -33,7 +33,7 @@
    - 先剔除 `:reverse` 反向承接端字段（由对端 `:bi` 自动在标签页带出，不占表单网格）以及子表中指向 `parentWorksheet` 主表的父级关联字段；
    - 对剩余**全部表单字段**（基础字段 + `selfRelation` 自关联 + 待补跨表 `Relation` `:bi/:uni` + `SubTable` + `Lookup/Rollup` + 公式）统一分配 `rowIndex` 与 `span`（推荐 `3 / 6 / 12` 栅格：同行 2 个字段用 `6 + 6 = 12` 消灭右侧留白；`SubTable` 与 `inlineTable` 独占整行 `span: 12`；单条关联无摘要用 `"dropdown"`，需摘要用 `"card"`）。
 2. **Step B — 剥离跨表与衍生字段并保留原行号间隙**：
-   - 从发送给 `create_worksheet` 的 `fields` 中剔除：① 所有跨表 `Relation:目标表` 与 `SubTable` 字段；② 所有 `Lookup` 与 `Rollup` 字段；③ 依赖上述 `Lookup` 或 `Rollup` 的 `Concatenate`、`Formula` 和 `DateFormula`（表达式仅可引用本表字段 `$alias$`，严禁构造 `$关联$.目标字段$` 跨表路径语法）。**凡记入 `relationLayout` 的字段严禁同时出现在 `create_worksheet.fields` 与回执 `outputs.fields` 中（禁止在 Pass 1 建空壳 `Lookup`/`Rollup` 或把 `Lookup` 私改为临时 `Concatenate`）**；
+   - 从发送给 `create_worksheet` 的 `fields` 中剔除：① 所有跨表 `Relation:目标表` 与 `SubTable` 字段；② 所有 `Lookup` 与 `Rollup` 字段；③ 依赖上述 `Lookup` 或 `Rollup` 的 `Concatenate`、`Formula`、`FunctionFormula` 和 `DateFormula`（表达式仅可引用本表字段 `$alias$`，严禁构造 `$关联$.目标字段$` 跨表路径语法；凡含条件判断、判空或函数表达式须使用 `FunctionFormula`，编写表达式严格遵循 `references/hap-domain-formula-function-spec.md` 合法系统函数封闭白名单）。**凡记入 `relationLayout` 的字段严禁同时出现在 `create_worksheet.fields` 与回执 `outputs.fields` 中（禁止在 Pass 1 建空壳 `Lookup`/`Rollup` 或把 `Lookup` 私改为临时 `Concatenate`）**；
    - **唯一自关联红线**：仅原文写为 `(selfRelation)` 的字段随本步直接创建（`dataSource: "selfRelation"`）；任何跨表 `(Relation:xxx)` **严禁伪造为 `selfRelation` 规避**！
    - 保留下来的基础字段保持 Step A 的 `rowIndex / span` **原封不动**（允许行号跳号如 `0, 1, 3`，供 Pass 2 精准插回预留行）。
 3. **Step C — 构造完整 `relationLayout` 待办数组**：
@@ -43,7 +43,7 @@
      - `SubTable`：`{ name, alias, targetWorksheet, rowIndex, span: 12, fieldType: "SubTable", bidirectional: true }`；
      - `Lookup`：`{ name, alias, rowIndex, span, fieldType: "Lookup", relationField, sourceFieldName }`（`relationField` 填本表关联字段 `alias`，`sourceFieldName` 填目标字段中文名）；
      - `Rollup`：`{ name, alias, rowIndex, span, fieldType: "Rollup", relationField, sourceFieldName, calcType }`；
-     - 跨表 `Concatenate` / `Formula`：保留 `{ name, alias, rowIndex, span, fieldType, isTitle?, precision?, expression }`。
+     - 跨表 `Concatenate` / `Formula` / `FunctionFormula`：保留 `{ name, alias, rowIndex, span, fieldType, isTitle?, outputType?, precision?, expression }`（`FunctionFormula` 须设 `outputType` 并遵循 `references/hap-domain-formula-function-spec.md` 封闭白名单）。
    - **跨表动态默认值交接（可选 `outputs.relationDefaults`）**：输入型基础字段需要从跨表关联带出可编辑初始值（如明细 `单价` 带出商品 `参考单价`、订单 `电话/地址` 带出客户信息，区别于只读 `Lookup`）时，本遍照常创建该基础字段、保留布局并省略其 `defaultValue`（**严禁仅写 `desc` 文案占位**），将该字段的完整默认值数组写入回执顶层可选字段 `outputs.relationDefaults`（保留混合来源顺序，引用填业务名或别名；无此需求时省略或 `[]`）：
      `[{ "field": "单价", "defaultValue": [{ "source": "relation", "relationField": "商品", "field": "参考单价" }] }]`。
 

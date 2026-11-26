@@ -71,7 +71,7 @@ hap-mcp-app-builder/
 │   ├── safety-rules.md                         # 二元风险模型（low/high）、14 类删除直通与回读纪律
 │   ├── execution-boundaries.md                 # 自动闭环、备份协同、人工引导与硬阻断边界
 │   └── print-template-file.md                  # Word/Excel 本地制作、HAP 占位符与交付检查
-├── references/                                 # 19 份 HAP 设计指南与领域规范
+├── references/                                 # 20 份 HAP 设计指南与领域规范
 │   ├── hap-app-design-guide.md                 # 应用建模、导航、门户与架构设计总纲
 │   ├── hap-workflow-design-guide.md            # 工作流联动设计与防死循环指南
 │   ├── hap-chart-design-guide.md               # 统计图类型选型、xaxes/yaxisList 与配色规范
@@ -89,6 +89,7 @@ hap-mcp-app-builder/
 │   ├── hap-domain-chatbot-spec.md              # AI 对话机器人与 ai_agent 节点配置规范
 │   ├── hap-domain-external-portal-spec.md      # 外部门户状态、注册登录与外部角色分段配置规范
 │   ├── hap-domain-worksheet-index-spec.md      # 工作表物理索引与唯一索引性能规范
+│   ├── hap-domain-formula-function-spec.md     # 工作表公式函数封闭白名单、高危差异与签名规范
 │   ├── hap-domain-custom-field-spec.md         # 自定义字段（CustomField）前端组件注入规范
 │   └── hap-domain-record-data-spec.md          # 业务记录查询、透视统计与受控批量写改规范
 └── scripts/                                    # 5 个核心运行时脚本

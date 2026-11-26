@@ -8,7 +8,7 @@
 - **输入切片**：读取预编译任务包或 `.build/task-context/{taskId}.json`：
   - `planSlice`：`worksheetName`、`worksheet`（该表完整设计）、`fields`、`relationLayout`（Pass 1 预留的待补复杂字段数组）、`relationDefaults`（可选：Pass 1 交接的跨表动态默认值待办数组）、`waveIndex` / `totalWaves`、`dependsOnWorksheets`、`needsPreReadStructure`、`requirements`、`appLanguage`、`allWorksheetOrder` 与 `allRelationLayouts`（供双边双向关联防重仲裁；兼容恢复历史分组工程时若存在 `planSlice.items` 则按组内逐表顺序处理）；
   - `contextSlice`：`appId`、`worksheetId`、`worksheetIdByName`（全应用表名→ID）、`worksheetFieldsByName`（本表及相关目标表在 Pass 1 已建的基础字段 `{ name, id, alias, type }` 轻量索引）、`fieldOptionsContext`（相关表选项字段的真实选项 `{ key, value }` 映射）。
-- **必读领域规范**：`references/hap-domain-worksheet-spec.md`（若本表含 `requirements` 时已自动附带 `references/hap-domain-worksheet-index-spec.md`）
+- **必读领域规范**：`references/hap-domain-worksheet-spec.md`（若本表含 `requirements` 时已自动附带 `references/hap-domain-worksheet-index-spec.md`；若含函数计算字段则已自动附带 `references/hap-domain-formula-function-spec.md`）
 - **主要业务工具**：
   - 默认 `["update_worksheet"]`（Wave 1 及无反向依赖表 **零回读直写**）；
   - 仅当 `planSlice.needsPreReadStructure === true`（存在依赖前序波次 `:bi` 自动生成的反向关联或目标表无预留别名的衍生字段）时，额外开放 `get_worksheet_structure`（**仅允许写前调用 1 次**获取反向关联真实 24 位 `id` 或目标字段真实 `alias`/`id`）；
@@ -26,12 +26,12 @@
 2. **双边 `:bi` 确定性防重仲裁**：
    - 若两张表在规划中均漏标 `:reverse` 而双向互指（均含 `bidirectional: true` 指向对方），仅由单条从属端（`isMultiple === false`）调用 API 创建，多条聚合端自动跳过；
    - 若基数相同，严格按 `planSlice.allWorksheetOrder` 中的全局工作表先后顺序仅由排在前面的表创建。
-3. **按依赖顺序组装本表 `addFields`（先 `Relation`/`SubTable`，再 `Lookup`/`Rollup`，最后使用这些本表字段的 `Concatenate`/`Formula`，保留预留 `layout`）**：
+3. **按依赖顺序组装本表 `addFields`（先 `Relation`/`SubTable`，再 `Lookup`/`Rollup`，最后使用这些本表字段的 `Concatenate`/`Formula`/`FunctionFormula`，保留预留 `layout`）**：
    - **`Relation`（跨表关联）**：`dataSource` 从 `worksheetIdByName[targetWorksheet]` 取真实 24 位 ID（查不到则跳过该项，严禁编造 ID）；传入原 `name`、`alias`、`layout: { rowIndex, span }`，落实该关联的字段级约束（如 `relationLayout.required`）；`config` 含 `bidirectional`、`isMultiple`、`displayMode`、`showFields`（从 `worksheetFieldsByName[targetWorksheet]` 挑 2～4 个核心字段的真实 **alias**，必含标题字段，排除富文本/长附件）及可选 `coverField`（仅 `displayMode === "card"` 且目标表有 `Attachment` 字段时填其真实 `alias`）。注意：`config.resultFilter` 仅支持静态常量条件，严禁填入动态字段 ID；跨表归属一致统一交由字段 `defaultValue(source="relation")`、`Lookup` 或 Step 3 业务规则 `setFieldValue(rcid)` 承接，关联字段创建成功即记 `succeeded`。
    - **`SubTable`（子表挂载）**：`dataSource` 取子表真实 ID，`layout: { rowIndex, span: 12 }`（强制独占整行 12 列），`config: { bidirectional: true, showFields: [<子表真实业务字段 alias，含前序波次子表已建好的跨表关联预留 alias>] }`（不传 `displayMode` / `isMultiple`）。无法确认的列不可编造 alias，记录到 `issues` 交由 Step 3 父表任务核对补齐。
    - **`Lookup`（他表字段）**：保留 `relationLayout.alias` 供同批表达式引用；`relationField` 填本表对应单条关联字段的真实 `alias`（若是前序波次对端 `:bi` 自动生成的反向关联则填其真实 24 位 `id`）；`sourceField` 匹配目标表真实 **`alias`**（或前序波次新建字段的真实 `alias`/`id`，严禁拼音编造）；`storeData` 按 [工作表规范 §9.2](../../references/hap-domain-worksheet-spec.md#92-lookup他表字段引用) 选择——仅显示用 `false`，本表文本组合（`Concatenate`）、公式计算、分组/筛选等确需引用存储值时设 `true`（不因工作流取值开启存储）；带原 `layout`。
    - **`Rollup`（汇总字段）**：保留 `relationLayout.alias` 供同批表达式引用；`relationField` 填本表主动 `Relation`/`SubTable` 的真实 **`alias`**，或写前 1 次 `get_worksheet_structure` 查到的**反向关联字段真实 24 位 `id`**（反向关联由服务端自动生成，通常无预定 `alias`）；`sourceField` 匹配目标表/子表字段的真实 **`alias`**（或前序波次新建字段的真实 `alias`/`id`，纯计数可省略）；结合字段名称与目标表结构判断业务统计口径（如“累计收款/累计出库/累计退货”需按目标表状态或类型过滤），对照 `update_worksheet` 实时 Schema 构造聚合配置与单层平铺过滤条件（选项 `key` 从 `contextSlice.fieldOptionsContext` 读取）；带原 `layout`。
-   - **依赖衍生字段的 `Concatenate` / `Formula`**：按预留的 `name`、`alias`、`isTitle`（若为计划组合标题传 `isTitle: true`）、`precision`、`layout` 及 `config: { expression }` 构造。
+   - **依赖衍生字段的 `Concatenate` / `Formula` / `FunctionFormula`**：按预留的 `name`、`alias`、`isTitle`（若为计划组合标题传 `isTitle: true`）、顶层 `precision`、`layout` 及 `config`（`Concatenate`/`Formula` 为 `{ expression }`，`FunctionFormula` 为 `{ expression, outputType }` 且遵循 `references/hap-domain-formula-function-spec.md` 封闭白名单）构造。
 4. **单次合并提交 `update_worksheet(addFields + editFields)`、按需建唯一索引与异常恢复**：
    - 对本表 `addFields` 按 `(name, dataSource)` 去重（`inlineTable` / `tabTable` 强制 `layout.span = 12`）；
    - **同请求合并回绑跨表动态默认值（`planSlice.relationDefaults` 非空时）**：构造 `editFields`——每项仅传接收字段真实 `id`（取自 `contextSlice.worksheetFieldsByName[worksheetName]`）和解析后的完整 `defaultValue` 数组（未传属性服务端自动保留）：其中 `source: "relation"` 的 `relationField` 填本表关联字段真实 `alias`（支持直接引用本批 `addFields` 新建的单条关联 `alias`，不支持多条关联）、`field` 填目标表来源字段真实 `alias`（取自 `contextSlice.worksheetFieldsByName[targetWorksheet]` 或 `allRelationLayouts`），同数组内若混有 `source: "field"` 则同步解析为本表 `alias`；缺依赖或无可用 `alias` 的单条跳过并记入 `issues`。

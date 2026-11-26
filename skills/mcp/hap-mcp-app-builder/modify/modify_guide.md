@@ -30,14 +30,14 @@
 <!-- SOURCE: modify-app/worksheet-revision-agent.yaml -->
 
 - **推荐精确工具集**：`get_app_worksheets_list`、`get_worksheet_structure`、`get_worksheet_field`、`get_worksheet_settings`、`create_worksheet`、`update_worksheet`、`update_worksheet_settings`、`delete_worksheet`、`get_worksheet_filter_list`、`get_worksheet_filter`、`save_worksheet_filter`、`delete_worksheet_filter`、`get_business_rule_list`、`get_business_rule_detail`、`create_business_rule`、`update_business_rule`、`delete_business_rule`、`get_worksheet_index_list`、`create_worksheet_index`、`update_worksheet_index`、`rename_worksheet_index`、`delete_worksheet_index`
-- **参考规格**：`../references/hap-domain-worksheet-spec.md`、`../references/hap-domain-custom-field-spec.md`、`../references/hap-domain-business-rule-spec.md`、`../references/hap-domain-worksheet-index-spec.md`
+- **参考规格**：`../references/hap-domain-worksheet-spec.md`、`../references/hap-domain-custom-field-spec.md`、`../references/hap-domain-business-rule-spec.md`、`../references/hap-domain-worksheet-index-spec.md`、`../references/hap-domain-formula-function-spec.md`
 - **读写与保护规则**：
   - **概览与布局读取选型**：仅需字段与视图概览时用 `get_worksheet_structure(responseFormat: "md")`；涉及表单排版布局设计或核验时直接用 `responseFormat: "dsl"`（已有完整 DSL 时直接复用，不再补读 MD）；点读单字段原配置用 `get_worksheet_field`。
   - **新建工作表闭环**：调用 `create_worksheet` 时使用真实 `sectionId`，**禁止传入 `createDefaultView: false`**（必须保留默认视图，拿回真实 `worksheetId` 与 `defaultViewId` 供后续原地翻新）；图标必带 `sys_` 前缀；同表配套的表单业务规则（`create_business_rule`）与物理索引（`create_worksheet_index`）紧接完成。
   - **单任务新增/编辑账本铁律**：`update_worksheet.addFields` 成功创建字段后，若后续仍需微调该字段属性，**必须改用 `editFields` 并传真实字段 `id`/`fieldId`**，严禁对已建字段再次发 `addFields` 撞别名唯一约束；新字段 `alias` 带 `biz_` 前缀。
   - **新增字段语义就近排版**：未指定位置时，按业务分段、相关字段与录入动线就近插入并协调同行 `span`（不把“未指定位置”机械等同于“塞到表单最末尾”），保留其他未受影响字段的相对顺序。
   - **主从子表与跨表衍生顺序**：建子表（`displayType: 2`）先于主表 `SubTable` + `showFields` + `Rollup`；多表双向关联先建主动关联使服务端生成真实反向字段后，再写引用反向关联的 `Lookup/Rollup`。已有子表新增字段时，同步将新字段补入主表对应 `SubTable` 的 `showFields`。
-  - **专项能力要点**：① `CustomField`（`type: 48`）必读 `../references/hap-domain-custom-field-spec.md`，`customWidget.script` 为无 import 纯函数源码（禁带 Markdown 代码围栏），引用的真实 `controlId` 全量声明在 `reference` 数组；② 业务规则停用须先读完整详情保留条件和动作，仅改 `enabled: false`；③ 索引仅改名使用 `rename_worksheet_index`；④ 工具栏漏斗已保存筛选器使用 `save_worksheet_filter` / `delete_worksheet_filter`（勿与视图筛选混淆）；⑤ 字段前端事件 `runWorkflow` 新建或更换绑定时，仅可绑定当前应用已发布且启用的封装业务流程（PBP，缺少 ID 时按 `get_workflow_list(triggerType: "pbc", published: true)` 定位；仅有未发布流程时说明缺口，不代为发布，当前 MCP 不支持新建 PBP）。
+  - **专项能力要点**：① `CustomField`（`type: 48`）必读 `../references/hap-domain-custom-field-spec.md`，`customWidget.script` 为无 import 纯函数源码（禁带 Markdown 代码围栏），引用的真实 `controlId` 全量声明在 `reference` 数组；② 业务规则停用须先读完整详情保留条件和动作，仅改 `enabled: false`；③ 索引仅改名使用 `rename_worksheet_index`；④ 工具栏漏斗已保存筛选器使用 `save_worksheet_filter` / `delete_worksheet_filter`（勿与视图筛选混淆）；⑤ 字段前端事件 `runWorkflow` 新建或更换绑定时，仅可绑定当前应用已发布且启用的封装业务流程（PBP，缺少 ID 时按 `get_workflow_list(triggerType: "pbc", published: true)` 定位；仅有未发布流程时说明缺口，不代为发布，当前 MCP 不支持新建 PBP）；⑥ `FunctionFormula` / `dynamicDefault.function`（公式模式）/ 前端事件函数表达式必读 `../references/hap-domain-formula-function-spec.md`，严格遵循线上合法系统函数封闭白名单、参数签名与高危差异，严禁使用清单外函数名。
 - **验证要点**：布局调整与全量数组替换在最后一次写入后用 `dsl` 或对应详情接口集中核对一次；索引构建异步受理如实报告“已提交构建”。
 
 ---
