@@ -9,18 +9,19 @@
 
 ## 二、高危差异陷阱（同名/近名异义与必填参坑）
 
-以下 8 项与 Excel / SQL 习惯差异极大，写错会直接报错或静默算错：
+以下 9 项与 Excel / SQL 习惯差异极大，写错会直接报错或静默算错：
 
 | 函数 | 常见误区 | HAP 真实行为与正确写法 |
 | :--- | :--- | :--- |
 | `FIND` / `FINDA` | 当作 Excel 查子串位置（返回数字） | **按起止标记正则截取中间子串**：`FIND(text, startMark, endMark)` 返回首个匹配文本（省略 `startMark` 从头截，省略 `endMark` 截到尾）；`FINDA(text, startMark, endMark)` 返回全部匹配数组（两标记均必填） |
-| `DATEIF` | 当作 Excel `DATEDIF(s, e, "d")` 返回数字 | 4 参 `DATEIF(start, end, format=1, unit="d")`：`format=1` 纯日期按 `00:00`，`2` 结束日按 `24:00` 含当天；`unit` 仅支持 `'Y'`/`'y'`/`'M'`/`'d'`/`'h'`/`'m'`；**返回带中文单位文本（如 `"6天"`）**，不能直接比较或加减。需纯数字天数差优先用 `DateFormula`，或用 `NUMBER(FIND(DATEIF($s$, $e$, 1, 'd'), "", "天"))` 去单位 |
+| `DATEIF` | 当作 Excel `DATEDIF(s, e, "d")` 返回数字，或按中文单位截取 | 4 参 `DATEIF(start, end, format=1, unit="d")`：`format=1` 纯日期按 `00:00`，`2` 结束日按 `24:00` 含当天；`unit` 仅支持 `'Y'`/`'y'`/`'M'`/`'d'`/`'h'`/`'m'`；**返回随界面语言本地化的带单位文本（如中文 `"6天"`、英文 `"6day"`）**，不可直接参与数值比较或加减，也**严禁按中文单位截取转数字**（英文等非中文环境会匹配失败静默算出 `0`）。需纯数值差参与计算或比较时，必须改用不依赖语言的受支持机制（如 `DateFormula` 日期公式字段，或工作日计数使用返回纯数字的 `NETWORKDAY`） |
 | `DATEADD` | 当作 SQL `DATEADD(day, 7, date)` | 3 参 `DATEADD(date, offsetExpr, format=1)`：第 2 参是带符号和单位的字符串（`'Y'`/`'M'`/`'d'`/`'h'`/`'m'`，如 `'+7d'`、`'-1M'`；动态值用 `CONCAT('+', $biz_days$, 'd')`）；第 3 参 `1` 输出 `YYYY-MM-DD`，`2` 输出 `YYYY-MM-DD HH:mm:ss` |
 | `CEILING` / `FLOOR` | 传单参 `CEILING(x)` / `FLOOR(x)` | **第 2 参基数 `sig` 必填**，单参直接抛错；取整到整数必须显式写 `CEILING($x$, 1)` / `FLOOR($x$, 1)` |
 | `LOG` | 传单参 `LOG(x)` 默认底数 10 | **第 2 参底数 `base` 必填**，单参返回 `NaN`；常用对数须写 `LOG($x$, 10)` |
 | `WEEKDAY` | 按 Excel 默认周日=1 或传第 2 参 | 仅 1 参 `WEEKDAY(date)`，固定返回 `1`（周一）~ `7`（周日） |
 | `CLEAN` | 当作 Excel 删除不可打印字符 | HAP 中为**删除全部半角空格**；仅去首尾空白用 `TRIM(text)` |
 | `INCLUDE` | 期望空入参严格返回 `false` | `INCLUDE(text, sub)` 任一为空时返回空/假值，条件判断建议先配合 `ISBLANK` |
+| `IF` / `IFS` | 用外层 `IF(cond, fallback, 危险表达式)` 或 `IFS(...)` 做短路保护或替代 `IFERROR` | `IF` / `IFS` 均为普通函数调用，**所有分支参数都会及早求值（无短路保护）**，无法阻止未命中分支抛错（如 `IF(OR(ISBLANK($d$), $d$ == 0), 99, MOD($n$, $d$))` 在 `$d$` 为 `0` 时仍触发 `MOD` 除数为 0 异常导致公式返回空）。必须先在危险运算的实际参数内消除非法输入（如 `IF(OR(ISBLANK($d$), $d$ == 0), 99, MOD($n$, IF(OR(ISBLANK($d$), $d$ == 0), 1, $d$)))`），或改用其他受支持机制 |
 
 ## 三、高频错名替换与不支持函数速查
 
@@ -46,12 +47,12 @@
 | 不支持的函数 | 合法替代写法或说明 |
 | :--- | :--- |
 | `TODAY()` | 用 `LEFT(DATENOW(), 10)` 取 `YYYY-MM-DD` |
-| `IFERROR(expr, fallback)` | 前置防御：`IF(OR(ISBLANK(x), x == 0), fallback, ...)` |
+| `IFERROR(expr, fallback)` | 无异常捕获函数；且 `IF`/`IFS` 会对所有分支及早求值，外包 `IF` 不能保护会抛错的分支。须在危险运算参数内部消除非法输入（如 `MOD($n$, IF(OR(ISBLANK($d$), $d$ == 0), 1, $d$))`）后再由外层 `IF` 输出兜底值，或改用其他受支持机制 |
 | `COALESCE(a, b)` / `IFNULL(a, b)` | `IF(ISBLANK(a), b, a)` |
 | `SWITCH(x, k1, v1, ...)` | `IFS(x == k1, v1, x == k2, v2, TRUE(), defaultVal)` |
 | `TEXTJOIN(sep, ...)` | `CONCAT(...)` 或 `JOIN(arr, sep)` |
 | `SQRT(x)` | `POWER(x, 0.5)` |
-| `DATEDIF` / `DATEDIFF` | 纯数字天数差优先用 `DateFormula` 控件，或见第二节 `DATEIF` |
+| `DATEDIF` / `DATEDIFF` | 纯数字日期差使用不依赖语言的受支持机制（如 `DateFormula` 日期公式字段，或工作日计数用 `NETWORKDAY`）；`DATEIF` 返回随界面语言本地化的带单位文本，不可按中文单位截取转数字 |
 | `TEXT(val, fmt)` | 无格式化模板函数（`STRING(x)` 仅 1 参基础转文本） |
 | `SUBSTR` / `SUBSTRING` | 改用 1-based 的 `MID(str, start, len)` |
 | `COUNT(...)` | 非空参数计数用 `COUNTA(...)`；数组/多选/子表项数用 `COUNTARRAY(...)` |

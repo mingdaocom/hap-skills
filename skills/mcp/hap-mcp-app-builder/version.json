@@ -1,9 +1,9 @@
 {
   "name": "hap-mcp-app-builder",
-  "version": "2.1.5",
+  "version": "2.1.6",
   "schemaVersion": 1,
   "minToolsCount": 170,
-  "releaseNotes": "新增工作表公式函数封闭白名单规范（references/hap-domain-formula-function-spec.md，覆盖全部 80 个线上合法系统函数、高危同名异义陷阱、高频错名替换与 HAP 特有函数用法）；在 Build Step 2a/2b 按需自动注入函数规范并同步补齐 FunctionFormula 构造指引；在 Modify resolve_context 新增 formula/function_formula 领域按需加载；同步 ISBLANK 语法、Rollup 多条关联约束与 SKILL.md 路由精简（更新后请重新读取根目录 SKILL.md）",
+  "releaseNotes": "修正公式函数封闭白名单规范（references/hap-domain-formula-function-spec.md）两处关键语义：移除 DATEIF 按中文单位截取转数字的写法，明确其返回随界面语言本地化的带单位文本（如 6天/6day），纯数值日期差统一引导改用 DateFormula 或 NETWORKDAY；补充 IF/IFS 全分支及早求值（无短路保护）红线，修正 IFERROR 替代写法为在危险运算实际参数内部消除非法输入（如 MOD 除数先转为非零安全值）后再由外层 IF 输出兜底结果（更新后请重新读取根目录 SKILL.md）",
   "repository": "https://github.com/mingdaocom/hap-skills",
   "branch": "main",
   "skillPath": "skills/mcp/hap-mcp-app-builder"
