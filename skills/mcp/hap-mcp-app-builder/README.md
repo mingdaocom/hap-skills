@@ -20,7 +20,7 @@
 - **Build 子代理**：物理搭建的重资产步骤需要真实独立子代理及所选 HAP MCP 的访问能力；宿主不支持时无法执行 Build，Plan、常规 Modify 和 Data 不以此为前提。
 - **文件打印任务**：新建或替换 Word/Excel 模板时，宿主需具备相应文件的读取、编辑和校验能力；具体要求见 [打印模板文件规程](modify/print-template-file.md)。
 
-尚未连接 HAP MCP 时，可让 Agent 按 [MCP 接入指南](MCP_SETUP.md) 引导获取个人访问令牌、协助配置当前宿主，并在连接验证通过后继续任务。
+尚未连接 HAP MCP 时，可按 [MCP 接入指南](MCP_SETUP.md) 引导前往明道云「连接 AI」完成 MCP 接入，并在连接验证通过后继续任务。
 
 ## 核心亮点与高级能力
 

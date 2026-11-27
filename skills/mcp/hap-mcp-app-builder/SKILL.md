@@ -12,10 +12,10 @@ description: 用于明道云/HAP 应用的方案设计、自动搭建、继续�
 ## 1. 前置检查（按序执行）
 
 1. **版本只读检查**：版本见 [`version.json`](version.json)。首次触发或询问版本时运行 `python3 {SKILL_DIR}/scripts/skill_update.py check`（24h 缓存、源码软链跳过、不改本地文件）；若 `"updateAvailable": true`，附 1 句提醒请用户运行 `npx skills update`（或 `npx skills add https://github.com/mingdaocom/hap-skills --skill hap-mcp-app-builder`）或通过明道云「连接 AI」更新，勿自行覆写本地目录。
-2. **识别 MCP 服务**：查找同时暴露 `get_org_list` 与 `create_app` 的服务——**0 个**按 [MCP 接入指南](MCP_SETUP.md)「场景一」引导接入；**1 个**静默选定为 `MCP_SERVER_NAME`；**≥ 2 个**按宿主规则或 URL 域名匹配，无法唯一确定时提问点选。
+2. **识别 MCP 服务**：查找同时暴露 `get_org_list` 与 `create_app` 的服务——**0 个**按 [MCP 接入指南](MCP_SETUP.md)「1」引导接入；**1 个**静默选定为 `MCP_SERVER_NAME`；**≥ 2 个**按宿主规则或 URL 域名匹配，无法唯一确定时提问点选。
 3. **工具门禁与连通**：
-   - Data 场景免卡 170 上限；其余场景硬卡 `tools_count >= 170`（不足按 `MCP_SETUP.md`「场景三」阻断）。
-   - 用户提供明道云链接或 `appId` 时，直接 `get_app_info(appId)` 校验连通并记录名称与 `orgId`（跳过多组织询问）；否则调 `get_org_list` 缓存 `organizations`（唯一组织自动记为 `orgId`）。`401` 按「场景二」更新令牌，应用/组织权限受限按「场景四」排查。
+   - Data 场景免卡 170 上限；其余场景硬卡 `tools_count >= 170`（不足按 `MCP_SETUP.md`「3」阻断）。
+   - 用户提供明道云链接或 `appId` 时，直接 `get_app_info(appId)` 校验连通并记录名称与 `orgId`（跳过多组织询问）；否则调 `get_org_list` 缓存 `organizations`（唯一组织自动记为 `orgId`）。`401` 按「2」引导更新令牌，应用/组织权限受限按「4」排查。
 4. **应用粘性与消歧**：已锁定的 `appId` 默认延续，收到新链接或明确切换时立即更新；未锁定或 `get_app_list` 命中 0/多候选时通过提问工具确认，不猜测翻找。
 
 ## 2. 场景路由
